@@ -18,6 +18,11 @@ Ready to begin Module 1
 
 ## Recent Changes
 - Initial project setup
+- Updated QBR n8n webhook configuration to the migrated host (`coe-n8n.coe-untrust-eu-de.prod.tddrift.net`) across backend defaults, env examples, and n8nac host config.
+- Added backend Gamma status proxy endpoint and switched frontend Gamma status polling to call backend API instead of direct browser-to-n8n calls.
+- Fixed root startup script path resolution so startup works from the current repo location.
+- Added root one-click wrappers (`start-services.cmd`, `stop-services.cmd`) for frontend/backend service control.
+- Aligned local one-click startup ports so backend now launches on `http://localhost:8008` to match frontend API defaults.
 
 ## Known Issues
 None yet
