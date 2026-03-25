@@ -6,7 +6,7 @@ Write-Host "Starting Agentic RAG services..." -ForegroundColor Cyan
 Write-Host "Starting backend server..." -ForegroundColor Yellow
 $backendPath = Join-Path $PSScriptRoot "..\backend"
 if (Test-Path $backendPath) {
-    Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd '$backendPath'; .\.venv\Scripts\Activate.ps1; uvicorn app.main:app --reload --host 0.0.0.0 --port 8008"
+    Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd '$backendPath'; .\.venv\Scripts\Activate.ps1; .\.venv\Scripts\python.exe -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8008"
 } else {
     Write-Host "Backend folder not found. Run Module 1 first." -ForegroundColor Red
 }

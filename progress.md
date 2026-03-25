@@ -23,6 +23,7 @@ Ready to begin Module 1
 - Fixed root startup script path resolution so startup works from the current repo location.
 - Added root one-click wrappers (`start-services.cmd`, `stop-services.cmd`) for frontend/backend service control.
 - Aligned local one-click startup ports so backend now launches on `http://localhost:8008` to match frontend API defaults.
+- Fixed backend launcher command to use `python -m uvicorn` (avoids broken `uvicorn.exe` path bindings after folder move).
 
 ## Known Issues
 None yet
