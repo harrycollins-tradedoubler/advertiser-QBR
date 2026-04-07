@@ -410,9 +410,13 @@ function normalizePayload(payload) {
   ].filter(Boolean)));
   const tables = normalizeTables(payload.publisherTables || {});
   const { metrics, metricMap } = normalizeMetrics(payload.programYoYTable || []);
-  const programScopeTable = normalizeProgramScopeTable(
-    payload.programScopeTable || payload.programLevelBreakdown || payload.programBreakdownTable
-  );
+  const rawProgramScopeTable = payload.programScopeTable || payload.programLevelBreakdown || payload.programBreakdownTable;
+  const programScopeTable = (
+    Array.isArray(rawProgramScopeTable)
+    || (rawProgramScopeTable && typeof rawProgramScopeTable === "object" && Array.isArray(rawProgramScopeTable.rows))
+  )
+    ? rawProgramScopeTable
+    : normalizeProgramScopeTable(rawProgramScopeTable);
 
   return {
     requestId: cleanInlineText(payload.requestId || `qbr-${Date.now()}`),
@@ -619,7 +623,6 @@ function buildMetricRows(metricMap, keys) {
 function buildProgramBreakdownTable(input) {
   const targetColumns = [
     "Program ID",
-    "Program",
     "Market",
     "Clicks",
     "Impressions",
@@ -630,16 +633,65 @@ function buildProgramBreakdownTable(input) {
     "YoY Change"
   ];
 
+  function firstObjectValue(obj, aliases) {
+    if (!obj || typeof obj !== "object") return "-";
+    const directKeys = Object.keys(obj);
+    const byLower = Object.fromEntries(directKeys.map((k) => [k.toLowerCase(), k]));
+    for (const alias of aliases) {
+      const key = byLower[String(alias).toLowerCase()];
+      if (!key) continue;
+      const value = obj[key];
+      if (value !== undefined && value !== null && String(value).trim() !== "") return value;
+    }
+    return "-";
+  }
+
+  function firstRowCell(row, idx, aliases) {
+    for (const alias of aliases) {
+      const key = String(alias).toLowerCase();
+      const colIndex = idx[key];
+      if (colIndex === undefined) continue;
+      const value = row[colIndex];
+      if (value !== undefined && value !== null && String(value).trim() !== "") return value;
+    }
+    return "-";
+  }
+
   const scope = input.programScopeTable;
+  if (Array.isArray(scope) && scope.length && typeof scope[0] === "object" && !Array.isArray(scope[0])) {
+    const rows = scope.map((row) => {
+      const programId = firstObjectValue(row, ["Program ID", "ProgramId", "ProgramID", "ID"]);
+      const market = firstObjectValue(row, ["Market", "Country", "Region"]);
+      const clicks = firstObjectValue(row, ["Clicks", "Current Clicks"]);
+      const impressions = firstObjectValue(row, ["Impressions"]);
+      const sales = firstObjectValue(row, ["Sales", "Current Sales"]);
+      const convRate = firstObjectValue(row, ["Conversion Rate", "Conv Rate"]);
+      const aov = firstObjectValue(row, ["AOV"]);
+      const totalOv = firstObjectValue(row, ["Total Order Value", "Current OV", "Order Value"]);
+      const yoy = firstObjectValue(row, ["YoY Change", "OV YoY %", "Sales YoY %"]);
+      return [programId, market, clicks, impressions, sales, convRate, aov, totalOv, yoy];
+    });
+    return {
+      title: "Program-Level Breakdown",
+      columns: targetColumns,
+      rows,
+      dense: false
+    };
+  }
+
   if (scope && Array.isArray(scope.rows) && scope.rows.length) {
     const idx = Object.fromEntries((scope.columns || []).map((col, i) => [cleanInlineText(col).toLowerCase(), i]));
     const rows = scope.rows.map((row) => {
-      const programId = row[idx["program id"]] || "-";
-      const program = row[idx.program] || `Program ${programId}`;
-      const sales = row[idx["current sales"]] || "-";
-      const totalOv = row[idx["current ov"]] || "-";
-      const yoy = row[idx["ov yoy %"]] || row[idx["sales yoy %"]] || "-";
-      return [programId, program, "-", "-", "-", sales, "-", "-", totalOv, yoy];
+      const programId = firstRowCell(row, idx, ["program id", "programid", "id"]);
+      const market = firstRowCell(row, idx, ["market", "country", "region"]);
+      const clicks = firstRowCell(row, idx, ["clicks", "current clicks"]);
+      const impressions = firstRowCell(row, idx, ["impressions"]);
+      const sales = firstRowCell(row, idx, ["sales", "current sales"]);
+      const convRate = firstRowCell(row, idx, ["conversion rate", "conv rate"]);
+      const aov = firstRowCell(row, idx, ["aov"]);
+      const totalOv = firstRowCell(row, idx, ["total order value", "current ov", "order value"]);
+      const yoy = firstRowCell(row, idx, ["yoy change", "ov yoy %", "sales yoy %"]);
+      return [programId, market, clicks, impressions, sales, convRate, aov, totalOv, yoy];
     });
     return {
       title: "Program-Level Breakdown",
@@ -653,7 +705,7 @@ function buildProgramBreakdownTable(input) {
     return {
       title: "Program-Level Breakdown",
       columns: targetColumns,
-      rows: input.analysisProgramIds.map((id) => [id, `Program ${id}`, "-", "-", "-", "-", "-", "-", "-", "-"]),
+      rows: input.analysisProgramIds.map((id) => [id, "-", "-", "-", "-", "-", "-", "-", "-"]),
       dense: false
     };
   }
@@ -661,7 +713,7 @@ function buildProgramBreakdownTable(input) {
   return {
     title: "Program-Level Breakdown",
     columns: targetColumns,
-    rows: [["-", "-", "-", "-", "-", "-", "-", "-", "-", "-"]],
+    rows: [["-", "-", "-", "-", "-", "-", "-", "-", "-"]],
     dense: false
   };
 }
@@ -721,8 +773,27 @@ function tableOrPlaceholderNoRank(table, title, columns, placeholderRows = 5) {
 }
 
 function buildPublisherOverviewBullets(input) {
+  const tidyObservationLine = (line) => {
+    let text = cleanInlineText(line || "");
+    text = text.replace(/^key observations?\s*[:\-]\s*/i, "");
+    text = text
+      .replace(/\s*-\s*I\s+recorded\b/gi, " recorded")
+      .replace(/\s*-\s*I\s+drove\b/gi, " drove")
+      .replace(/\s*-\s*I\s+account(?:s)?\s+for\b/gi, " accounts for")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (text && !/[.!?]$/.test(text)) text = `${text}.`;
+    return text;
+  };
+
+  const cleanPublisherName = (value) =>
+    cleanInlineText(value || "")
+      .replace(/\s*-\s*I$/i, "")
+      .replace(/\s+/g, " ")
+      .trim();
+
   const isNarrativeCandidate = (line) => {
-    const text = cleanInlineText(line);
+    const text = tidyObservationLine(line);
     if (!text || text.length < 30 || text.length > 260) return false;
     if (/\bsite\s*id\b/i.test(text)) return false;
     if (/\bcurrent sales:\b|\bcurrent ov:\b|\bov yoy change:\b|\bsales yoy %:\b/i.test(text)) return false;
@@ -737,7 +808,7 @@ function buildPublisherOverviewBullets(input) {
     const seen = new Set();
     const out = [];
     for (const line of lines || []) {
-      const text = cleanInlineText(line);
+      const text = tidyObservationLine(line);
       if (!isNarrativeCandidate(text)) continue;
       const key = text.toLowerCase();
       if (seen.has(key)) continue;
@@ -774,7 +845,7 @@ function buildPublisherOverviewBullets(input) {
   const obs = [];
   const topGrowthRow = growth?.rows?.[0];
   if (topGrowthRow) {
-    const pub = cleanInlineText(topGrowthRow.Publisher || "Top growth publisher");
+    const pub = cleanPublisherName(topGrowthRow.Publisher || "Top growth publisher");
     const seg = cleanInlineText(topGrowthRow.Segment || "N/A");
     const ovDelta = cleanInlineText(topGrowthRow["OV YoY Change"] || "N/A");
     const ovPct = cleanInlineText(topGrowthRow["OV YoY %"] || "N/A");
@@ -783,7 +854,7 @@ function buildPublisherOverviewBullets(input) {
 
   const topDeclineRow = decline?.rows?.[0];
   if (topDeclineRow) {
-    const pub = cleanInlineText(topDeclineRow.Publisher || "Top declining publisher");
+    const pub = cleanPublisherName(topDeclineRow.Publisher || "Top declining publisher");
     const seg = cleanInlineText(topDeclineRow.Segment || "N/A");
     const ovDelta = cleanInlineText(topDeclineRow["OV YoY Change"] || "N/A");
     const ovPct = cleanInlineText(topDeclineRow["OV YoY %"] || "N/A");
@@ -797,7 +868,7 @@ function buildPublisherOverviewBullets(input) {
 
   if (current?.rows?.length) {
     const top2 = current.rows.slice(0, 2).map((row) => ({
-      name: cleanInlineText(row.Publisher || "Publisher"),
+      name: cleanPublisherName(row.Publisher || "Publisher"),
       ov: parseNumber(row["Order Value"] || row["Current OV"] || row["Current Order Value"])
     }));
     if (top2.length === 2) {
@@ -808,7 +879,7 @@ function buildPublisherOverviewBullets(input) {
     }
   }
 
-  const computed = pickNarrativeBullets(obs, 4);
+  const computed = pickNarrativeBullets(obs, 4).map(tidyObservationLine);
   if (computed.length) return computed;
 
   return [
@@ -1139,22 +1210,83 @@ function buildKpiAnalysisBullets(input) {
   const aov = m.aov;
   const cpa = m.cpa;
   const roi = m.roi;
+  const aiCandidatesRaw = (input.programSections || [])
+    .filter((section) =>
+      /kpi snapshot|kpi highlights|business implications|confirmed changes|program performance|kpi/i
+        .test(cleanInlineText(section.title).toLowerCase())
+    )
+    .flatMap((section) => [...(section.bullets || []), ...(section.paragraphs || [])])
+    .map((line) => cleanInlineText(line))
+    .filter((line) => line.length >= 14 && line.length <= 360)
+    .filter((line) => !/\bsite\s*id\b/i.test(line))
+    .filter((line) => !/^\s*program\s*id\s*\d+/i.test(line))
+    .filter((line) => !/^\s*program\s*\d+\b/i.test(line))
+    .filter((line) => !/\btotal order value\b[\s:;,-]*.*\byoy change\b/i.test(line))
+    .filter((line) => !/\bcurrent sales:\b|\bcurrent ov:\b|\bov yoy change:\b|\bsales yoy %:\b/i.test(line))
+    .filter((line) => !/^\d{4}-\d{2}-\d{2}\s+to\s+\d{4}-\d{2}-\d{2}/i.test(line));
+
+  const isHeadingLike = (line) => {
+    if (!line) return false;
+    if (line.length > 70) return false;
+    if (/[.:;!?]$/.test(line)) return false;
+    if (/^[+\-]?\d/.test(line)) return false;
+    return /^[A-Za-z0-9&()\-/' ]+$/.test(line);
+  };
+
+  const aiCandidates = [];
+  for (let i = 0; i < aiCandidatesRaw.length; i += 1) {
+    const current = aiCandidatesRaw[i];
+    const next = aiCandidatesRaw[i + 1];
+    if (isHeadingLike(current) && next && !isHeadingLike(next)) {
+      aiCandidates.push(`${current}: ${next}`);
+      i += 1;
+      continue;
+    }
+    if (isHeadingLike(current)) continue;
+    aiCandidates.push(current);
+  }
+
+  const looksLikeRawKpiSnapshot = (line) =>
+    /^(sales|order value|clicks|conv rate|conversion rate|aov|publ commission|publisher commission|total commission|cpa|roi)\s*:/i
+      .test(cleanInlineText(line));
+  const looksLikeProgramListing = (line) =>
+    /^\s*program\s*id\s*\d+/i.test(cleanInlineText(line))
+    || /^\s*program\s*\d+\b/i.test(cleanInlineText(line))
+    || /\btotal order value\b[\s:;,-]*.*\byoy change\b/i.test(cleanInlineText(line));
+
+  const preferredAi = aiCandidates
+    .filter((line) => !looksLikeRawKpiSnapshot(line) && !looksLikeProgramListing(line))
+    .map((line) => cleanInlineText(line))
+    .filter(Boolean);
 
   const moversSales = input.tables.moversSales;
   const topUp = getTopDirection(moversSales, "Up");
   const topDown = getTopDirection(moversSales, "Down");
 
-  const bullets = [
-    `Conversion Efficiency: ${metricSentence("Conversion rate", conv)} Clicks ${directionWord(clicks?.varianceValue)} ${clicks?.variance || "N/A"} while sales ${directionWord(sales?.varianceValue)} ${sales?.variance || "N/A"}.`,
-    `Basket vs Volume: ${metricSentence("AOV", aov)} Total order value ${directionWord(ov?.varianceValue)} ${ov?.variance || "N/A"} (${ov?.difference || "-"}) despite transaction movement.`,
-    `Cost Control: ${metricSentence("CPA", cpa)} Publisher commission moved ${m.publcommission?.variance || "N/A"} YoY.`,
-    `Return: ${metricSentence("ROI", roi)} This reflects order value generated per unit of commission spend.`,
-    topUp || topDown
-      ? `Publisher Signal: strongest Sales mover ${topUp || "N/A"}; largest decline ${topDown || "N/A"}.`
-      : "Publisher Signal: driver not confirmed from available publisher mover data."
-  ];
+  const growthTop = input.tables.topGrowthPublishers?.rows?.[0] || null;
+  const declineTop = input.tables.topDecliningPublishers?.rows?.[0] || null;
+  const declineRows = (input.tables.topDecliningPublishers?.rows || []).slice(0, 3);
+  const declineList = declineRows
+    .map((row) => `${cleanInlineText(row.Publisher || "Publisher")} (${cleanInlineText(row["Sales YoY %"] || row["YoY Change"] || "N/A")})`)
+    .filter(Boolean)
+    .join(", ");
 
-  return bullets.map((line) => cleanInlineText(line)).slice(0, 5);
+  const bullets = [
+    `Conversion Rate Improvement: ${metricSentence("Conversion rate", conv)} Click volume ${directionWord(clicks?.varianceValue)} ${clicks?.variance || "N/A"} (${clicks?.difference || "-"}) while sales ${directionWord(sales?.varianceValue)} ${sales?.variance || "N/A"} (${sales?.difference || "-"}).`,
+    `Sales Volume Pressure: Total sales ${directionWord(sales?.varianceValue)} ${sales?.variance || "N/A"} (${sales?.difference || "-"}). Click volume ${directionWord(clicks?.varianceValue)} ${clicks?.variance || "N/A"} (${clicks?.difference || "-"}). ${declineList ? `Largest declines came from ${declineList}.` : "Largest declining publisher contribution requires confirmation from mover tables."}`,
+    `AOV Growth Partially Offsetting Volume Decline: ${metricSentence("AOV", aov)} Total order value ${directionWord(ov?.varianceValue)} ${ov?.variance || "N/A"} (${ov?.difference || "-"}) despite lower transaction volume.`,
+    `Rising CPA: ${metricSentence("CPA", cpa)} Publisher commission changed ${m.publcommission?.variance || "N/A"} (${m.publcommission?.difference || "-"}) year-over-year.`,
+    `ROI Trend: ${metricSentence("ROI", roi)} For every unit of commission in the current period, programme return moved from ${roi?.previous || "-"} to ${roi?.current || "-"}.`
+  ];
+  const generated = bullets.map((line) => cleanInlineText(line)).filter(Boolean);
+  const merged = [];
+  const aiForUse = preferredAi.length >= 3 ? preferredAi : [];
+  [...aiForUse, ...generated].forEach((line) => {
+    const key = line.toLowerCase();
+    if (merged.some((existing) => existing.toLowerCase() === key)) return;
+    merged.push(line);
+  });
+  return merged.slice(0, 5).map((line) => cleanInlineText(line)).filter(Boolean);
 }
 
 function buildCostCallout(input) {
@@ -1246,10 +1378,12 @@ function buildDeckSpec(input, theme) {
   slides.push({
     id: "cover",
     kind: "cover",
-    title: input.deckTitle,
-    subtitle: reportingSummary,
+    title: `${input.client} Affiliate Program Quarterly Business Review`,
+    subtitle: "",
     headline,
-    summary: input.qbrFocusDetail ? `${input.qbrFocus}. ${input.qbrFocusDetail}` : input.qbrFocus,
+    summary: input.qbrFocusDetail
+      ? `${input.qbrFocus}. ${input.qbrFocusDetail}`
+      : `A comprehensive year-over-year analysis of the ${input.client} affiliate program's performance, publisher dynamics, and strategic priorities to drive growth and optimise outcomes.`,
     bullets: [`Client: ${input.client}`, `Reporting currency: ${input.currencyCode}`, `Language: ${input.languageName}`],
     kpis: [],
     tables: []
@@ -1438,26 +1572,9 @@ function buildDeckSpec(input, theme) {
   });
 
   slides.push({
-    id: "risks-dependencies",
-    kind: "risks-dependencies",
-    title: "Risks & Dependencies",
-    subtitle: "Key risks to program performance and mitigation actions.",
-    bullets: [],
-    kpis: [],
-    tables: [
-      {
-        title: "Risks & Dependencies",
-        columns: ["Risk", "Impact", "Likelihood", "Mitigation"],
-        rows: buildRiskRows(input),
-        dense: false
-      }
-    ]
-  });
-
-  slides.push({
     id: "thank-you",
     kind: "thank-you",
-    title: `${input.client} Thank you.`,
+    title: `${input.client} - Thank you.`,
     subtitle: "",
     bullets: [],
     kpis: [],
@@ -1930,41 +2047,52 @@ function renderSlide(slide, deck, spec, pageNumber) {
   if (spec.kind === "cover") {
     addBlueChrome(slide, deck);
     addSlideWatermark(slide, deck, true);
-    const periodTag = buildCoverPeriodTag(deck.metadata.reportingPeriod);
-    slide.addText(cleanInlineText(spec.title), {
+    const periodTag = parsePeriodRange(deck.metadata.reportingPeriod);
+    const coverTitle = cleanInlineText(spec.title || `${deck.metadata.client} Quarterly Business Review`);
+    const match = coverTitle.match(/^(.*?)(business review)$/i);
+    const titleRunsData = match
+      ? [
+          { text: `${match[1]}`, options: { color: toColor(deck.theme.colors.paper) } },
+          { text: `${match[2]}`, options: { color: toColor(deck.theme.colors.ink) } }
+        ]
+      : [{ text: coverTitle, options: { color: toColor(deck.theme.colors.paper) } }];
+    slide.addText(titleRunsData, {
       x: 0.68,
-      y: 1.25,
-      w: 10.6,
-      h: 0.95,
+      y: 0.68,
+      w: 11.55,
+      h: 1.22,
       fontFace: deck.theme.fonts.heading,
-      fontSize: 31,
-      color: toColor(deck.theme.colors.paper),
+      fontSize: 29,
+      breakLine: true,
       margin: 0
     });
-    if (spec.subtitle) {
-      slide.addText(cleanInlineText(spec.subtitle), {
-        x: 0.68,
-        y: 2.3,
-        w: 10.2,
-        h: 0.28,
-        fontFace: deck.theme.fonts.body,
-        fontSize: 13,
-        color: toColor(deck.theme.colors.paper),
-        margin: 0
-      });
-    }
+    const coverSummary = cleanInlineText(
+      spec.summary
+        || "A comprehensive year-over-year analysis of programme performance, publisher dynamics and strategic priorities."
+    );
+    slide.addText(coverSummary, {
+      x: 0.68,
+      y: 2.0,
+      w: 11.35,
+      h: 0.78,
+      fontFace: deck.theme.fonts.body,
+      fontSize: 12.2,
+      color: toColor(deck.theme.colors.paper),
+      breakLine: true,
+      margin: 0
+    });
     slide.addShape("roundRect", {
       x: 0.68,
-      y: 3.25,
+      y: 3.0,
       w: 1.28,
       h: 0.36,
       radius: 0.04,
       line: { color: toColor(deck.theme.colors.paper), pt: 0 },
       fill: { color: toColor(deck.theme.colors.paper), transparency: 25 }
     });
-    slide.addText("QBR REPORT", {
+    slide.addText("QBR Report", {
       x: 0.83,
-      y: 3.33,
+      y: 3.08,
       w: 1.0,
       h: 0.2,
       fontFace: deck.theme.fonts.body,
@@ -1975,17 +2103,17 @@ function renderSlide(slide, deck, spec, pageNumber) {
     });
     slide.addShape("roundRect", {
       x: 2.06,
-      y: 3.25,
+      y: 3.0,
       w: 2.65,
       h: 0.36,
       radius: 0.04,
       line: { color: toColor(deck.theme.colors.accent), pt: 0.8 },
       fill: { color: toColor(deck.theme.colors.accent), transparency: 100 }
     });
-    slide.addText(`${periodTag} ANALYSIS`, {
+    slide.addText(`${periodTag} Analysis`, {
       x: 2.18,
-      y: 3.33,
-      w: 2.35,
+      y: 3.08,
+      w: 3.2,
       h: 0.2,
       fontFace: deck.theme.fonts.body,
       fontSize: 8.5,
@@ -1993,25 +2121,23 @@ function renderSlide(slide, deck, spec, pageNumber) {
       bold: true,
       margin: 0
     });
-    if (spec.summary) {
-      slide.addText(spec.summary, {
-        x: 0.68,
-        y: 2.73,
-        w: 10.2,
-        h: 0.45,
-        fontFace: deck.theme.fonts.body,
-        fontSize: 11.5,
-        color: toColor(deck.theme.colors.paper),
-        margin: 0
-      });
-    }
-    slide.addText("tradedoubler", {
-      x: 0.68,
-      y: 5.88,
-      w: 4.1,
-      h: 0.48,
+    slide.addText("td", {
+      x: 0.62,
+      y: 4.22,
+      w: 2.15,
+      h: 1.72,
       fontFace: deck.theme.fonts.heading,
-      fontSize: 28,
+      fontSize: 118,
+      color: toColor(deck.theme.colors.paper),
+      margin: 0
+    });
+    slide.addText("tradedoubler", {
+      x: 0.76,
+      y: 6.43,
+      w: 2.5,
+      h: 0.24,
+      fontFace: deck.theme.fonts.body,
+      fontSize: 10.2,
       color: toColor(deck.theme.colors.paper),
       margin: 0
     });
@@ -2022,62 +2148,43 @@ function renderSlide(slide, deck, spec, pageNumber) {
     addBlueChrome(slide, deck);
     addSlideWatermark(slide, deck, true);
     slide.addText(spec.title, {
-      x: 0.6,
-      y: 0.55,
-      w: 8.6,
-      h: 0.5,
+      x: 0.7,
+      y: 1.45,
+      w: 10.8,
+      h: 0.62,
       fontFace: deck.theme.fonts.heading,
-      fontSize: 30,
+      fontSize: 25,
       color: toColor(deck.theme.colors.paper),
       margin: 0
     });
     slide.addShape("roundRect", {
-      x: 0.3,
-      y: 1.25,
-      w: 12.73,
-      h: 5.75,
+      x: 0.62,
+      y: 2.55,
+      w: 12.05,
+      h: 1.12,
       radius: 0.06,
-      line: { color: toColor(deck.theme.colors.paper), pt: 0 },
-      fill: { color: toColor(deck.theme.colors.paper), transparency: 0 }
+      line: { color: toColor(deck.theme.colors.paper), pt: 0.35, transparency: 55 },
+      fill: { color: toColor(deck.theme.colors.paper), transparency: 42 }
     });
     slide.addText("Any Questions?", {
-      x: 0.6,
-      y: 1.8,
-      w: 4.8,
-      h: 0.6,
+      x: 0.95,
+      y: 2.84,
+      w: 10.6,
+      h: 0.35,
       fontFace: deck.theme.fonts.heading,
-      fontSize: 30,
-      color: toColor(deck.theme.colors.ink),
+      fontSize: 17.5,
+      color: toColor(deck.theme.colors.paper),
       margin: 0
     });
     slide.addText(`TD Affiliate Program - ${deck.metadata.reportingPeriod} Quarterly Business Review`, {
-      x: 0.6,
-      y: 2.58,
-      w: 7.6,
-      h: 0.3,
+      x: 0.95,
+      y: 3.17,
+      w: 10.8,
+      h: 0.24,
       fontFace: deck.theme.fonts.body,
-      fontSize: 11,
-      color: toColor(deck.theme.colors.muted),
-      margin: 0
-    });
-    addBullets(slide, deck, [
-      "Confirm action owners and deadlines",
-      "Share this report with stakeholders",
-      "Schedule next QBR checkpoint"
-    ], { x: 0.6, y: 3.2, w: 5.0, h: 2.0 }, deck.theme.colors.ink);
-    addBullets(slide, deck, [
-      `Prepared by: ${deck.metadata.client} team`,
-      "Role: Affiliate Program",
-      `Date: ${deck.metadata.reportingPeriod}`
-    ], { x: 5.8, y: 3.2, w: 5.8, h: 1.8 }, deck.theme.colors.ink);
-    slide.addText("td", {
-      x: 0.65,
-      y: 5.55,
-      w: 1.5,
-      h: 0.95,
-      fontFace: deck.theme.fonts.heading,
-      fontSize: 86,
-      color: toColor(deck.theme.colors.accent),
+      fontSize: 10.2,
+      color: toColor(deck.theme.colors.paper),
+      transparency: 15,
       margin: 0
     });
     return;
@@ -2203,58 +2310,57 @@ function renderSlide(slide, deck, spec, pageNumber) {
 
   if (spec.kind === "insights-blue") {
     const insightItems = (spec.bullets || []).slice(0, 5);
-    const leftItems = insightItems.slice(0, 3);
-    const rightItems = insightItems.slice(3, 5);
+    const items = insightItems.length ? insightItems : ["Driver not confirmed from available KPI data."];
+    const bulletText = items.map((item) => `\u2022 ${cleanInlineText(item)}`);
+    const totalChars = bulletText.reduce((sum, item) => sum + item.length, 0);
+    const useTwoColumns = totalChars > 920 || items.some((item) => cleanInlineText(item).length > 240);
+    const fontSize = totalChars > 1300 ? 10 : totalChars > 980 ? 10.8 : 11.4;
 
-    slide.addShape("line", {
-      x: 6.63,
-      y: 2.0,
-      w: 0,
-      h: 4.7,
-      line: { color: toColor("#90B1FF"), pt: 1.2 }
-    });
-    [2.4, 3.55, 4.7, 5.85].forEach((y) => {
-      slide.addShape("ellipse", {
-        x: 6.57,
-        y,
-        w: 0.12,
-        h: 0.12,
-        line: { color: toColor("#90B1FF"), pt: 0 },
-        fill: { color: toColor("#90B1FF") }
-      });
-    });
-
-    leftItems.forEach((item, index) => {
-      const y = 2.05 + index * 1.55;
-      slide.addText(`\u2022 ${item}`, {
-        x: 0.75,
-        y,
-        w: 5.55,
-        h: 1.35,
+    if (useTwoColumns) {
+      const splitAt = Math.ceil(bulletText.length / 2);
+      const leftText = bulletText.slice(0, splitAt).join("\n\n");
+      const rightText = bulletText.slice(splitAt).join("\n\n");
+      slide.addText(leftText, {
+        x: 0.78,
+        y: 1.90,
+        w: 5.85,
+        h: 5.32,
         align: "left",
+        valign: "top",
         fontFace: deck.theme.fonts.body,
-        fontSize: 12.5,
+        fontSize,
         color: toColor(deck.theme.colors.paper),
         breakLine: true,
         margin: 0.02
       });
-    });
-
-    rightItems.forEach((item, index) => {
-      const y = 3.18 + index * 1.7;
-      slide.addText(`\u2022 ${item}`, {
-        x: 7.0,
-        y,
-        w: 5.55,
-        h: 1.5,
+      slide.addText(rightText, {
+        x: 6.72,
+        y: 1.90,
+        w: 5.85,
+        h: 5.32,
         align: "left",
+        valign: "top",
         fontFace: deck.theme.fonts.body,
-        fontSize: 12.5,
+        fontSize,
         color: toColor(deck.theme.colors.paper),
         breakLine: true,
         margin: 0.02
       });
-    });
+    } else {
+      slide.addText(bulletText.join("\n\n"), {
+        x: 0.78,
+        y: 1.90,
+        w: 12.1,
+        h: 5.32,
+        align: "left",
+        valign: "top",
+        fontFace: deck.theme.fonts.body,
+        fontSize,
+        color: toColor(deck.theme.colors.paper),
+        breakLine: true,
+        margin: 0.02
+      });
+    }
     return;
   }
 
@@ -2388,14 +2494,15 @@ function renderSlide(slide, deck, spec, pageNumber) {
     const notes = points.length ? points : ["Driver not confirmed from available data."];
     slide.addText(notes.map((item) => `\u2022 ${item}`).join("\n\n"), {
       x: 6.28,
-      y: 2.56,
+      y: 2.38,
       w: 5.25,
-      h: 4.55,
+      h: 5.0,
       fontFace: deck.theme.fonts.body,
       fontSize: 11.6,
       color: toColor(deck.theme.colors.ink),
       breakLine: true,
-      margin: 0.02
+      margin: 0.01,
+      valign: "top"
     });
     if (overviewTableMetrics && overviewTableMetrics.containerH < 4.32) {
       slide.addShape("line", {
