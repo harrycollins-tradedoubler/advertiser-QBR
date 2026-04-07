@@ -44,12 +44,41 @@ export async function sendMessage(
   return response.json()
 }
 
-export async function fetchQbrStatus(jobId: string): Promise<{ status: string; result?: string; error?: string }> {
+export async function fetchQbrStatus(jobId: string): Promise<{
+  status: string
+  result?: string
+  error?: string
+  download_available?: boolean
+  file_name?: string
+}> {
   const response = await fetch(`${API_URL}/api/qbr/${encodeURIComponent(jobId)}`)
   if (!response.ok) {
     throw new Error('Failed to fetch QBR status')
   }
   return response.json()
+}
+
+export async function downloadQbrReport(jobId: string): Promise<{ fileName: string }> {
+  const response = await fetch(`${API_URL}/api/qbr/${encodeURIComponent(jobId)}/download`)
+  if (!response.ok) {
+    throw new Error(await readErrorDetail(response, 'Failed to download QBR report'))
+  }
+
+  const blob = await response.blob()
+  const contentDisposition = response.headers.get('content-disposition') || ''
+  const filenameMatch = contentDisposition.match(/filename="?([^"]+)"?/i)
+  const fileName = filenameMatch?.[1] || `qbr-report-${jobId}.pptx`
+
+  const url = window.URL.createObjectURL(blob)
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = fileName
+  document.body.appendChild(anchor)
+  anchor.click()
+  anchor.remove()
+  window.URL.revokeObjectURL(url)
+
+  return { fileName }
 }
 
 export async function fetchThreadMessages(threadId: string): Promise<Message[]> {

@@ -1,6 +1,6 @@
-import { useMemo, useState, type FormEvent } from 'react'
+import { useEffect, useMemo, useState, type FormEvent } from 'react'
 
-import { tdFetchUser, tdGetImpersonateUsername, tdImpersonate, tdGetPrograms } from '../lib/api'
+import { tdGetPrograms } from '../lib/api'
 
 type AnalysisLevel = 'program' | 'organization'
 type PublisherProgramMode = 'selected_program' | 'all_programs_in_organisation'
@@ -51,6 +51,7 @@ export function QbrRequestForm({ onSubmit, disabled }: QbrRequestFormProps) {
   const [programId, setProgramId] = useState('')
   const [programName, setProgramName] = useState('')
   const [publisherProgramMode, setPublisherProgramMode] = useState<PublisherProgramMode>('selected_program')
+  const [coverageProgramIds, setCoverageProgramIds] = useState<string[]>([])
   const [languageCode, setLanguageCode] = useState<LanguageCode>('EN')
   const [currencyCode, setCurrencyCode] = useState<CurrencyCode>('EUR')
   const [startDate, setStartDate] = useState('')
@@ -70,21 +71,35 @@ export function QbrRequestForm({ onSubmit, disabled }: QbrRequestFormProps) {
     if (publisherProgramMode === 'all_programs_in_organisation') {
       return programs.map((program) => program.id)
     }
+    if (coverageProgramIds.length > 0) {
+      return coverageProgramIds
+    }
     return programId ? [programId] : []
-  }, [programId, programs, publisherProgramMode])
+  }, [coverageProgramIds, programId, programs, publisherProgramMode])
 
   const canSubmit = useMemo(() => {
     if (!accessToken.trim()) return false
     if (!organizationId.trim()) return false
     if (!programId.trim()) return false
     if (!programName.trim()) return false
+    if (publisherProgramIds.length === 0) return false
     return Boolean(startDate && endDate)
-  }, [accessToken, organizationId, programId, programName, startDate, endDate])
+  }, [accessToken, organizationId, programId, programName, publisherProgramIds, startDate, endDate])
+
+  useEffect(() => {
+    if (publisherProgramMode !== 'all_programs_in_organisation') return
+    if (programId.trim()) return
+    const firstProgram = programs[0]
+    if (!firstProgram) return
+    setProgramId(firstProgram.id)
+    setProgramName(firstProgram.name)
+  }, [programId, programs, publisherProgramMode])
 
   const resetPrograms = () => {
     setPrograms([])
     setProgramId('')
     setProgramName('')
+    setCoverageProgramIds([])
     setTdTokens(null)
   }
 
@@ -100,13 +115,6 @@ export function QbrRequestForm({ onSubmit, disabled }: QbrRequestFormProps) {
 
     try {
       setLoadingPrograms(true)
-      await tdFetchUser(accessToken.trim())
-      const owner = await tdGetImpersonateUsername(organizationId.trim())
-      const ownerUsername = String(owner?.username || '')
-      if (!ownerUsername) {
-        throw new Error('Could not resolve owner username')
-      }
-      await tdImpersonate(ownerUsername)
       const data = await tdGetPrograms(organizationId.trim(), 100, accessToken.trim())
       const items = (data as { items?: Array<{ id: string | number; name?: string }> }).items || []
       const tokenData = (data as { td_tokens?: Partial<TdTokens> }).td_tokens
@@ -132,6 +140,11 @@ export function QbrRequestForm({ onSubmit, disabled }: QbrRequestFormProps) {
       if (normalized.length === 0) {
         setError('No programs found for this organisation.')
       } else {
+        const primaryProgram = normalized[0]
+        const nextCoverage = [primaryProgram.id]
+        setCoverageProgramIds(nextCoverage)
+        setProgramId(primaryProgram.id)
+        setProgramName(primaryProgram.name)
         setStatus(`Programs loaded (${normalized.length})`)
       }
     } catch (err) {
@@ -161,6 +174,10 @@ export function QbrRequestForm({ onSubmit, disabled }: QbrRequestFormProps) {
     }
     if (!programName.trim()) {
       setError('Program name is required.')
+      return
+    }
+    if (publisherProgramIds.length === 0) {
+      setError('Select at least one program for publisher coverage.')
       return
     }
     if (!tdTokens?.impersonate_access_token) {
@@ -209,7 +226,7 @@ export function QbrRequestForm({ onSubmit, disabled }: QbrRequestFormProps) {
         <div>
           <h2 className="text-sm font-semibold text-gray-900">QBR Request</h2>
           <p className="text-xs text-gray-500">
-            Connect TD auth, load the organisation&apos;s programs, then submit the QBR request.
+            Connect TD auth, choose scope, load programs, then submit the QBR request.
           </p>
         </div>
         <button
@@ -224,24 +241,28 @@ export function QbrRequestForm({ onSubmit, disabled }: QbrRequestFormProps) {
       <div className="mt-4 space-y-4">
         <div>
           <div className="text-xs font-semibold text-[#2A73FF]">1. Authenticate</div>
-          <div className="mt-2 grid gap-4 lg:grid-cols-3">
-            <label className="block text-xs text-gray-600 lg:col-span-2">
+          <div className="mt-2 text-xs text-gray-500">
+            Generate a token here:{' '}
+            <a
+              href="https://solutions.tradedoubler.com/tools/api-client-authToken/index.php"
+              target="_blank"
+              rel="noreferrer"
+              className="text-[#2A73FF] hover:underline"
+            >
+              https://solutions.tradedoubler.com/tools/api-client-authToken/index.php
+            </a>
+          </div>
+          <div className="mt-2 grid gap-4 lg:grid-cols-12">
+            <label className="block text-xs text-gray-600 lg:col-span-9">
               TD Access Token
-              <div className="mt-2 text-xs text-gray-500">
-                Generate a token here:{' '}
-                <a
-                  href="https://solutions.tradedoubler.com/tools/api-client-authToken/index.php"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-[#2A73FF] hover:underline"
-                >
-                  https://solutions.tradedoubler.com/tools/api-client-authToken/index.php
-                </a>
-              </div>
               <input
                 type="password"
                 value={accessToken}
                 onChange={(event) => {
+                  const nextValue = event.target.value
+                  if (nextValue.trim() !== accessToken.trim()) {
+                    resetPrograms()
+                  }
                   setAccessToken(event.target.value)
                   setStatus(null)
                   setError(null)
@@ -251,12 +272,16 @@ export function QbrRequestForm({ onSubmit, disabled }: QbrRequestFormProps) {
               />
             </label>
 
-            <label className="block text-xs text-gray-600">
+            <label className="block text-xs text-gray-600 lg:col-span-3">
               Organisation ID
               <input
                 type="text"
                 value={organizationId}
                 onChange={(event) => {
+                  const nextValue = event.target.value
+                  if (nextValue.trim() !== organizationId.trim()) {
+                    resetPrograms()
+                  }
                   setOrganizationId(event.target.value)
                   setStatus(null)
                   setError(null)
@@ -269,46 +294,7 @@ export function QbrRequestForm({ onSubmit, disabled }: QbrRequestFormProps) {
         </div>
 
         <div>
-          <div className="text-xs font-semibold text-[#2A73FF]">2. Load Program</div>
-          <div className="mt-2 grid gap-4 lg:grid-cols-3">
-            <div className="text-xs text-gray-600">
-              <span className="block">Load Programs</span>
-              <button
-                type="button"
-                onClick={() => void handleLoadPrograms(false)}
-                disabled={disabled || loadingPrograms || !accessToken.trim() || !organizationId.trim()}
-                className="mt-2 w-full rounded-lg border border-gray-200 px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60"
-              >
-                {loadingPrograms ? 'Loading programs...' : 'Load Programs'}
-              </button>
-            </div>
-
-            <label className="block text-xs text-gray-600 lg:col-span-2">
-              Program
-              <select
-                value={programId}
-                onChange={(event) => {
-                  const selectedId = event.target.value
-                  setProgramId(selectedId)
-                  const selected = programs.find((program) => program.id === selectedId)
-                  setProgramName(selected?.name || '')
-                }}
-                disabled={loadingPrograms || programs.length === 0}
-                className="mt-2 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#2A73FF] disabled:bg-gray-50 disabled:text-gray-400"
-              >
-                <option value="">{loadingPrograms ? 'Loading programs...' : 'Select a program'}</option>
-                {programs.map((program) => (
-                  <option key={program.id} value={program.id}>
-                    {program.name} ({program.id})
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
-        </div>
-
-        <div>
-          <div className="text-xs font-semibold text-[#2A73FF]">3. Request Scope</div>
+          <div className="text-xs font-semibold text-[#2A73FF]">2. Request Scope</div>
           <div className="mt-2 grid gap-4 lg:grid-cols-2">
             <div className="text-xs text-gray-600">
               Analysis Level
@@ -337,10 +323,107 @@ export function QbrRequestForm({ onSubmit, disabled }: QbrRequestFormProps) {
                 onChange={(event) => setPublisherProgramMode(event.target.value as PublisherProgramMode)}
                 className="mt-2 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#2A73FF]"
               >
-                <option value="selected_program">Selected program only</option>
+                <option value="selected_program">Select specific programs</option>
                 <option value="all_programs_in_organisation">All programs in organisation</option>
               </select>
             </label>
+          </div>
+        </div>
+
+        <div>
+          <div className="text-xs font-semibold text-[#2A73FF]">3. Load Program</div>
+          <div className="mt-2 grid gap-4">
+            <div className="text-xs text-gray-600">
+              <span className="block">Load Programs</span>
+              <button
+                type="button"
+                onClick={() => void handleLoadPrograms(false)}
+                disabled={disabled || loadingPrograms || !accessToken.trim() || !organizationId.trim()}
+                className="mt-2 w-full rounded-lg border border-gray-200 px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60"
+              >
+                {loadingPrograms ? 'Loading programs...' : 'Load Programs'}
+              </button>
+            </div>
+
+            {publisherProgramMode === 'selected_program' && (
+              <div className="text-xs text-gray-600">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="font-medium text-gray-700">Programs to include in report</span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const next = programs.map((program) => program.id)
+                        setCoverageProgramIds(next)
+                        const primary = programs[0]
+                        setProgramId(primary?.id || '')
+                        setProgramName(primary?.name || '')
+                      }}
+                      disabled={programs.length === 0}
+                      className="rounded-md border border-gray-200 px-2 py-1 text-[11px] font-semibold text-gray-600 hover:bg-gray-50 disabled:opacity-60"
+                    >
+                      Select all
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCoverageProgramIds([])
+                        setProgramId('')
+                        setProgramName('')
+                      }}
+                      disabled={programs.length === 0}
+                      className="rounded-md border border-gray-200 px-2 py-1 text-[11px] font-semibold text-gray-600 hover:bg-gray-50 disabled:opacity-60"
+                    >
+                      Clear all
+                    </button>
+                  </div>
+                </div>
+                <div className="mt-2 max-h-36 overflow-y-auto rounded-lg border border-gray-200 bg-white p-2">
+                  {programs.length === 0 ? (
+                    <p className="text-[11px] text-gray-400">Load programs first to choose report coverage.</p>
+                  ) : (
+                    <div className="space-y-1">
+                      {programs.map((program) => {
+                        const checked = coverageProgramIds.includes(program.id)
+                        return (
+                          <label key={program.id} className="flex cursor-pointer items-center gap-2 rounded px-1 py-1 hover:bg-gray-50">
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={() => {
+                                const nextCoverage = checked
+                                  ? coverageProgramIds.filter((id) => id !== program.id)
+                                  : [...coverageProgramIds, program.id]
+                                setCoverageProgramIds(nextCoverage)
+                                const primaryId = nextCoverage[0] || ''
+                                const primaryProgram = programs.find((item) => item.id === primaryId)
+                                setProgramId(primaryId)
+                                setProgramName(primaryProgram?.name || '')
+                              }}
+                              className="h-3.5 w-3.5 rounded border-gray-300 text-[#2A73FF] focus:ring-[#2A73FF]"
+                            />
+                            <span className="truncate text-[11px] text-gray-700">
+                              {program.name} ({program.id})
+                            </span>
+                          </label>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+                <p className="mt-1 text-[11px] text-gray-500">
+                  {publisherProgramIds.length > 0
+                    ? `${publisherProgramIds.length} program${publisherProgramIds.length === 1 ? '' : 's'} selected for publisher coverage.`
+                    : 'Choose at least one program for publisher coverage.'}
+                </p>
+              </div>
+            )}
+
+            {publisherProgramMode === 'all_programs_in_organisation' && programs.length > 0 && (
+              <p className="text-[11px] text-gray-500">
+                All loaded programs will be included in the report ({programs.length} total).
+              </p>
+            )}
           </div>
         </div>
 
@@ -432,13 +515,16 @@ export function QbrRequestForm({ onSubmit, disabled }: QbrRequestFormProps) {
           <div className="font-semibold text-gray-700">Summary</div>
           <div className="mt-2 grid gap-1 lg:grid-cols-2">
             <div>
-              Program: <span className="font-medium">{programName || 'None selected'}</span>
+              Primary program: <span className="font-medium">{programName || 'None selected'}</span>
             </div>
             <div>
               KPI scope: <span className="font-medium">{analysisLevel === 'organization' ? 'Organisation-level' : 'Program-level'}</span>
             </div>
             <div>
-              Publisher scope: <span className="font-medium">{publisherProgramMode === 'all_programs_in_organisation' ? 'All organisation programs' : 'Selected program only'}</span>
+              Publisher scope: <span className="font-medium">{publisherProgramMode === 'all_programs_in_organisation' ? 'All organisation programs' : 'Selected programs'}</span>
+            </div>
+            <div>
+              Programs in report: <span className="font-medium">{publisherProgramIds.length}</span>
             </div>
             <div>
               Language / Currency: <span className="font-medium">{languageCode} / {currencyCode}</span>

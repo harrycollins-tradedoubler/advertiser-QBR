@@ -1,0 +1,701 @@
+{
+  "metadata": {
+    "requestId": "qbr-1775558755083",
+    "client": "HP Store",
+    "deckTitle": "QBR - HP Store",
+    "reportingPeriod": "2025-12-01 to 2026-03-25",
+    "comparisonPeriod": "2024-12-01 to 2025-03-25",
+    "languageCode": "EN",
+    "languageName": "English",
+    "currencyCode": "GBP",
+    "qbrFocus": "Increase sales",
+    "generatedAt": "2026-04-07T10:45:55.086Z"
+  },
+  "theme": {
+    "id": "td-default",
+    "name": "TD",
+    "companyName": "Tradedoubler",
+    "logoText": "Tradedoubler",
+    "fonts": {
+      "heading": "Instrument Sans",
+      "body": "Instrument Sans",
+      "mono": "Instrument Sans"
+    },
+    "colors": {
+      "ink": "#2F333B",
+      "paper": "#F3F4F6",
+      "canvas": "#E8EDF9",
+      "accent": "#2F6FF2",
+      "accentAlt": "#EB5757",
+      "success": "#57A66C",
+      "warning": "#F2C94C",
+      "highlight": "#AFC4F5",
+      "muted": "#5B6372",
+      "border": "#D8DCE5"
+    }
+  },
+  "slides": [
+    {
+      "id": "cover",
+      "kind": "cover",
+      "title": "QBR - HP Store",
+      "subtitle": "2025-12-01 to 2026-03-25 vs 2024-12-01 to 2025-03-25",
+      "headline": "Conversion improved despite softer traffic",
+      "summary": "Increase sales",
+      "bullets": [
+        "Client: HP Store",
+        "Reporting currency: GBP",
+        "Language: English"
+      ],
+      "kpis": [],
+      "tables": []
+    },
+    {
+      "id": "reporting-period",
+      "kind": "reporting-period",
+      "title": "Reporting Period",
+      "subtitle": "Current and YoY comparison windows",
+      "headline": "",
+      "summary": "",
+      "bullets": [
+        "Current period: 2025-12-01 to 2026-03-25",
+        "Comparison period: 2024-12-01 to 2025-03-25",
+        "Primary focus: Increase sales"
+      ],
+      "kpis": [],
+      "tables": [],
+      "callout": "All figures are reported in GBP unless otherwise stated. YoY variance is calculated as current period vs comparison period."
+    },
+    {
+      "id": "executive-summary",
+      "kind": "program-executive-summary",
+      "title": "Program Performance: Executive Summary",
+      "headline": "Conversion improved despite softer traffic",
+      "summary": "",
+      "bullets": [],
+      "kpis": [
+        {
+          "label": "Sales",
+          "value": "54,562",
+          "delta": "-12.0%",
+          "trend": "down"
+        },
+        {
+          "label": "Order value",
+          "value": "£24,076,021",
+          "delta": "-2.2%",
+          "trend": "down"
+        },
+        {
+          "label": "AOV",
+          "value": "£441.26",
+          "delta": "+11.1%",
+          "trend": "up"
+        },
+        {
+          "label": "Clicks",
+          "value": "42,050,161",
+          "delta": "-19.7%",
+          "trend": "down"
+        },
+        {
+          "label": "Conv Rate",
+          "value": "0.13%",
+          "delta": "+9.6%",
+          "trend": "up"
+        }
+      ],
+      "tables": []
+    },
+    {
+      "id": "kpi-volume-conversion",
+      "kind": "kpi-table",
+      "title": "KPI Summary Table: Volume & Conversion",
+      "subtitle": "Detailed breakdown of traffic, sales and conversion performance vs prior year.",
+      "bullets": [],
+      "kpis": [],
+      "tables": [
+        {
+          "title": "Volume & Conversion",
+          "columns": [
+            "Metric",
+            "Current Period",
+            "Prior Year",
+            "Change",
+            "% Variance"
+          ],
+          "rows": [
+            [
+              "Clicks",
+              "42,050,161",
+              "52,364,355",
+              "-10,314,194",
+              "-19.7%"
+            ],
+            [
+              "Sales (Transactions)",
+              "54,562",
+              "61,984",
+              "-7,422",
+              "-12.0%"
+            ],
+            [
+              "Conversion Rate",
+              "0.13%",
+              "0.12%",
+              "+0.01%",
+              "+9.6%"
+            ],
+            [
+              "Average Order Value (AOV)",
+              "£441.26",
+              "£397.01",
+              "+£44.25",
+              "+11.1%"
+            ],
+            [
+              "Total Order Value",
+              "£24,076,021",
+              "£24,608,446",
+              "-£532,425",
+              "-2.2%"
+            ]
+          ],
+          "dense": false
+        }
+      ],
+      "callout": "Conversion rate and AOV should be interpreted together with click and sales volume."
+    },
+    {
+      "id": "kpi-cost-roi",
+      "kind": "kpi-table",
+      "title": "KPI Summary Table: Cost, CPA & ROI",
+      "subtitle": "Publisher spend efficiency and return on investment vs prior year.",
+      "bullets": [],
+      "kpis": [],
+      "tables": [
+        {
+          "title": "Cost, CPA & ROI",
+          "columns": [
+            "Metric",
+            "Current Period",
+            "Prior Year",
+            "Change",
+            "% Variance"
+          ],
+          "rows": [
+            [
+              "Publisher Commission",
+              "£903,086",
+              "£935,460",
+              "-£32,374",
+              "-3.5%"
+            ],
+            [
+              "Total Commission",
+              "£903,086",
+              "£935,460",
+              "-£32,374",
+              "-3.5%"
+            ],
+            [
+              "Cost Per Acquisition (CPA)",
+              "£16.55",
+              "£15.09",
+              "+£1.46",
+              "+9.7%"
+            ],
+            [
+              "Return on Investment (ROI)",
+              "26.66",
+              "26.31",
+              "+0.35",
+              "+1.3%"
+            ]
+          ],
+          "dense": false
+        }
+      ],
+      "callout": "ROI = Total Order Value / Total Commission. Higher ROI indicates greater return per unit of commission spend."
+    },
+    {
+      "id": "program-level-breakdown",
+      "kind": "program-breakdown",
+      "title": "Program-Level Breakdown",
+      "subtitle": "Program-level contribution across the selected scope.",
+      "bullets": [],
+      "kpis": [],
+      "tables": [
+        {
+          "title": "Program-Level Breakdown",
+          "columns": [
+            "Program",
+            "Program ID",
+            "Current OV",
+            "OV YoY %",
+            "Current Sales",
+            "Sales YoY %"
+          ],
+          "rows": [
+            [
+              "HP Store UK",
+              "12345",
+              "£12,544,201",
+              "-1.8%",
+              "28,411",
+              "-10.2%"
+            ],
+            [
+              "HP Store Germany",
+              "23456",
+              "�,�8,904,115",
+              "-3.6%",
+              "19,084",
+              "-13.4%"
+            ],
+            [
+              "HP Store Netherlands",
+              "34567",
+              "�,�2,627,705",
+              "+4.2%",
+              "7,067",
+              "-2.1%"
+            ]
+          ],
+          "dense": false
+        }
+      ]
+    },
+    {
+      "id": "kpi-highlights",
+      "kind": "insights-blue",
+      "title": "KPI Highlights & Business Implications",
+      "subtitle": "What the numbers mean for the business - key signals and context.",
+      "bullets": [
+        "1 December 2025 to 25 March 2026 vs 1 December 2024 to 25 March 2025",
+        "Sales: 54,562 (-7,422, -12.0%)",
+        "Order value: £24,076,021 (-£532,425, -2.2%)",
+        "AOV: £441.26 (+£44.25, +11.1%)",
+        "Clicks: 42,050,161 (-10,314,194, -19.7%)"
+      ],
+      "kpis": [],
+      "tables": []
+    },
+    {
+      "id": "priority-actions",
+      "kind": "priority-actions",
+      "title": "Priority Actions",
+      "subtitle": "Three critical focus areas for the next cycle.",
+      "bullets": [
+        "1 December 2025 to 25 March 2026 vs 1 December 2024 to 25 March 2025",
+        "Sales: 54,562 (-7,422, -12.0%)",
+        "Order value: £24,076,021 (-£532,425, -2.2%)"
+      ],
+      "kpis": [],
+      "tables": []
+    },
+    {
+      "id": "publisher-overview",
+      "kind": "publisher-overview",
+      "title": "Publisher Performance Overview",
+      "subtitle": "High-level summary of publisher activity, segmentation and YoY movement.",
+      "bullets": [
+        "Skimlinks delivered the strongest incremental sales growth, supported by higher order value.",
+        "Redbrain improved order value year on year despite lower click growth.",
+        "VoucherCodes remained a large contributor but saw softer sales and order value.",
+        "TopCashback declined on both sales and clicks year on year."
+      ],
+      "kpis": [],
+      "tables": [
+        {
+          "title": "Publisher Activity Summary",
+          "columns": [
+            "Segment",
+            "Total Sales",
+            "Sales YoY %",
+            "Total OV",
+            "OV YoY %",
+            "Publishers"
+          ],
+          "rows": [
+            [
+              "Voucher",
+              "19,221",
+              "-10.1%",
+              "£7,112,230",
+              "-8.4%",
+              "18"
+            ],
+            [
+              "Content",
+              "15,604",
+              "+6.8%",
+              "£6,108,554",
+              "+7.2%",
+              "23"
+            ]
+          ],
+          "dense": false
+        }
+      ]
+    },
+    {
+      "id": "top-growth-publishers",
+      "kind": "publisher-table",
+      "title": "Top YoY Growth Publishers (Top 5)",
+      "subtitle": "Publishers delivering the highest absolute order value increases year-over-year.",
+      "bullets": [],
+      "kpis": [],
+      "tables": [
+        {
+          "title": "Top Growth Publishers",
+          "columns": [
+            "Rank",
+            "Publisher",
+            "Site ID",
+            "Segment",
+            "Current Sales",
+            "Sales YoY %",
+            "Current OV",
+            "OV YoY Change",
+            "OV YoY %"
+          ],
+          "rows": [
+            [
+              "1",
+              "Skimlinks",
+              "18116",
+              "Content",
+              "9,540",
+              "+18.2%",
+              "£3,820,210",
+              "+£590,200",
+              "+18.3%"
+            ],
+            [
+              "2",
+              "Redbrain",
+              "16055",
+              "CSS",
+              "6,814",
+              "+9.5%",
+              "£2,611,402",
+              "+£201,331",
+              "+8.4%"
+            ]
+          ]
+        }
+      ],
+      "callout": "Skimlinks delivered the strongest incremental sales growth, supported by higher order value."
+    },
+    {
+      "id": "top-decline-publishers",
+      "kind": "publisher-table",
+      "title": "Top YoY Decline Publishers (Top 5)",
+      "subtitle": "Publishers with the largest absolute order value decreases.",
+      "bullets": [],
+      "kpis": [],
+      "tables": [
+        {
+          "title": "Top Decline Publishers",
+          "columns": [
+            "Rank",
+            "Publisher",
+            "Site ID",
+            "Segment",
+            "Current Sales",
+            "Sales YoY %",
+            "Current OV",
+            "OV YoY Change",
+            "OV YoY %"
+          ],
+          "rows": [
+            [
+              "1",
+              "VoucherCodes",
+              "9921",
+              "Voucher",
+              "11,240",
+              "-14.4%",
+              "£4,731,100",
+              "-£780,112",
+              "-14.2%"
+            ]
+          ]
+        }
+      ],
+      "callout": "Declining publishers should be reviewed with account teams and validated before the next QBR cycle."
+    },
+    {
+      "id": "top-current-performers",
+      "kind": "publisher-table",
+      "title": "Top Current Performers by Order Value (Top 5)",
+      "subtitle": "Highest-performing publishers by current period order value.",
+      "bullets": [],
+      "kpis": [],
+      "tables": [
+        {
+          "title": "Top Current Performers",
+          "columns": [
+            "Rank",
+            "Publisher",
+            "Site ID",
+            "Segment",
+            "Order Value",
+            "Current Sales",
+            "Sales YoY %",
+            "OV YoY %",
+            "Pub Commission",
+            "CPA"
+          ],
+          "rows": [
+            [
+              "1",
+              "VoucherCodes",
+              "9921",
+              "Voucher",
+              "£4,731,100",
+              "11,240",
+              "-14.4%",
+              "-14.2%",
+              "£181,520",
+              "£16.15"
+            ],
+            [
+              "2",
+              "Skimlinks",
+              "18116",
+              "Content",
+              "£3,820,210",
+              "9,540",
+              "+18.2%",
+              "+18.3%",
+              "£152,808",
+              "£16.02"
+            ]
+          ]
+        }
+      ],
+      "callout": "Trend legend: positive values indicate YoY growth, negative values indicate YoY decline."
+    },
+    {
+      "id": "segment-performance",
+      "kind": "segment-performance",
+      "title": "Publisher Segment Performance",
+      "subtitle": "Order value performance broken down by publisher segment.",
+      "bullets": [
+        "Voucher: -8.4% YoY",
+        "Content: +7.2% YoY"
+      ],
+      "kpis": [],
+      "tables": []
+    },
+    {
+      "id": "brand-new-publishers",
+      "kind": "publisher-table",
+      "title": "Brand New Publishers",
+      "subtitle": "Publishers activated for the first time in the current period.",
+      "bullets": [],
+      "kpis": [],
+      "tables": [
+        {
+          "title": "Brand New Publishers",
+          "columns": [
+            "Publisher",
+            "Segment",
+            "Current Sales",
+            "Current OV",
+            "CPA"
+          ],
+          "rows": [
+            [
+              "-",
+              "-",
+              "-",
+              "-",
+              "-"
+            ]
+          ]
+        }
+      ],
+      "callout": "Brand-new publishers are not included in YoY comparisons until a prior-year baseline exists."
+    },
+    {
+      "id": "new-emerging-publishers",
+      "kind": "new-emerging",
+      "title": "New & Emerging Publishers",
+      "subtitle": "Early performance signals for publishers still in ramp-up phase.",
+      "bullets": [],
+      "kpis": [],
+      "tables": []
+    },
+    {
+      "id": "new-publisher-prospects",
+      "kind": "publisher-table",
+      "title": "New Publisher Prospects",
+      "subtitle": "Recommended publishers for activation in the next period.",
+      "bullets": [],
+      "kpis": [],
+      "tables": [
+        {
+          "title": "New Publisher Prospects",
+          "columns": [
+            "Publisher",
+            "Segment",
+            "Est. OV Potential",
+            "Est. Sales Potential",
+            "Source"
+          ],
+          "rows": [
+            [
+              "-",
+              "-",
+              "-",
+              "-",
+              "-"
+            ]
+          ]
+        }
+      ],
+      "callout": "If no prospects are currently available, populate this slide from the live outreach pipeline."
+    },
+    {
+      "id": "recommendations",
+      "kind": "recommendations-blue",
+      "title": "Strategic Recommendations",
+      "subtitle": "",
+      "headline": "",
+      "bullets": [
+        "1 December 2025 to 25 March 2026 vs 1 December 2024 to 25 March 2025",
+        "Sales: 54,562 (-7,422, -12.0%)",
+        "Order value: £24,076,021 (-£532,425, -2.2%)",
+        "AOV: £441.26 (+£44.25, +11.1%)",
+        "Clicks: 42,050,161 (-10,314,194, -19.7%)"
+      ],
+      "kpis": [],
+      "tables": []
+    },
+    {
+      "id": "risks-dependencies",
+      "kind": "risks-dependencies",
+      "title": "Risks & Dependencies",
+      "subtitle": "Key risks to program performance and mitigation actions.",
+      "bullets": [],
+      "kpis": [],
+      "tables": [
+        {
+          "title": "Risks & Dependencies",
+          "columns": [
+            "Risk",
+            "Impact",
+            "Likelihood",
+            "Mitigation"
+          ],
+          "rows": [
+            [
+              "VoucherCodes performance risk",
+              "High",
+              "Medium",
+              "Validate root cause and agree a short-cycle recovery plan."
+            ]
+          ],
+          "dense": false
+        }
+      ]
+    },
+    {
+      "id": "thank-you",
+      "kind": "thank-you",
+      "title": "HP Store Thank you.",
+      "subtitle": "",
+      "bullets": [],
+      "kpis": [],
+      "tables": []
+    },
+    {
+      "id": "appendix-program-yoy",
+      "kind": "appendix",
+      "title": "Appendix: Program YoY Table",
+      "bullets": [],
+      "kpis": [],
+      "tables": [
+        {
+          "title": "Program YoY Table",
+          "columns": [
+            "Metric",
+            "Current",
+            "Previous",
+            "Difference",
+            "Variance"
+          ],
+          "rows": [
+            [
+              "Clicks",
+              "42,050,161",
+              "52,364,355",
+              "-10,314,194",
+              "-19.7%"
+            ],
+            [
+              "Sales",
+              "54,562",
+              "61,984",
+              "-7,422",
+              "-12.0%"
+            ],
+            [
+              "Conv Rate",
+              "0.13%",
+              "0.12%",
+              "+0.01%",
+              "+9.6%"
+            ],
+            [
+              "Order value",
+              "£24,076,021",
+              "£24,608,446",
+              "-£532,425",
+              "-2.2%"
+            ],
+            [
+              "AOV",
+              "£441.26",
+              "£397.01",
+              "+£44.25",
+              "+11.1%"
+            ],
+            [
+              "Publ Commission",
+              "£903,086",
+              "£935,460",
+              "-£32,374",
+              "-3.5%"
+            ],
+            [
+              "Total Commission",
+              "£903,086",
+              "£935,460",
+              "-£32,374",
+              "-3.5%"
+            ],
+            [
+              "CPA",
+              "£16.55",
+              "£15.09",
+              "+£1.46",
+              "+9.7%"
+            ],
+            [
+              "ROI",
+              "26.66",
+              "26.31",
+              "+0.35",
+              "+1.3%"
+            ]
+          ],
+          "dense": true
+        }
+      ]
+    }
+  ]
+}

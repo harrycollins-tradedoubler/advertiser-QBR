@@ -17,6 +17,16 @@ const TEMPLATE_BLUE_BG_PATH = path.join(__dirname, "..", "assets", "qbr-bg-blue.
 const TEMPLATE_LIGHT_BG_PATH = path.join(__dirname, "..", "assets", "qbr-bg-light.png");
 const HAS_TEMPLATE_BLUE_BG = fsSync.existsSync(TEMPLATE_BLUE_BG_PATH);
 const HAS_TEMPLATE_LIGHT_BG = fsSync.existsSync(TEMPLATE_LIGHT_BG_PATH);
+const KPI_ICON_PATHS = {
+  sales: path.join(__dirname, "..", "assets", "kpi-icon-sales.png"),
+  ordervalue: path.join(__dirname, "..", "assets", "kpi-icon-ordervalue.png"),
+  aov: path.join(__dirname, "..", "assets", "kpi-icon-aov.png"),
+  convrate: path.join(__dirname, "..", "assets", "kpi-icon-convrate.png"),
+  roi: path.join(__dirname, "..", "assets", "kpi-icon-roi.png")
+};
+const HAS_KPI_ICON = Object.fromEntries(
+  Object.entries(KPI_ICON_PATHS).map(([key, filePath]) => [key, fsSync.existsSync(filePath)])
+);
 
 const TEXT_REPLACEMENTS = [
   [/Ã‚Â£|ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â£|Ãâ€œÃ¢â‚¬Å¡Ãâ€™ÃË†|ÃË†/g, "\u00A3"],
@@ -315,6 +325,19 @@ function normalizeSignalItems(signals) {
     .filter(Boolean);
 }
 
+function normalizeIdList(input) {
+  if (Array.isArray(input)) {
+    return input.map((item) => cleanInlineText(item)).filter(Boolean);
+  }
+  if (typeof input === "string") {
+    return input
+      .split(",")
+      .map((item) => cleanInlineText(item))
+      .filter(Boolean);
+  }
+  return [];
+}
+
 function normalizeStringList(input) {
   if (Array.isArray(input)) {
     return input.map((item) => cleanInlineText(item)).filter(Boolean);
@@ -378,6 +401,13 @@ function normalizePayload(payload) {
   const salesGrowthSignals = normalizeSignalItems(
     payload.salesGrowthSignals || payload.salesGrowthSignalBullets || payload.salesGrowthAnalysis
   );
+  const analysisProgramIds = Array.from(new Set([
+    ...normalizeIdList(payload.analysisProgramIds),
+    ...normalizeIdList(payload.publisherProgramIds),
+    ...normalizeIdList(payload.programIds),
+    cleanInlineText(payload.programId || ""),
+    cleanInlineText(payload.publisherProgramId || "")
+  ].filter(Boolean)));
   const tables = normalizeTables(payload.publisherTables || {});
   const { metrics, metricMap } = normalizeMetrics(payload.programYoYTable || []);
   const programScopeTable = normalizeProgramScopeTable(
@@ -407,6 +437,7 @@ function normalizePayload(payload) {
     executiveSummaryText,
     publisherOverviewObservations,
     salesGrowthSignals,
+    analysisProgramIds,
     programOutput,
     publisherAnalysis,
     metrics,
@@ -496,6 +527,49 @@ function parsePeriodRange(reportingPeriod) {
   return `${startLabel} \u2013 ${endLabel}`;
 }
 
+function parseIsoPeriod(periodText) {
+  const text = cleanInlineText(periodText || "");
+  const match = text.match(/(\d{4}-\d{2}-\d{2})\s*(?:to|\u2013|-)\s*(\d{4}-\d{2}-\d{2})/i);
+  if (!match) return null;
+
+  const start = new Date(`${match[1]}T00:00:00Z`);
+  const end = new Date(`${match[2]}T00:00:00Z`);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return null;
+  return { start, end, startRaw: match[1], endRaw: match[2] };
+}
+
+function formatLongDate(date) {
+  if (!(date instanceof Date) || Number.isNaN(date.getTime())) return "";
+  return date.toLocaleDateString("en-GB", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+    timeZone: "UTC"
+  });
+}
+
+function formatCompactDate(date) {
+  if (!(date instanceof Date) || Number.isNaN(date.getTime())) return "";
+  return date.toLocaleDateString("en-GB", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "2-digit",
+    timeZone: "UTC"
+  }).replace(/\//g, "");
+}
+
+function formatPeriodForSlide(periodText) {
+  const parsed = parseIsoPeriod(periodText);
+  if (!parsed) return cleanInlineText(periodText || "Not specified");
+  return `${formatLongDate(parsed.start)} to ${formatLongDate(parsed.end)}`;
+}
+
+function buildCoverPeriodTag(periodText) {
+  const parsed = parseIsoPeriod(periodText);
+  if (!parsed) return "PERIOD";
+  return `${formatCompactDate(parsed.start)}-${formatCompactDate(parsed.end)}`;
+}
+
 function movementVerb(metric, positive = "increased", negative = "decreased") {
   if (!metric || metric.varianceValue === null || metric.varianceValue === undefined || Number.isNaN(Number(metric.varianceValue))) {
     return "changed";
@@ -540,6 +614,56 @@ function buildMetricRows(metricMap, keys) {
       ];
     })
     .filter(Boolean);
+}
+
+function buildProgramBreakdownTable(input) {
+  const targetColumns = [
+    "Program ID",
+    "Program",
+    "Market",
+    "Clicks",
+    "Impressions",
+    "Sales",
+    "Conversion Rate",
+    "AOV",
+    "Total Order Value",
+    "YoY Change"
+  ];
+
+  const scope = input.programScopeTable;
+  if (scope && Array.isArray(scope.rows) && scope.rows.length) {
+    const idx = Object.fromEntries((scope.columns || []).map((col, i) => [cleanInlineText(col).toLowerCase(), i]));
+    const rows = scope.rows.map((row) => {
+      const programId = row[idx["program id"]] || "-";
+      const program = row[idx.program] || `Program ${programId}`;
+      const sales = row[idx["current sales"]] || "-";
+      const totalOv = row[idx["current ov"]] || "-";
+      const yoy = row[idx["ov yoy %"]] || row[idx["sales yoy %"]] || "-";
+      return [programId, program, "-", "-", "-", sales, "-", "-", totalOv, yoy];
+    });
+    return {
+      title: "Program-Level Breakdown",
+      columns: targetColumns,
+      rows,
+      dense: false
+    };
+  }
+
+  if (Array.isArray(input.analysisProgramIds) && input.analysisProgramIds.length) {
+    return {
+      title: "Program-Level Breakdown",
+      columns: targetColumns,
+      rows: input.analysisProgramIds.map((id) => [id, `Program ${id}`, "-", "-", "-", "-", "-", "-", "-", "-"]),
+      dense: false
+    };
+  }
+
+  return {
+    title: "Program-Level Breakdown",
+    columns: targetColumns,
+    rows: [["-", "-", "-", "-", "-", "-", "-", "-", "-", "-"]],
+    dense: false
+  };
 }
 
 function tableRows(table, limit = 5) {
@@ -727,6 +851,8 @@ function buildSegmentPerformanceBlocks(input) {
   const growthRows = (input.tables.topGrowthPublishers?.rows || []).map((row) => ({
     segment: cleanInlineText(row.Segment || ""),
     publisher: cleanInlineText(row.Publisher || ""),
+    salesCurrent: cleanInlineText(row["Current Sales"] || ""),
+    salesPct: cleanInlineText(row["Sales YoY %"] || ""),
     ovDelta: cleanInlineText(row["OV YoY Change"] || ""),
     ovPct: cleanInlineText(row["OV YoY %"] || "")
   }));
@@ -734,8 +860,16 @@ function buildSegmentPerformanceBlocks(input) {
   const declineRows = (input.tables.topDecliningPublishers?.rows || []).map((row) => ({
     segment: cleanInlineText(row.Segment || ""),
     publisher: cleanInlineText(row.Publisher || ""),
+    salesCurrent: cleanInlineText(row["Current Sales"] || ""),
+    salesPct: cleanInlineText(row["Sales YoY %"] || ""),
     ovDelta: cleanInlineText(row["OV YoY Change"] || ""),
     ovPct: cleanInlineText(row["OV YoY %"] || "")
+  }));
+  const currentRows = (input.tables.topCurrentPerformers?.rows || []).map((row) => ({
+    segment: cleanInlineText(row.Segment || ""),
+    publisher: cleanInlineText(row.Publisher || ""),
+    ov: cleanInlineText(row["Order Value"] || row["Current OV"] || ""),
+    sales: cleanInlineText(row["Current Sales"] || "")
   }));
 
   const preferredOrder = ["Voucher", "Cashback", "Other", "Content", "CSS"];
@@ -761,16 +895,30 @@ function buildSegmentPerformanceBlocks(input) {
     const icon = iconBySegment[row.segment.toLowerCase()] || "\u25AA";
     const growthForSegment = growthRows.find((item) => item.segment.toLowerCase() === row.segment.toLowerCase());
     const declineForSegment = declineRows.find((item) => item.segment.toLowerCase() === row.segment.toLowerCase());
-    const movementLine = growthForSegment
-      ? `${growthForSegment.publisher} is the dominant growth driver, delivering ${growthForSegment.ovDelta} OV YoY (${growthForSegment.ovPct}).`
-      : declineForSegment
-        ? `${declineForSegment.publisher} is the primary drag, with ${declineForSegment.ovDelta} OV YoY (${declineForSegment.ovPct}).`
-        : "";
+    const topCurrentInSegment = currentRows
+      .filter((item) => item.segment.toLowerCase() === row.segment.toLowerCase())
+      .slice(0, 2);
+    const movementParts = [];
+    if (growthForSegment) {
+      movementParts.push(`${growthForSegment.publisher} is the dominant growth driver, delivering ${growthForSegment.ovDelta} OV YoY (${growthForSegment.ovPct}).`);
+    }
+    if (declineForSegment) {
+      movementParts.push(`${declineForSegment.publisher} is the primary drag, with ${declineForSegment.ovDelta} OV YoY (${declineForSegment.ovPct}).`);
+    }
+    if (topCurrentInSegment.length) {
+      const contributorLine = topCurrentInSegment
+        .map((item) => `${item.publisher}${item.ov ? ` (${item.ov})` : ""}`)
+        .join(" and ");
+      movementParts.push(`Leading current contributors include ${contributorLine}.`);
+    }
+    const movementLine = movementParts.join(" ");
     const defaultDetail = `${row.totalOv} total OV | ${row.publishers} active publishers | Sales: ${row.totalSales} (${row.salesYoy} YoY).${movementLine ? ` ${movementLine}` : ""}`;
     const aiDetail = aiNarrativeCandidates.find((line) =>
       new RegExp(`\\b${row.segment.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i").test(line)
     );
-    const detail = aiDetail || defaultDetail;
+    const detail = aiDetail && aiDetail.length > defaultDetail.length * 0.6
+      ? `${defaultDetail} ${aiDetail}`
+      : defaultDetail;
     return `${icon} ${row.segment} - ${row.ovYoy} OV YoY\n${detail}`;
   });
 }
@@ -1051,17 +1199,23 @@ function buildDeckSpec(input, theme) {
   const slides = [];
   const headline = buildHeadline(input);
   const executiveCardConfig = [
-    { key: "sales", label: "Sales", icon: "\u26F3" },
-    { key: "ordervalue", label: "Total Order Value", icon: "\u25A6" },
-    { key: "aov", label: "Average Order Value (AOV)", icon: "\u2197" },
-    { key: "convrate", label: "Conversion Rate", icon: "\u26A1" },
-    { key: "roi", label: "ROI", icon: "\u27F3" }
+    { key: "sales", label: "Sales", iconKey: "sales", icon: "\u2630" },
+    { key: "ordervalue", label: "Total Order Value", iconKey: "ordervalue", icon: "\u25A4" },
+    { key: "aov", label: "Average Order Value (AOV)", iconKey: "aov", icon: "\u2197" },
+    { key: "convrate", label: "Conversion Rate", iconKey: "convrate", icon: "\u26A1" },
+    { key: "roi", label: "ROI", iconKey: "roi", icon: "\u21BB" }
   ];
   const topCards = executiveCardConfig
     .map((cfg) => {
       const card = metricCard(input.metricMap[cfg.key]);
       if (!card) return null;
-      return { ...card, label: cfg.label, icon: cfg.icon };
+      const hasIconPath = Boolean(cfg.iconKey && HAS_KPI_ICON[cfg.iconKey]);
+      return {
+        ...card,
+        label: cfg.label,
+        icon: cfg.icon,
+        iconPath: hasIconPath ? KPI_ICON_PATHS[cfg.iconKey] : ""
+      };
     })
     .filter(Boolean);
   const executiveNarrative = buildExecutiveSummaryText(input);
@@ -1072,12 +1226,8 @@ function buildDeckSpec(input, theme) {
     ["sales", "Sales (Transactions)"],
     ["convrate", "Conversion Rate"],
     ["aov", "Average Order Value (AOV)"],
-    ["ordervalue", "Total Order Value"]
-  ]);
-
-  const costRows = buildMetricRows(input.metricMap, [
+    ["ordervalue", "Total Order Value"],
     ["publcommission", "Publisher Commission"],
-    ["totalcommission", "Total Commission"],
     ["cpa", "Cost Per Acquisition (CPA)"],
     ["roi", "Return on Investment (ROI)"]
   ]);
@@ -1087,11 +1237,11 @@ function buildDeckSpec(input, theme) {
   const moversOrderValue = input.tables.moversOrderValue;
   const moversClicks = input.tables.moversClicks;
   const brandNew = input.tables.brandNewPublishers;
-  const actionBullets = buildActionBullets(input);
   const kpiAnalysisBullets = buildKpiAnalysisBullets(input);
   const publisherOverviewBullets = buildPublisherOverviewBullets(input);
   const segmentPerformanceBlocks = buildSegmentPerformanceBlocks(input);
   const salesGrowthSignals = buildSalesGrowthSignals(input);
+  const programBreakdownTable = buildProgramBreakdownTable(input);
 
   slides.push({
     id: "cover",
@@ -1136,57 +1286,30 @@ function buildDeckSpec(input, theme) {
   slides.push({
     id: "kpi-volume-conversion",
     kind: "kpi-table",
-    title: "KPI Summary Table: Volume & Conversion",
-    subtitle: "Detailed breakdown of traffic, sales and conversion performance vs prior year.",
+    title: "KPI Summary Table: Volume, Conversion, Cost & ROI",
+    subtitle: "Unified KPI breakdown vs prior year.",
     bullets: [],
     kpis: [],
     tables: [
       {
-        title: "Volume & Conversion",
+        title: "KPI Summary",
         columns: ["Metric", "Current Period", "Prior Year", "Change", "% Variance"],
         rows: volumeRows.length ? volumeRows : [["-", "-", "-", "-", "-"]],
         dense: false
       }
     ],
-    footerNote: "Conversion rate = Sales ÷ Clicks. AOV = Total Order Value ÷ Sales."
+    footerNote: "Conversion rate = Sales \u00F7 Clicks. AOV = Total Order Value \u00F7 Sales. ROI = Total Order Value \u00F7 Total Commission."
   });
 
   slides.push({
     id: "kpi-cost-roi",
-    kind: "kpi-table",
-    title: "KPI Summary Table: Cost, CPA & ROI",
-    subtitle: "Publisher spend efficiency and return on investment vs prior year.",
+    kind: "program-breakdown",
+    title: "Program-Level Breakdown: Volume & Conversion",
+    subtitle: "Per-program view for selected request scope.",
     bullets: [],
     kpis: [],
-    tables: [
-      {
-        title: "Cost, CPA & ROI",
-        columns: ["Metric", "Current Period", "Prior Year", "Change", "% Variance"],
-        rows: costRows.length ? costRows : [["-", "-", "-", "-", "-"]],
-        dense: false
-      }
-    ],
-    footerNote: buildCostCallout(input)
+    tables: [programBreakdownTable]
   });
-
-  if (input.programScopeTable && input.programScopeTable.rows.length) {
-    slides.push({
-      id: "program-level-breakdown",
-      kind: "program-breakdown",
-      title: "Program-Level Breakdown",
-      subtitle: "Program-level contribution across the selected scope.",
-      bullets: [],
-      kpis: [],
-      tables: [
-        {
-          title: input.programScopeTable.title,
-          columns: input.programScopeTable.columns,
-          rows: input.programScopeTable.rows,
-          dense: false
-        }
-      ]
-    });
-  }
 
   slides.push({
     id: "kpi-highlights",
@@ -1194,17 +1317,6 @@ function buildDeckSpec(input, theme) {
     title: "KPI Highlights & Business Implications",
     subtitle: "What the numbers mean for the business - key signals and context.",
     bullets: kpiAnalysisBullets,
-    kpis: [],
-    tables: []
-  });
-
-  slides.push({
-    id: "sales-growth-signals",
-    kind: "sales-growth-signals-blue",
-    title: "Sales Growth Signals",
-    subtitle: `Factual observations from the data relevant to the programme's sales performance - ${input.reportingPeriod}.`,
-    bullets: [],
-    signals: salesGrowthSignals,
     kpis: [],
     tables: []
   });
@@ -1315,12 +1427,12 @@ function buildDeckSpec(input, theme) {
   });
 
   slides.push({
-    id: "recommendations",
-    kind: "recommendations-blue",
-    title: "Strategic Recommendations",
-    subtitle: "",
-    headline: "",
-    bullets: actionBullets,
+    id: "sales-growth-signals",
+    kind: "sales-growth-signals-blue",
+    title: "Sales Growth Signals",
+    subtitle: `Factual observations from the data relevant to the programme's sales performance - ${input.reportingPeriod}.`,
+    bullets: [],
+    signals: salesGrowthSignals,
     kpis: [],
     tables: []
   });
@@ -1599,16 +1711,25 @@ function addCallout(slide, deck, text, y, darkText = true) {
 
 function addKpis(slide, deck, cards, origin, mode = "light") {
   const visible = (cards || []).slice(0, 5);
+  if (!visible.length) return;
   const columns = 3;
   const cardW = 3.82;
   const cardH = 1.48;
   const gapX = 0.24;
   const gapY = 0.48;
   visible.forEach((card, index) => {
-    const col = index % columns;
-    const row = Math.floor(index / columns);
-    const x = origin.x + col * (cardW + gapX);
-    const y = origin.y + row * (cardH + gapY);
+    const useDiamond = mode === "diamond" && visible.length === 5;
+    let x;
+    let y;
+    if (useDiamond && index >= 3) {
+      x = origin.x + ((index - 3) * (cardW + gapX)) + ((cardW + gapX) / 2);
+      y = origin.y + cardH + gapY;
+    } else {
+      const col = index % columns;
+      const row = Math.floor(index / columns);
+      x = origin.x + col * (cardW + gapX);
+      y = origin.y + row * (cardH + gapY);
+    }
     const trendColor = card.trend === "up"
       ? deck.theme.colors.success
       : card.trend === "down"
@@ -1621,7 +1742,7 @@ function addKpis(slide, deck, cards, origin, mode = "light") {
       w: cardW,
       h: cardH,
       line: { color: toColor(deck.theme.colors.border), pt: 0.7 },
-      fill: { color: toColor(deck.theme.colors.paper), transparency: mode === "blue" ? 6 : 0 }
+      fill: { color: toColor(deck.theme.colors.paper), transparency: (mode === "blue" || mode === "diamond-blue") ? 6 : 0 }
     });
     slide.addShape("rect", {
       x,
@@ -1639,19 +1760,29 @@ function addKpis(slide, deck, cards, origin, mode = "light") {
       line: { color: toColor(deck.theme.colors.accent), pt: 0 },
       fill: { color: toColor(deck.theme.colors.accent) }
     });
-    slide.addText(card.icon || String(index + 1), {
-      x: x + (cardW / 2) - 0.13,
-      y: y - 0.13,
-      w: 0.26,
-      h: 0.24,
-      align: "center",
-      valign: "mid",
-      fontFace: deck.theme.fonts.body,
-      fontSize: 11,
-      bold: true,
-      color: toColor(deck.theme.colors.paper),
-      margin: 0
-    });
+    if (card.iconPath) {
+      slide.addImage({
+        path: card.iconPath,
+        x: x + (cardW / 2) - 0.11,
+        y: y - 0.12,
+        w: 0.22,
+        h: 0.22
+      });
+    } else {
+      slide.addText(card.icon || String(index + 1), {
+        x: x + (cardW / 2) - 0.13,
+        y: y - 0.13,
+        w: 0.26,
+        h: 0.24,
+        align: "center",
+        valign: "mid",
+        fontFace: "Segoe UI Symbol",
+        fontSize: 12,
+        bold: false,
+        color: toColor(deck.theme.colors.paper),
+        margin: 0
+      });
+    }
     slide.addText(card.label, {
       x: x + 0.22,
       y: y + 0.50,
@@ -1799,6 +1930,7 @@ function renderSlide(slide, deck, spec, pageNumber) {
   if (spec.kind === "cover") {
     addBlueChrome(slide, deck);
     addSlideWatermark(slide, deck, true);
+    const periodTag = buildCoverPeriodTag(deck.metadata.reportingPeriod);
     slide.addText(cleanInlineText(spec.title), {
       x: 0.68,
       y: 1.25,
@@ -1844,16 +1976,16 @@ function renderSlide(slide, deck, spec, pageNumber) {
     slide.addShape("roundRect", {
       x: 2.06,
       y: 3.25,
-      w: 1.75,
+      w: 2.65,
       h: 0.36,
       radius: 0.04,
       line: { color: toColor(deck.theme.colors.accent), pt: 0.8 },
       fill: { color: toColor(deck.theme.colors.accent), transparency: 100 }
     });
-    slide.addText("[PERIOD] ANALYSIS", {
+    slide.addText(`${periodTag} ANALYSIS`, {
       x: 2.18,
       y: 3.33,
-      w: 1.5,
+      w: 2.35,
       h: 0.2,
       fontFace: deck.theme.fonts.body,
       fontSize: 8.5,
@@ -1873,13 +2005,13 @@ function renderSlide(slide, deck, spec, pageNumber) {
         margin: 0
       });
     }
-    slide.addText("td", {
+    slide.addText("tradedoubler", {
       x: 0.68,
-      y: 5.0,
-      w: 1.9,
-      h: 1.05,
+      y: 5.88,
+      w: 4.1,
+      h: 0.48,
       fontFace: deck.theme.fonts.heading,
-      fontSize: 98,
+      fontSize: 28,
       color: toColor(deck.theme.colors.paper),
       margin: 0
     });
@@ -1960,6 +2092,15 @@ function renderSlide(slide, deck, spec, pageNumber) {
   }
 
   if (spec.kind === "reporting-period") {
+    const currentPeriodReadable = formatPeriodForSlide(deck.metadata.reportingPeriod);
+    const comparisonPeriodReadable = formatPeriodForSlide(deck.metadata.comparisonPeriod);
+    const currentPeriodParsed = parseIsoPeriod(deck.metadata.reportingPeriod);
+    const asOfLabel = currentPeriodParsed ? formatLongDate(currentPeriodParsed.end) : "N/A";
+    const currencySymbol = getCurrencySymbol(deck.metadata.currencyCode);
+    const currencyLabel = currencySymbol
+      ? `${deck.metadata.currencyCode} (${currencySymbol})`
+      : deck.metadata.currencyCode;
+
     slide.addText("Current Period", {
       x: 0.7,
       y: 2.0,
@@ -1980,32 +2121,70 @@ function renderSlide(slide, deck, spec, pageNumber) {
       color: toColor(deck.theme.colors.ink),
       margin: 0
     });
-    slide.addText(spec.bullets[0] || "-", {
+    slide.addText(`Reporting Period: ${currentPeriodReadable}`, {
       x: 0.7,
       y: 2.55,
       w: 5.8,
-      h: 0.38,
+      h: 0.3,
       fontFace: deck.theme.fonts.body,
-      fontSize: 14,
+      fontSize: 10.8,
       color: toColor(deck.theme.colors.muted),
       margin: 0
     });
-    slide.addText(spec.bullets[1] || "-", {
+    slide.addText(`Data as of: ${asOfLabel}`, {
+      x: 0.7,
+      y: 2.86,
+      w: 5.8,
+      h: 0.3,
+      fontFace: deck.theme.fonts.body,
+      fontSize: 10.8,
+      color: toColor(deck.theme.colors.muted),
+      margin: 0
+    });
+    slide.addText(`Comparison Period: ${comparisonPeriodReadable}`, {
       x: 6.9,
       y: 2.55,
       w: 5.8,
-      h: 0.38,
+      h: 0.3,
       fontFace: deck.theme.fonts.body,
-      fontSize: 14,
+      fontSize: 10.8,
       color: toColor(deck.theme.colors.muted),
       margin: 0
     });
-    addCallout(slide, deck, spec.callout, 4.65, true);
+    slide.addText("Basis: Year-over-Year (YoY)", {
+      x: 6.9,
+      y: 2.86,
+      w: 5.8,
+      h: 0.3,
+      fontFace: deck.theme.fonts.body,
+      fontSize: 10.8,
+      color: toColor(deck.theme.colors.muted),
+      margin: 0
+    });
+    slide.addShape("roundRect", {
+      x: 0.7,
+      y: 3.55,
+      w: 11.95,
+      h: 1.05,
+      radius: 0.05,
+      line: { color: toColor(deck.theme.colors.highlight), pt: 0.5 },
+      fill: { color: toColor(deck.theme.colors.highlight), transparency: 10 }
+    });
+    slide.addText(`\u25AD  All figures are reported in ${currencyLabel} unless otherwise stated. YoY variance is calculated as Current Period vs Comparison Period.`, {
+      x: 0.95,
+      y: 3.9,
+      w: 11.35,
+      h: 0.48,
+      fontFace: deck.theme.fonts.body,
+      fontSize: 11.4,
+      color: toColor(deck.theme.colors.ink),
+      margin: 0
+    });
     return;
   }
 
   if (spec.kind === "program-executive-summary") {
-    addKpis(slide, deck, spec.kpis, { x: 0.7, y: 2.15 }, "light");
+    addKpis(slide, deck, spec.kpis, { x: 0.7, y: 2.15 }, "diamond");
     if (spec.summary) {
       slide.addText(spec.summary, {
         x: 0.82,
@@ -2207,29 +2386,16 @@ function renderSlide(slide, deck, spec, pageNumber) {
       margin: 0
     });
     const notes = points.length ? points : ["Driver not confirmed from available data."];
-    notes.forEach((item, idx) => {
-      const y = 2.56 + idx * 1.22;
-      slide.addText("\u2192", {
-        x: 6.25,
-        y: y + 0.06,
-        w: 0.34,
-        h: 0.32,
-        fontFace: deck.theme.fonts.body,
-        fontSize: 20,
-        color: toColor(deck.theme.colors.ink),
-        margin: 0
-      });
-      slide.addText(item, {
-        x: 6.70,
-        y,
-        w: 5.3,
-        h: 0.95,
-        fontFace: deck.theme.fonts.body,
-        fontSize: 11.2,
-        color: toColor(deck.theme.colors.ink),
-        breakLine: true,
-        margin: 0
-      });
+    slide.addText(notes.map((item) => `\u2022 ${item}`).join("\n\n"), {
+      x: 6.28,
+      y: 2.56,
+      w: 5.25,
+      h: 4.55,
+      fontFace: deck.theme.fonts.body,
+      fontSize: 11.6,
+      color: toColor(deck.theme.colors.ink),
+      breakLine: true,
+      margin: 0.02
     });
     if (overviewTableMetrics && overviewTableMetrics.containerH < 4.32) {
       slide.addShape("line", {
@@ -2246,11 +2412,11 @@ function renderSlide(slide, deck, spec, pageNumber) {
   if (spec.kind === "segment-performance-blue" || spec.kind === "segment-performance") {
     const blocks = (spec.bullets || []).slice(0, 5);
     const layout = [
-      { x: 0.56, y: 2.08, w: 5.85, h: 1.72 },
-      { x: 6.82, y: 2.08, w: 5.85, h: 1.72 },
-      { x: 0.56, y: 3.98, w: 5.85, h: 1.72 },
-      { x: 6.82, y: 3.98, w: 5.85, h: 1.72 },
-      { x: 0.56, y: 5.88, w: 5.85, h: 1.20 }
+      { x: 0.56, y: 2.02, w: 5.85, h: 1.82 },
+      { x: 6.82, y: 2.02, w: 5.85, h: 1.82 },
+      { x: 0.56, y: 3.96, w: 5.85, h: 1.82 },
+      { x: 6.82, y: 3.96, w: 5.85, h: 1.82 },
+      { x: 0.56, y: 5.90, w: 5.85, h: 1.30 }
     ];
     layout.forEach((box, idx) => {
       const raw = cleanText(blocks[idx] || "Segment signal not available.");
@@ -2291,7 +2457,7 @@ function renderSlide(slide, deck, spec, pageNumber) {
         w: box.w - 0.36,
         h: box.h - 0.62,
         fontFace: deck.theme.fonts.body,
-        fontSize: 10.5,
+        fontSize: 10.2,
         color: toColor(deck.theme.colors.ink),
         breakLine: true,
         margin: 0

@@ -54,3 +54,12 @@ export interface OnboardingSearchResult {
   lastActivity: string | null
   messageCount: number
 }
+
+export interface QbrLogItem {
+  id: string
+  title: string
+  status: 'queued' | 'running' | 'completed' | 'error' | 'downloading' | 'downloaded'
+  detail?: string
+  fileName?: string
+  updatedAt: string
+}

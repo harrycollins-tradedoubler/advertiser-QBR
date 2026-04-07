@@ -1,9 +1,14 @@
 import asyncio
 import json
+import os
+import re
 import uuid
 from datetime import datetime
+from urllib.parse import urlparse
 
+import httpx
 from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import Response
 
 from app.routers.agents import AGENTS
 from app.routers.td_auth import get_current_td_tokens
@@ -16,6 +21,45 @@ router = APIRouter()
 THREADS: dict[str, list[dict]] = {}
 QBR_JOBS: dict[str, dict] = {}
 QBR_PREFIX = "QBR_REQUEST "
+PPTX_URL_REGEX = re.compile(r"(https?://[^\s\"']+?\.pptx(?:\?[^\s\"']*)?)", re.IGNORECASE)
+
+
+def _first_non_empty(mapping: dict, keys: list[str]) -> str | None:
+    for key in keys:
+        value = mapping.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return None
+
+
+def _extract_qbr_response(result: object) -> tuple[str, str | None, str | None]:
+    if isinstance(result, dict):
+        nested = result.get("data")
+        nested_dict = nested if isinstance(nested, dict) else {}
+        download_url = _first_non_empty(
+            result,
+            ["pptx_url", "download_url", "file_url", "url"],
+        ) or _first_non_empty(nested_dict, ["pptx_url", "download_url", "file_url", "url"])
+        file_name = _first_non_empty(result, ["file_name", "filename"]) or _first_non_empty(
+            nested_dict, ["file_name", "filename"]
+        )
+        response_text = (
+            _first_non_empty(result, ["response", "message", "output"])
+            or _first_non_empty(nested_dict, ["response", "message", "output"])
+            or str(result)
+        )
+        if not file_name and download_url:
+            parsed = urlparse(download_url)
+            file_name = os.path.basename(parsed.path) or None
+        return response_text, download_url, file_name
+
+    if isinstance(result, str):
+        matched = PPTX_URL_REGEX.search(result)
+        return result, matched.group(1) if matched else None, None
+
+    result_text = str(result)
+    matched = PPTX_URL_REGEX.search(result_text)
+    return result_text, matched.group(1) if matched else None, None
 
 
 async def _run_qbr_job(
@@ -32,9 +76,12 @@ async def _run_qbr_job(
             thread_id=thread_id,
             extra_data=extra_data,
         )
-        response_text = result.get("response", result.get("output", str(result)))
+        response_text, download_url, file_name = _extract_qbr_response(result)
         QBR_JOBS[job_id]["status"] = "completed"
         QBR_JOBS[job_id]["result"] = response_text
+        QBR_JOBS[job_id]["download_available"] = bool(download_url)
+        QBR_JOBS[job_id]["download_url"] = download_url
+        QBR_JOBS[job_id]["file_name"] = file_name
         QBR_JOBS[job_id]["completed_at"] = datetime.utcnow().isoformat()
 
         THREADS[thread_id].append(
@@ -189,3 +236,41 @@ async def get_qbr_status(job_id: str):
     if not job:
         raise HTTPException(status_code=404, detail="QBR job not found")
     return job
+
+
+@router.get("/qbr/{job_id}/download")
+async def download_qbr_file(job_id: str):
+    job = QBR_JOBS.get(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="QBR job not found")
+    if job.get("status") != "completed":
+        raise HTTPException(status_code=409, detail="QBR report is not ready yet")
+
+    download_url = str(job.get("download_url") or "").strip()
+    if not download_url:
+        raise HTTPException(status_code=404, detail="No downloadable report URL available for this job")
+
+    parsed = urlparse(download_url)
+    if parsed.scheme not in {"http", "https"}:
+        raise HTTPException(status_code=400, detail="Invalid download URL")
+
+    try:
+        async with httpx.AsyncClient(trust_env=False) as client:
+            upstream = await client.get(download_url, timeout=120)
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=502, detail=f"Failed to download report: {exc}") from exc
+
+    if upstream.status_code >= 400:
+        raise HTTPException(status_code=502, detail="Failed to download report from source")
+
+    file_name = str(job.get("file_name") or "").strip()
+    if not file_name:
+        file_name = os.path.basename(parsed.path) or f"qbr-report-{job_id}.pptx"
+    if not file_name.lower().endswith(".pptx"):
+        file_name = f"{file_name}.pptx"
+
+    return Response(
+        content=upstream.content,
+        media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        headers={"Content-Disposition": f'attachment; filename="{file_name}"'},
+    )

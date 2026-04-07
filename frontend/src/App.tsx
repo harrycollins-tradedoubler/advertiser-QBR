@@ -5,12 +5,13 @@ import { HubPage } from './pages/HubPage'
 import { ChatPage } from './pages/ChatPage'
 import { OnboardingDashboard } from './pages/OnboardingDashboard'
 import { fetchAgents } from './lib/api'
-import type { Agent } from './lib/types'
+import type { Agent, QbrLogItem } from './lib/types'
 
 function AppLayout() {
   const navigate = useNavigate()
   const [agents, setAgents] = useState<Agent[]>([])
   const [threads] = useState<{ id: string; agentId: string; title: string; updatedAt: string }[]>([])
+  const [qbrLogs, setQbrLogs] = useState<QbrLogItem[]>([])
 
   useEffect(() => {
     fetchAgents()
@@ -35,16 +36,31 @@ function AppLayout() {
     navigate(`/chat/${agentId}`)
   }
 
+  const handleQbrLog = (entry: QbrLogItem) => {
+    setQbrLogs((previous) => {
+      const index = previous.findIndex((item) => item.id === entry.id)
+      if (index === -1) {
+        return [entry, ...previous].slice(0, 30)
+      }
+
+      const next = [...previous]
+      next[index] = entry
+      next.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
+      return next
+    })
+  }
+
   return (
     <div className="flex h-screen overflow-hidden bg-white text-gray-900">
       <Sidebar
         agents={agents}
         threads={threads}
+        qbrLogs={qbrLogs}
         onNewChat={handleNewChat}
       />
       <Routes>
         <Route path="/" element={<HubPage agents={agents} />} />
-        <Route path="/chat/:agentId" element={<ChatPage agents={agents} />} />
+        <Route path="/chat/:agentId" element={<ChatPage agents={agents} onQbrLog={handleQbrLog} />} />
         <Route path="/onboarding" element={<OnboardingDashboard />} />
       </Routes>
     </div>
