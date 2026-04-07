@@ -1,0 +1,172 @@
+{
+  "client": "HP Store",
+  "deckTitle": "QBR - HP Store",
+  "themeName": "TD",
+  "fullContent": true,
+  "includeAppendix": true,
+  "reportingPeriod": "2025-12-01 to 2026-03-25",
+  "comparisonPeriod": "2024-12-01 to 2025-03-25",
+  "qbrFocus": "Increase sales",
+  "qbrFocusDetail": "",
+  "programOutput": "## Program Performance (YoY)\n\n### Reporting Period\n- 1 December 2025 to 25 March 2026 vs 1 December 2024 to 25 March 2025\n\n### KPI Snapshot\n- Sales: 54,562 (-7,422, -12.0%)\n- Order value: £24,076,021 (-£532,425, -2.2%)\n- AOV: £441.26 (+£44.25, +11.1%)\n- Clicks: 42,050,161 (-10,314,194, -19.7%)\n- Conv Rate: 0.13% (+0.01%, +9.6%)\n- Publ Commission / Total Commission: £903,086 (-£32,374, -3.5%)\n- CPA: £16.55 (+£1.46, +9.7%); ROI: 26.66 (+0.35, +1.3%)\n\n### Confirmed Changes\n- Clicks decreased by 10,314,194 (-19.7%) and Sales decreased by 7,422 (-12.0%).\n- Conversion rate increased by 0.01% to 0.13% (+9.6%).\n- AOV increased by £44.25 (+11.1%) while Order value decreased by £532,425 (-2.2%).\n- Publisher/Total Commission decreased by £32,374 (-3.5%); CPA increased by £1.46 (+9.7%); ROI increased by 0.35 (+1.3%).\n- Driver not confirmed from available data.",
+  "programYoYTable": [
+    {
+      "Row": "Recent",
+      "Clicks": "42,050,161",
+      "Sales": "54,562",
+      "Conv Rate": "0.13%",
+      "Order value": "£24,076,021",
+      "AOV": "£441.26",
+      "Publ Commission": "£903,086",
+      "Total Commission": "£903,086",
+      "CPA": "£16.55",
+      "ROI": "26.66"
+    },
+    {
+      "Row": "Previous",
+      "Clicks": "52,364,355",
+      "Sales": "61,984",
+      "Conv Rate": "0.12%",
+      "Order value": "£24,608,446",
+      "AOV": "£397.01",
+      "Publ Commission": "£935,460",
+      "Total Commission": "£935,460",
+      "CPA": "£15.09",
+      "ROI": "26.31"
+    },
+    {
+      "Row": "Difference",
+      "Clicks": "-10,314,194",
+      "Sales": "-7,422",
+      "Conv Rate": "+0.01%",
+      "Order value": "-£532,425",
+      "AOV": "+£44.25",
+      "Publ Commission": "-£32,374",
+      "Total Commission": "-£32,374",
+      "CPA": "+£1.46",
+      "ROI": "+0.35"
+    },
+    {
+      "Row": "% Variance",
+      "Clicks": "-19.7%",
+      "Sales": "-12.0%",
+      "Conv Rate": "+9.6%",
+      "Order value": "-2.2%",
+      "AOV": "+11.1%",
+      "Publ Commission": "-3.5%",
+      "Total Commission": "-3.5%",
+      "CPA": "+9.7%",
+      "ROI": "+1.3%"
+    }
+  ],
+  "programScopeTable": [
+    {
+      "Program": "HP Store UK",
+      "Program ID": "12345",
+      "Current OV": "£12,544,201",
+      "OV YoY %": "-1.8%",
+      "Current Sales": "28,411",
+      "Sales YoY %": "-10.2%"
+    },
+    {
+      "Program": "HP Store Germany",
+      "Program ID": "23456",
+      "Current OV": "€8,904,115",
+      "OV YoY %": "-3.6%",
+      "Current Sales": "19,084",
+      "Sales YoY %": "-13.4%"
+    },
+    {
+      "Program": "HP Store Netherlands",
+      "Program ID": "34567",
+      "Current OV": "€2,627,705",
+      "OV YoY %": "+4.2%",
+      "Current Sales": "7,067",
+      "Sales YoY %": "-2.1%"
+    }
+  ],
+  "publisherAnalysis": "## Publisher Performance\n\n### Top YoY Growth Publishers (Top 5)\n- Skimlinks delivered the strongest incremental sales growth, supported by higher order value.\n- Redbrain improved order value year on year despite lower click growth.\n\n### Top Decline Publishers (Top 5)\n- VoucherCodes remained a large contributor but saw softer sales and order value.\n- TopCashback declined on both sales and clicks year on year.\n\n### Top Current Performers by OV (Top 5)\n- VoucherCodes and Skimlinks remain the largest current contributors by order value.\n\n### Movers & Shakers\n- Sales movers were concentrated in a small number of publishers.\n- Driver not confirmed from available data.",
+  "publisherTables": {
+    "top10Increase": [
+      {
+        "Publisher": "Skimlinks",
+        "Site ID": "18116",
+        "Segment": "Content",
+        "Current Sales": "9,540",
+        "Sales YoY %": "+18.2%",
+        "Current OV": "£3,820,210",
+        "OV YoY Change": "+£590,200",
+        "OV YoY %": "+18.3%"
+      },
+      {
+        "Publisher": "Redbrain",
+        "Site ID": "16055",
+        "Segment": "CSS",
+        "Current Sales": "6,814",
+        "Sales YoY %": "+9.5%",
+        "Current OV": "£2,611,402",
+        "OV YoY Change": "+£201,331",
+        "OV YoY %": "+8.4%"
+      }
+    ],
+    "top10Decrease": [
+      {
+        "Publisher": "VoucherCodes",
+        "Site ID": "9921",
+        "Segment": "Voucher",
+        "Current Sales": "11,240",
+        "Sales YoY %": "-14.4%",
+        "Current OV": "£4,731,100",
+        "OV YoY Change": "-£780,112",
+        "OV YoY %": "-14.2%"
+      }
+    ],
+    "top10ByOV": [
+      {
+        "Publisher": "VoucherCodes",
+        "Site ID": "9921",
+        "Segment": "Voucher",
+        "Order Value": "£4,731,100",
+        "Current Sales": "11,240",
+        "Sales YoY %": "-14.4%",
+        "OV YoY %": "-14.2%",
+        "Pub Commission": "£181,520",
+        "CPA": "£16.15"
+      },
+      {
+        "Publisher": "Skimlinks",
+        "Site ID": "18116",
+        "Segment": "Content",
+        "Order Value": "£3,820,210",
+        "Current Sales": "9,540",
+        "Sales YoY %": "+18.2%",
+        "OV YoY %": "+18.3%",
+        "Pub Commission": "£152,808",
+        "CPA": "£16.02"
+      }
+    ],
+    "segmentSummary": [
+      {
+        "Segment": "Voucher",
+        "Total Sales": "19,221",
+        "Sales YoY %": "-10.1%",
+        "Total OV": "£7,112,230",
+        "OV YoY %": "-8.4%",
+        "Publishers": "18"
+      },
+      {
+        "Segment": "Content",
+        "Total Sales": "15,604",
+        "Sales YoY %": "+6.8%",
+        "Total OV": "£6,108,554",
+        "OV YoY %": "+7.2%",
+        "Publishers": "23"
+      }
+    ]
+  },
+  "recommendations": [],
+  "languageCode": "EN",
+  "languageName": "English",
+  "currencyCode": "GBP",
+  "debug": true
+}

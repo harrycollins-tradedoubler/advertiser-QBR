@@ -1,12 +1,13 @@
-import { useState, useEffect, useRef } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useEffect, useRef, useState } from 'react'
+import { useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft, Bot } from 'lucide-react'
-import { ChatMessage } from '../components/ChatMessage'
+
 import { ChatInput } from '../components/ChatInput'
-import { TypingIndicator } from '../components/TypingIndicator'
+import { ChatMessage } from '../components/ChatMessage'
 import { QbrRequestForm, type QbrRequestPayload } from '../components/QbrRequestForm'
+import { TypingIndicator } from '../components/TypingIndicator'
+import { fetchQbrStatus, sendMessage } from '../lib/api'
 import type { Agent, Message } from '../lib/types'
-import { sendMessage, fetchQbrStatus } from '../lib/api'
 
 interface ChatPageProps {
   agents: Agent[]
@@ -38,7 +39,6 @@ export function ChatPage({ agents }: ChatPageProps) {
     scrollToBottom()
   }, [messages])
 
-  // Reset messages when switching agents
   useEffect(() => {
     setMessages([])
     setThreadId(null)
@@ -51,6 +51,22 @@ export function ChatPage({ agents }: ChatPageProps) {
       pollingTimers.current = {}
     }
   }, [])
+
+  const normalizeContent = (value: unknown): string => {
+    if (typeof value === 'string') return value
+    if (value === null || value === undefined) return ''
+    try {
+      return JSON.stringify(value)
+    } catch {
+      return String(value)
+    }
+  }
+
+  const updateMessageContent = (id: string, content: string) => {
+    setMessages((prev) => prev.map((message) => (
+      message.id === id ? { ...message, content } : message
+    )))
+  }
 
   const handleSendMessage = async (content: string) => {
     if (!agentId) return
@@ -92,22 +108,6 @@ export function ChatPage({ agents }: ChatPageProps) {
     }
   }
 
-  const normalizeContent = (value: unknown): string => {
-    if (typeof value === 'string') return value
-    if (value === null || value === undefined) return ''
-    try {
-      return JSON.stringify(value)
-    } catch {
-      return String(value)
-    }
-  }
-
-  const updateMessageContent = (id: string, content: string) => {
-    setMessages((prev) => prev.map((message) => (
-      message.id === id ? { ...message, content } : message
-    )))
-  }
-
   const startQbrPolling = (jobId: string) => {
     const poll = async () => {
       try {
@@ -121,7 +121,7 @@ export function ChatPage({ agents }: ChatPageProps) {
           return
         }
       } catch (error) {
-        updateMessageContent(jobId, 'Still working on the QBR report. Checking again shortly…')
+        updateMessageContent(jobId, 'Still working on the QBR report. Checking again shortly...')
       }
       pollingTimers.current[jobId] = window.setTimeout(poll, 5000)
     }
@@ -130,7 +130,15 @@ export function ChatPage({ agents }: ChatPageProps) {
 
   const handleQbrRequest = (payload: QbrRequestPayload) => {
     if (!agentId) return
-    const displayMessage = `QBR request submitted for program ${payload.programId} (${payload.periodType === 'quarter' ? payload.quarter : 'custom dates'}).`
+
+    const scopeLabel = payload.analysisLevel === 'organization'
+      ? 'organisation-level KPI analysis'
+      : 'program-level KPI analysis'
+    const publisherLabel = payload.publisherProgramMode === 'all_programs_in_organisation'
+      ? 'all organisation programs for publisher coverage'
+      : 'selected program only for publisher coverage'
+    const displayMessage = `QBR request submitted for ${payload.programName} (${payload.programId}) using ${scopeLabel}; ${publisherLabel}; ${payload.languageCode}; ${payload.currencyCode}; ${payload.startDate} to ${payload.endDate}.`
+
     const userMessage: Message = {
       id: crypto.randomUUID(),
       role: 'user',
@@ -152,7 +160,7 @@ export function ChatPage({ agents }: ChatPageProps) {
           const assistantMessage: Message = {
             id: result.jobId,
             role: 'assistant',
-            content: normalizeContent(result.response || 'Generating QBR report…'),
+            content: normalizeContent(result.response || 'Generating QBR report...'),
             createdAt: new Date().toISOString(),
           }
           setMessages((prev) => [...prev, assistantMessage])
@@ -200,7 +208,6 @@ export function ChatPage({ agents }: ChatPageProps) {
 
   return (
     <div className="flex-1 flex flex-col bg-white h-full overflow-hidden">
-      {/* Header */}
       <header className="shrink-0 border-b border-gray-200 bg-white px-6 py-3">
         <div className="flex items-center gap-3">
           <button
@@ -233,7 +240,6 @@ export function ChatPage({ agents }: ChatPageProps) {
         </div>
       )}
 
-      {/* Messages */}
       <div className="flex-1 overflow-y-auto p-6 space-y-3 pb-3">
         {messages.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-center">
@@ -262,7 +268,6 @@ export function ChatPage({ agents }: ChatPageProps) {
         )}
       </div>
 
-      {/* Input bar */}
       <div className="shrink-0 bg-white border-t border-gray-200 p-3">
         <div className="max-w-[1100px] mx-auto">
           {isQbrAgent && !hasQbrRequest && (

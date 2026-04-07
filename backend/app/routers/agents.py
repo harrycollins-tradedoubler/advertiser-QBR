@@ -1,7 +1,10 @@
 from fastapi import APIRouter
 from pydantic import BaseModel
 
+from app.config import get_settings
+
 router = APIRouter()
+settings = get_settings()
 
 
 class Agent(BaseModel):
@@ -13,14 +16,17 @@ class Agent(BaseModel):
     is_active: bool = True
 
 
-# In-memory agent registry - replace with database later
+# In-memory agent registry - replace with database later.
 AGENTS: dict[str, Agent] = {
     "qbr-agent": Agent(
         id="qbr-agent",
         name="QBR Agent",
-        description="Quarterly Business Review assistant that helps analyze performance metrics, identify trends, and prepare executive summaries.",
-        icon="📊",
-        webhook_url="https://coe-n8n.common-eu-de.services.tddrift.net/webhook/09c4b38c-24b8-4850-9fc2-0196608bdd25",
+        description=(
+            "Quarterly Business Review assistant that helps analyze performance metrics, "
+            "identify trends, and prepare executive summaries."
+        ),
+        icon="chart",
+        webhook_url=settings.qbr_agent_webhook_url,
         is_active=True,
     ),
 }

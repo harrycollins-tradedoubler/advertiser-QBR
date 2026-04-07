@@ -17,6 +17,12 @@ class Settings(BaseSettings):
     # Direct Postgres connection (recommended if you don't want Neon Auth)
     database_url: str = ""
 
+    # Tradedoubler API
+    td_user_url: str = "https://connect.tradedoubler.com/usermanagement"
+    td_manage_url: str = "https://connect.tradedoubler.com/advertiser"
+    td_impersonate_url: str = "https://connect.tradedoubler.com/uaa/admin/impersonate"
+    qbr_agent_webhook_url: str = "https://coe-n8n.coe-untrust-eu-de.prod.tddrift.net/webhook/qbr-v4-presenton-1e2f9f4d"
+
     class Config:
         env_file = ".env"
         extra = "ignore"

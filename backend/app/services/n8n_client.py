@@ -35,14 +35,19 @@ class N8nClient:
         if extra_data:
             payload.update(extra_data)
 
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(trust_env=False) as client:
             response = await client.post(
                 webhook_url,
                 json=payload,
                 timeout=self.timeout,
             )
             response.raise_for_status()
-            return response.json()
+            try:
+                return response.json()
+            except ValueError:
+                # Some n8n webhooks return plain text or an empty body on success.
+                text = response.text.strip()
+                return {"response": text or "Webhook triggered successfully."}
 
 
 # Singleton instance

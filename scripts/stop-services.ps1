@@ -10,8 +10,8 @@ Get-Process -Name "uvicorn" -ErrorAction SilentlyContinue | Stop-Process -Force
 # Kill Node processes on port 5173
 Write-Host "Stopping frontend processes..." -ForegroundColor Yellow
 $nodeProcesses = Get-NetTCPConnection -LocalPort 5173 -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique
-foreach ($pid in $nodeProcesses) {
-    Stop-Process -Id $pid -Force -ErrorAction SilentlyContinue
+foreach ($processId in $nodeProcesses) {
+    Stop-Process -Id $processId -Force -ErrorAction SilentlyContinue
 }
 
 # Also kill any stray node processes running vite
