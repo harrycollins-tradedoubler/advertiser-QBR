@@ -1374,7 +1374,8 @@ function buildKpiAnalysisBullets(input) {
   const generated = bullets.map((line) => cleanInlineText(line)).filter(Boolean);
   const merged = [];
   const aiForUse = preferredAi.length >= 3 ? preferredAi : [];
-  [...aiForUse, ...generated].forEach((line) => {
+  // Keep rich, structured generated narrative first; then use AI lines as supplements.
+  [...generated, ...aiForUse].forEach((line) => {
     const key = line.toLowerCase();
     if (merged.some((existing) => existing.toLowerCase() === key)) return;
     merged.push(line);
@@ -1398,26 +1399,65 @@ function buildCostCallout(input) {
 }
 
 function buildRiskRows(input) {
-  const declineTable = input.tables.moversOrderValue || input.tables.moversSales || input.tables.topDecliningPublishers;
-  const ranked = tableRowsWithRank(declineTable, 5);
-  if (!ranked || !ranked.rows.length) {
-    return [
-      ["Publisher concentration risk", "High", "Medium", "Diversify publisher mix and reduce top-publisher dependency."],
-      ["Rising CPA trend", "High", "High", "Review commission structure and tighten cost controls."],
-      ["Traffic decline", "Medium", "High", "Investigate source quality and reactivate top contributors."]
-    ];
-  }
+  const sourceLines = [];
+  const appendLines = (lines) => {
+    (lines || []).forEach((line) => {
+      const text = cleanInlineText(line);
+      if (!text) return;
+      if (sourceLines.some((existing) => existing.toLowerCase() === text.toLowerCase())) return;
+      sourceLines.push(text);
+    });
+  };
 
-  const publisherIndex = ranked.columns.findIndex((column) => column.toLowerCase().includes("publisher"));
-  return ranked.rows.slice(0, 5).map((row) => {
-    const publisher = publisherIndex > -1 ? row[publisherIndex] : "Publisher";
-    return [
-      `${publisher} performance risk`,
+  appendLines(input.publisherOverviewObservations);
+  appendLines(buildPublisherOverviewBullets(input));
+  appendLines(buildKpiAnalysisBullets(input));
+
+  const inferRiskLabel = (text) => {
+    const lower = cleanInlineText(text).toLowerCase();
+    if (/(concentration|top\s+\d+\s+publisher|dependency|dependenc)/.test(lower)) return "Publisher concentration risk";
+    if (/\bcpa\b|commission|cost per acquisition/.test(lower)) return "Rising CPA trend";
+    if (/click|traffic|volume decline/.test(lower)) return "Traffic decline";
+    if (/aov|order value|ov /.test(lower)) return "Order value mix volatility";
+    if (/\broi\b|return on investment/.test(lower)) return "Return efficiency risk";
+    if (/conversion/.test(lower)) return "Conversion quality dependency";
+    return "Performance variance risk";
+  };
+
+  const inferImpact = (text) => {
+    const lower = cleanInlineText(text).toLowerCase();
+    if (/(declined|decrease|drop|largest decline|risk|high|pressure)/.test(lower)) return "High";
+    if (/(marginal|flat|mixed|moderate|watch)/.test(lower)) return "Medium";
+    return "Medium";
+  };
+
+  const rows = sourceLines
+    .slice(0, 5)
+    .map((line) => [
+      inferRiskLabel(line),
+      inferImpact(line),
+      line
+    ]);
+
+  if (rows.length) return rows;
+
+  return [
+    [
+      "Publisher concentration risk",
       "High",
+      "Publisher concentration remains elevated; diversify publisher mix and reduce reliance on the top contributors."
+    ],
+    [
+      "Rising CPA trend",
+      "High",
+      "Review commission structure and cost controls where CPA growth is outpacing sales efficiency."
+    ],
+    [
+      "Traffic decline",
       "Medium",
-      "Validate root cause and agree a short-cycle recovery plan."
-    ];
-  });
+      "Investigate traffic source quality and reactivate declining publishers with the strongest historical contribution."
+    ]
+  ];
 }
 
 function buildDeckSpec(input, theme) {
@@ -1662,6 +1702,24 @@ function buildDeckSpec(input, theme) {
     signals: salesGrowthSignals,
     kpis: [],
     tables: []
+  });
+
+  slides.push({
+    id: "risks-dependencies",
+    kind: "risks-dependencies",
+    title: "Risks & Dependencies",
+    subtitle: "Key risks to programme performance, external dependencies, and assigned action owners for the next review cycle.",
+    bullets: [],
+    kpis: [],
+    tables: [
+      {
+        title: "Risks & Dependencies",
+        columns: ["Risk", "Impact", "Mitigation"],
+        colW: [2.8, 1.25, 8.45],
+        rows: buildRiskRows(input),
+        dense: false
+      }
+    ]
   });
 
   slides.push({
@@ -2406,6 +2464,16 @@ function renderSlide(slide, deck, spec, pageNumber) {
     const insightItems = (spec.bullets || []).slice(0, 5);
     const items = insightItems.length ? insightItems : ["Driver not confirmed from available KPI data."];
 
+    const inferKpiSignalTitle = (text) => {
+      const t = cleanInlineText(text).toLowerCase();
+      if (/(conv rate|conversion rate)/.test(t)) return "Conversion Rate Improvement";
+      if (/(click|sales)/.test(t)) return "Sales Volume Pressure";
+      if (/(aov|average order value|order value)/.test(t)) return "AOV Growth Partially Offsetting Volume Decline";
+      if (/\bcpa\b|cost per acquisition|commission/.test(t)) return "Rising CPA";
+      if (/\broi\b|return on investment/.test(t)) return "ROI Trend";
+      return "KPI Signal";
+    };
+
     const parsed = items.map((raw) => {
       const text = cleanInlineText(raw);
       const idx = text.indexOf(":");
@@ -2416,7 +2484,7 @@ function renderSlide(slide, deck, spec, pageNumber) {
         };
       }
       return {
-        title: "KPI Signal",
+        title: inferKpiSignalTitle(text),
         detail: text
       };
     });
