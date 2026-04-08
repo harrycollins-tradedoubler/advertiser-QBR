@@ -94,7 +94,8 @@ const DEFAULT_THEME = {
 function cleanText(value, fallback = "") {
   const raw = String(value ?? fallback);
   const repaired = TEXT_REPLACEMENTS.reduce((text, [pattern, replacement]) => text.replace(pattern, replacement), raw);
-  return repaired.replace(/\s+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
+  const xmlSafe = repaired.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, "");
+  return xmlSafe.replace(/\s+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
 }
 
 function cleanInlineText(value, fallback = "") {
@@ -381,6 +382,9 @@ function resolveTheme(themeName, overrides) {
 }
 
 function normalizePayload(payload) {
+  const nestedPayload = payload && typeof payload.payload === "object" && payload.payload
+    ? payload.payload
+    : {};
   const client = cleanInlineText(payload.client || payload.clientName || "Client");
   const deckTitle = cleanInlineText(payload.deckTitle || `QBR - ${client}`);
   const reportingPeriod = cleanInlineText(payload.reportingPeriod || "Reporting period not provided");
@@ -401,16 +405,44 @@ function normalizePayload(payload) {
   const salesGrowthSignals = normalizeSignalItems(
     payload.salesGrowthSignals || payload.salesGrowthSignalBullets || payload.salesGrowthAnalysis
   );
-  const analysisProgramIds = Array.from(new Set([
+  const rawProgramScopeTable = payload.programScopeTable || payload.programLevelBreakdown || payload.programBreakdownTable;
+  const scopeRowsForIds = Array.isArray(rawProgramScopeTable)
+    ? rawProgramScopeTable
+    : rawProgramScopeTable && typeof rawProgramScopeTable === "object" && Array.isArray(rawProgramScopeTable.rows)
+      ? rawProgramScopeTable.rows
+      : [];
+  const scopeDerivedProgramIds = Array.from(new Set(
+    scopeRowsForIds
+      .map((row) => {
+        if (!row || typeof row !== "object" || Array.isArray(row)) return "";
+        const key = Object.keys(row).find((candidate) => {
+          const k = cleanInlineText(candidate).toLowerCase().replace(/\s+/g, "");
+          return k === "programid" || k === "id";
+        });
+        return key ? cleanInlineText(row[key]) : "";
+      })
+      .filter(Boolean)
+  ));
+
+  const explicitAnalysisProgramIds = Array.from(new Set([
     ...normalizeIdList(payload.analysisProgramIds),
     ...normalizeIdList(payload.publisherProgramIds),
     ...normalizeIdList(payload.programIds),
-    cleanInlineText(payload.programId || ""),
-    cleanInlineText(payload.publisherProgramId || "")
+    ...normalizeIdList(nestedPayload.analysisProgramIds),
+    ...normalizeIdList(nestedPayload.publisherProgramIds),
+    ...normalizeIdList(nestedPayload.programIds)
   ].filter(Boolean)));
+
+  const fallbackProgramIds = Array.from(new Set([
+    cleanInlineText(payload.programId || nestedPayload.programId || ""),
+    cleanInlineText(payload.publisherProgramId || nestedPayload.publisherProgramId || "")
+  ].filter(Boolean)));
+
+  const analysisProgramIds = explicitAnalysisProgramIds.length
+    ? Array.from(new Set([...explicitAnalysisProgramIds, ...scopeDerivedProgramIds]))
+    : (scopeDerivedProgramIds.length ? scopeDerivedProgramIds : fallbackProgramIds);
   const tables = normalizeTables(payload.publisherTables || {});
   const { metrics, metricMap } = normalizeMetrics(payload.programYoYTable || []);
-  const rawProgramScopeTable = payload.programScopeTable || payload.programLevelBreakdown || payload.programBreakdownTable;
   const programScopeTable = (
     Array.isArray(rawProgramScopeTable)
     || (rawProgramScopeTable && typeof rawProgramScopeTable === "object" && Array.isArray(rawProgramScopeTable.rows))
@@ -632,6 +664,18 @@ function buildProgramBreakdownTable(input) {
     "Total Order Value",
     "YoY Change"
   ];
+  const selectedProgramIds = new Set(
+    (Array.isArray(input.analysisProgramIds) ? input.analysisProgramIds : [])
+      .map((value) => cleanInlineText(value))
+      .filter(Boolean)
+  );
+
+  function isSelectedProgramId(programIdValue) {
+    if (!selectedProgramIds.size) return true;
+    const candidate = cleanInlineText(programIdValue);
+    if (!candidate || candidate === "-") return false;
+    return selectedProgramIds.has(candidate);
+  }
 
   function firstObjectValue(obj, aliases) {
     if (!obj || typeof obj !== "object") return "-";
@@ -659,18 +703,30 @@ function buildProgramBreakdownTable(input) {
 
   const scope = input.programScopeTable;
   if (Array.isArray(scope) && scope.length && typeof scope[0] === "object" && !Array.isArray(scope[0])) {
-    const rows = scope.map((row) => {
-      const programId = firstObjectValue(row, ["Program ID", "ProgramId", "ProgramID", "ID"]);
-      const market = firstObjectValue(row, ["Market", "Country", "Region"]);
-      const clicks = firstObjectValue(row, ["Clicks", "Current Clicks"]);
-      const impressions = firstObjectValue(row, ["Impressions"]);
-      const sales = firstObjectValue(row, ["Sales", "Current Sales"]);
-      const convRate = firstObjectValue(row, ["Conversion Rate", "Conv Rate"]);
-      const aov = firstObjectValue(row, ["AOV"]);
-      const totalOv = firstObjectValue(row, ["Total Order Value", "Current OV", "Order Value"]);
-      const yoy = firstObjectValue(row, ["YoY Change", "OV YoY %", "Sales YoY %"]);
-      return [programId, market, clicks, impressions, sales, convRate, aov, totalOv, yoy];
-    });
+    const rows = scope
+      .map((row) => {
+        const programId = firstObjectValue(row, ["Program ID", "ProgramId", "ProgramID", "ID"]);
+        const market = firstObjectValue(row, ["Market", "Country", "Region"]);
+        const clicks = firstObjectValue(row, ["Clicks", "Current Clicks"]);
+        const impressions = firstObjectValue(row, ["Impressions"]);
+        const sales = firstObjectValue(row, ["Sales", "Current Sales"]);
+        const convRate = firstObjectValue(row, ["Conversion Rate", "Conv Rate"]);
+        const aov = firstObjectValue(row, ["AOV"]);
+        const totalOv = firstObjectValue(row, ["Total Order Value", "Current OV", "Order Value"]);
+        const yoy = firstObjectValue(row, ["YoY Change", "OV YoY %", "Sales YoY %"]);
+        return [programId, market, clicks, impressions, sales, convRate, aov, totalOv, yoy];
+      })
+      .filter((row) => isSelectedProgramId(row[0]));
+
+    if (!rows.length && selectedProgramIds.size) {
+      return {
+        title: "Program-Level Breakdown",
+        columns: targetColumns,
+        rows: Array.from(selectedProgramIds).map((id) => [id, "-", "-", "-", "-", "-", "-", "-", "-"]),
+        dense: false
+      };
+    }
+
     return {
       title: "Program-Level Breakdown",
       columns: targetColumns,
@@ -681,18 +737,30 @@ function buildProgramBreakdownTable(input) {
 
   if (scope && Array.isArray(scope.rows) && scope.rows.length) {
     const idx = Object.fromEntries((scope.columns || []).map((col, i) => [cleanInlineText(col).toLowerCase(), i]));
-    const rows = scope.rows.map((row) => {
-      const programId = firstRowCell(row, idx, ["program id", "programid", "id"]);
-      const market = firstRowCell(row, idx, ["market", "country", "region"]);
-      const clicks = firstRowCell(row, idx, ["clicks", "current clicks"]);
-      const impressions = firstRowCell(row, idx, ["impressions"]);
-      const sales = firstRowCell(row, idx, ["sales", "current sales"]);
-      const convRate = firstRowCell(row, idx, ["conversion rate", "conv rate"]);
-      const aov = firstRowCell(row, idx, ["aov"]);
-      const totalOv = firstRowCell(row, idx, ["total order value", "current ov", "order value"]);
-      const yoy = firstRowCell(row, idx, ["yoy change", "ov yoy %", "sales yoy %"]);
-      return [programId, market, clicks, impressions, sales, convRate, aov, totalOv, yoy];
-    });
+    const rows = scope.rows
+      .map((row) => {
+        const programId = firstRowCell(row, idx, ["program id", "programid", "id"]);
+        const market = firstRowCell(row, idx, ["market", "country", "region"]);
+        const clicks = firstRowCell(row, idx, ["clicks", "current clicks"]);
+        const impressions = firstRowCell(row, idx, ["impressions"]);
+        const sales = firstRowCell(row, idx, ["sales", "current sales"]);
+        const convRate = firstRowCell(row, idx, ["conversion rate", "conv rate"]);
+        const aov = firstRowCell(row, idx, ["aov"]);
+        const totalOv = firstRowCell(row, idx, ["total order value", "current ov", "order value"]);
+        const yoy = firstRowCell(row, idx, ["yoy change", "ov yoy %", "sales yoy %"]);
+        return [programId, market, clicks, impressions, sales, convRate, aov, totalOv, yoy];
+      })
+      .filter((row) => isSelectedProgramId(row[0]));
+
+    if (!rows.length && selectedProgramIds.size) {
+      return {
+        title: "Program-Level Breakdown",
+        columns: targetColumns,
+        rows: Array.from(selectedProgramIds).map((id) => [id, "-", "-", "-", "-", "-", "-", "-", "-"]),
+        dense: false
+      };
+    }
+
     return {
       title: "Program-Level Breakdown",
       columns: targetColumns,
@@ -1641,6 +1709,7 @@ function buildDeckSpec(input, theme) {
       languageName: input.languageName,
       currencyCode: input.currencyCode,
       qbrFocus: input.qbrFocus,
+      analysisProgramIds: Array.isArray(input.analysisProgramIds) ? input.analysisProgramIds : [],
       generatedAt: new Date().toISOString()
     },
     theme,
