@@ -900,6 +900,13 @@ function buildSegmentPerformanceBlocks(input) {
     ];
   }
 
+  const cleanPublisherLabel = (value) =>
+    cleanInlineText(value || "")
+      .replace(/\s*-\s*I$/i, "")
+      .replace(/\s*-\s*I(?=\s|$)/gi, "")
+      .replace(/\s+/g, " ")
+      .trim();
+
   const iconBySegment = {
     voucher: "\uD83D\uDE80",
     cashback: "\uD83D\uDCB3",
@@ -921,7 +928,7 @@ function buildSegmentPerformanceBlocks(input) {
 
   const growthRows = (input.tables.topGrowthPublishers?.rows || []).map((row) => ({
     segment: cleanInlineText(row.Segment || ""),
-    publisher: cleanInlineText(row.Publisher || ""),
+    publisher: cleanPublisherLabel(row.Publisher || ""),
     salesCurrent: cleanInlineText(row["Current Sales"] || ""),
     salesPct: cleanInlineText(row["Sales YoY %"] || ""),
     ovDelta: cleanInlineText(row["OV YoY Change"] || ""),
@@ -930,7 +937,7 @@ function buildSegmentPerformanceBlocks(input) {
 
   const declineRows = (input.tables.topDecliningPublishers?.rows || []).map((row) => ({
     segment: cleanInlineText(row.Segment || ""),
-    publisher: cleanInlineText(row.Publisher || ""),
+    publisher: cleanPublisherLabel(row.Publisher || ""),
     salesCurrent: cleanInlineText(row["Current Sales"] || ""),
     salesPct: cleanInlineText(row["Sales YoY %"] || ""),
     ovDelta: cleanInlineText(row["OV YoY Change"] || ""),
@@ -938,7 +945,7 @@ function buildSegmentPerformanceBlocks(input) {
   }));
   const currentRows = (input.tables.topCurrentPerformers?.rows || []).map((row) => ({
     segment: cleanInlineText(row.Segment || ""),
-    publisher: cleanInlineText(row.Publisher || ""),
+    publisher: cleanPublisherLabel(row.Publisher || ""),
     ov: cleanInlineText(row["Order Value"] || row["Current OV"] || ""),
     sales: cleanInlineText(row["Current Sales"] || "")
   }));
@@ -987,9 +994,14 @@ function buildSegmentPerformanceBlocks(input) {
     const aiDetail = aiNarrativeCandidates.find((line) =>
       new RegExp(`\\b${row.segment.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i").test(line)
     );
-    const detail = aiDetail && aiDetail.length > defaultDetail.length * 0.6
+    let detail = aiDetail && aiDetail.length > defaultDetail.length * 0.6
       ? `${defaultDetail} ${aiDetail}`
       : defaultDetail;
+    detail = detail
+      .replace(/\s*-\s*I\s+is\s+the\s+primary\s+drag/gi, " is the primary drag")
+      .replace(/\s*-\s*I\s+/gi, " ")
+      .replace(/\s+/g, " ")
+      .trim();
     return `${icon} ${row.segment} - ${row.ovYoy} OV YoY\n${detail}`;
   });
 }
@@ -1210,6 +1222,12 @@ function buildKpiAnalysisBullets(input) {
   const aov = m.aov;
   const cpa = m.cpa;
   const roi = m.roi;
+  const cleanPublisherLabel = (value) =>
+    cleanInlineText(value || "")
+      .replace(/\s*-\s*I$/i, "")
+      .replace(/\s*-\s*I(?=\s|$)/gi, "")
+      .replace(/\s+/g, " ")
+      .trim();
   const aiCandidatesRaw = (input.programSections || [])
     .filter((section) =>
       /kpi snapshot|kpi highlights|business implications|confirmed changes|program performance|kpi/i
@@ -1267,16 +1285,23 @@ function buildKpiAnalysisBullets(input) {
   const declineTop = input.tables.topDecliningPublishers?.rows?.[0] || null;
   const declineRows = (input.tables.topDecliningPublishers?.rows || []).slice(0, 3);
   const declineList = declineRows
-    .map((row) => `${cleanInlineText(row.Publisher || "Publisher")} (${cleanInlineText(row["Sales YoY %"] || row["YoY Change"] || "N/A")})`)
+    .map((row) => `${cleanPublisherLabel(row.Publisher || "Publisher")} (${cleanInlineText(row["Sales YoY %"] || row["YoY Change"] || "N/A")})`)
     .filter(Boolean)
     .join(", ");
 
+  const topAovUpliftRow = (input.tables.moversAov?.rows || [])
+    .filter((row) => cleanInlineText(row.Direction || "").toLowerCase() === "up")
+    .sort((a, b) => (parseNumber(b["YoY Change"]) || 0) - (parseNumber(a["YoY Change"]) || 0))[0];
+  const topAovUpliftText = topAovUpliftRow
+    ? `${cleanPublisherLabel(topAovUpliftRow.Publisher || "Top publisher")} recorded one of the strongest AOV uplifts (${cleanInlineText(topAovUpliftRow["YoY Change"] || "N/A")}, ${cleanInlineText(topAovUpliftRow["YoY %"] || "N/A")}).`
+    : "AOV uplift was concentrated in a smaller set of higher-value publishers.";
+
   const bullets = [
-    `Conversion Rate Improvement: ${metricSentence("Conversion rate", conv)} Click volume ${directionWord(clicks?.varianceValue)} ${clicks?.variance || "N/A"} (${clicks?.difference || "-"}) while sales ${directionWord(sales?.varianceValue)} ${sales?.variance || "N/A"} (${sales?.difference || "-"}).`,
+    `Conversion Rate Improvement: ${metricSentence("Conversion rate", conv)} Click volume ${directionWord(clicks?.varianceValue)} ${clicks?.variance || "N/A"} (${clicks?.difference || "-"}) while sales ${directionWord(sales?.varianceValue)} ${sales?.variance || "N/A"} (${sales?.difference || "-"}), indicating a more efficient sales-to-click mix than in the prior year.`,
     `Sales Volume Pressure: Total sales ${directionWord(sales?.varianceValue)} ${sales?.variance || "N/A"} (${sales?.difference || "-"}). Click volume ${directionWord(clicks?.varianceValue)} ${clicks?.variance || "N/A"} (${clicks?.difference || "-"}). ${declineList ? `Largest declines came from ${declineList}.` : "Largest declining publisher contribution requires confirmation from mover tables."}`,
-    `AOV Growth Partially Offsetting Volume Decline: ${metricSentence("AOV", aov)} Total order value ${directionWord(ov?.varianceValue)} ${ov?.variance || "N/A"} (${ov?.difference || "-"}) despite lower transaction volume.`,
-    `Rising CPA: ${metricSentence("CPA", cpa)} Publisher commission changed ${m.publcommission?.variance || "N/A"} (${m.publcommission?.difference || "-"}) year-over-year.`,
-    `ROI Trend: ${metricSentence("ROI", roi)} For every unit of commission in the current period, programme return moved from ${roi?.previous || "-"} to ${roi?.current || "-"}.`
+    `AOV Growth Partially Offsetting Volume Decline: ${metricSentence("AOV", aov)} Total order value ${directionWord(ov?.varianceValue)} ${ov?.variance || "N/A"} (${ov?.difference || "-"}) despite lower transaction volume. ${topAovUpliftText}`,
+    `Rising CPA: ${metricSentence("CPA", cpa)} Publisher commission changed ${m.publcommission?.variance || "N/A"} (${m.publcommission?.difference || "-"}) year-over-year, so each conversion carried a higher acquisition cost.`,
+    `ROI Trend: ${metricSentence("ROI", roi)} For every unit of commission in the current period, programme return moved from ${roi?.previous || "-"} to ${roi?.current || "-"}, showing marginal improvement in spend efficiency.`
   ];
   const generated = bullets.map((line) => cleanInlineText(line)).filter(Boolean);
   const merged = [];
@@ -1476,7 +1501,7 @@ function buildDeckSpec(input, theme) {
 
   slides.push({
     id: "segment-performance",
-    kind: "segment-performance",
+    kind: "segment-performance-blue",
     title: "Publisher Segment Performance",
     subtitle: "Year-over-year order value performance broken down by publisher segment, revealing growth and decline patterns.",
     bullets: segmentPerformanceBlocks,
@@ -2311,56 +2336,58 @@ function renderSlide(slide, deck, spec, pageNumber) {
   if (spec.kind === "insights-blue") {
     const insightItems = (spec.bullets || []).slice(0, 5);
     const items = insightItems.length ? insightItems : ["Driver not confirmed from available KPI data."];
-    const bulletText = items.map((item) => `\u2022 ${cleanInlineText(item)}`);
-    const totalChars = bulletText.reduce((sum, item) => sum + item.length, 0);
-    const useTwoColumns = totalChars > 920 || items.some((item) => cleanInlineText(item).length > 240);
-    const fontSize = totalChars > 1300 ? 10 : totalChars > 980 ? 10.8 : 11.4;
 
-    if (useTwoColumns) {
-      const splitAt = Math.ceil(bulletText.length / 2);
-      const leftText = bulletText.slice(0, splitAt).join("\n\n");
-      const rightText = bulletText.slice(splitAt).join("\n\n");
-      slide.addText(leftText, {
-        x: 0.78,
-        y: 1.90,
-        w: 5.85,
-        h: 5.32,
+    const parsed = items.map((raw) => {
+      const text = cleanInlineText(raw);
+      const idx = text.indexOf(":");
+      if (idx > 8 && idx < 68) {
+        return {
+          title: text.slice(0, idx).trim(),
+          detail: text.slice(idx + 1).trim() || "Detail not available from current extract."
+        };
+      }
+      return {
+        title: "KPI Signal",
+        detail: text
+      };
+    });
+
+    const detailChars = parsed.reduce((sum, item) => sum + item.detail.length, 0);
+    const titleSize = detailChars > 1250 ? 12.4 : 13.2;
+    const detailSize = detailChars > 1250 ? 10.4 : 11.1;
+
+    let y = 1.86;
+    parsed.forEach((item) => {
+      const detailLength = item.detail.length;
+      const blockH = detailLength > 250 ? 1.24 : detailLength > 170 ? 1.06 : 0.92;
+      slide.addText(`\u2022 ${item.title}`, {
+        x: 0.80,
+        y,
+        w: 12.0,
+        h: 0.30,
+        align: "left",
+        valign: "top",
+        fontFace: deck.theme.fonts.heading,
+        fontSize: titleSize,
+        color: toColor(deck.theme.colors.paper),
+        bold: true,
+        margin: 0
+      });
+      slide.addText(item.detail, {
+        x: 1.05,
+        y: y + 0.31,
+        w: 11.65,
+        h: blockH - 0.20,
         align: "left",
         valign: "top",
         fontFace: deck.theme.fonts.body,
-        fontSize,
+        fontSize: detailSize,
         color: toColor(deck.theme.colors.paper),
         breakLine: true,
-        margin: 0.02
+        margin: 0
       });
-      slide.addText(rightText, {
-        x: 6.72,
-        y: 1.90,
-        w: 5.85,
-        h: 5.32,
-        align: "left",
-        valign: "top",
-        fontFace: deck.theme.fonts.body,
-        fontSize,
-        color: toColor(deck.theme.colors.paper),
-        breakLine: true,
-        margin: 0.02
-      });
-    } else {
-      slide.addText(bulletText.join("\n\n"), {
-        x: 0.78,
-        y: 1.90,
-        w: 12.1,
-        h: 5.32,
-        align: "left",
-        valign: "top",
-        fontFace: deck.theme.fonts.body,
-        fontSize,
-        color: toColor(deck.theme.colors.paper),
-        breakLine: true,
-        margin: 0.02
-      });
-    }
+      y += blockH + 0.08;
+    });
     return;
   }
 
