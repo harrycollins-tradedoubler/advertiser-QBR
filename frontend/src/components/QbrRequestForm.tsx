@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent } from 'react'
+import { useMemo, useState, type FormEvent } from 'react'
 
 import { tdGetPrograms } from '../lib/api'
 
@@ -47,10 +47,8 @@ function daysBetween(start: string, end: string) {
 export function QbrRequestForm({ onSubmit, disabled }: QbrRequestFormProps) {
   const [accessToken, setAccessToken] = useState('')
   const [organizationId, setOrganizationId] = useState('')
-  const [analysisLevel, setAnalysisLevel] = useState<AnalysisLevel>('program')
   const [programId, setProgramId] = useState('')
   const [programName, setProgramName] = useState('')
-  const [publisherProgramMode, setPublisherProgramMode] = useState<PublisherProgramMode>('selected_program')
   const [coverageProgramIds, setCoverageProgramIds] = useState<string[]>([])
   const [languageCode, setLanguageCode] = useState<LanguageCode>('EN')
   const [currencyCode, setCurrencyCode] = useState<CurrencyCode>('EUR')
@@ -61,6 +59,8 @@ export function QbrRequestForm({ onSubmit, disabled }: QbrRequestFormProps) {
   const [status, setStatus] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [tdTokens, setTdTokens] = useState<TdTokens | null>(null)
+  const analysisLevel: AnalysisLevel = 'program'
+  const publisherProgramMode: PublisherProgramMode = 'selected_program'
 
   const computedRange = useMemo(() => {
     if (!startDate || !endDate) return null
@@ -68,14 +68,11 @@ export function QbrRequestForm({ onSubmit, disabled }: QbrRequestFormProps) {
   }, [startDate, endDate])
 
   const publisherProgramIds = useMemo(() => {
-    if (publisherProgramMode === 'all_programs_in_organisation') {
-      return programs.map((program) => program.id)
-    }
     if (coverageProgramIds.length > 0) {
       return coverageProgramIds
     }
     return programId ? [programId] : []
-  }, [coverageProgramIds, programId, programs, publisherProgramMode])
+  }, [coverageProgramIds, programId])
 
   const canSubmit = useMemo(() => {
     if (!accessToken.trim()) return false
@@ -85,15 +82,6 @@ export function QbrRequestForm({ onSubmit, disabled }: QbrRequestFormProps) {
     if (publisherProgramIds.length === 0) return false
     return Boolean(startDate && endDate)
   }, [accessToken, organizationId, programId, programName, publisherProgramIds, startDate, endDate])
-
-  useEffect(() => {
-    if (publisherProgramMode !== 'all_programs_in_organisation') return
-    if (programId.trim()) return
-    const firstProgram = programs[0]
-    if (!firstProgram) return
-    setProgramId(firstProgram.id)
-    setProgramName(firstProgram.name)
-  }, [programId, programs, publisherProgramMode])
 
   const resetPrograms = () => {
     setPrograms([])
@@ -177,7 +165,7 @@ export function QbrRequestForm({ onSubmit, disabled }: QbrRequestFormProps) {
       return
     }
     if (publisherProgramIds.length === 0) {
-      setError('Select at least one program for publisher coverage.')
+      setError('Select at least one program for the report.')
       return
     }
     if (!tdTokens?.impersonate_access_token) {
@@ -294,44 +282,7 @@ export function QbrRequestForm({ onSubmit, disabled }: QbrRequestFormProps) {
         </div>
 
         <div>
-          <div className="text-xs font-semibold text-[#2A73FF]">2. Request Scope</div>
-          <div className="mt-2 grid gap-4 lg:grid-cols-2">
-            <div className="text-xs text-gray-600">
-              Analysis Level
-              <div className="mt-2 flex gap-2">
-                {(['program', 'organization'] as AnalysisLevel[]).map((option) => (
-                  <button
-                    type="button"
-                    key={option}
-                    onClick={() => setAnalysisLevel(option)}
-                    className={`px-3 py-2 rounded-lg text-xs font-semibold border transition-colors ${
-                      analysisLevel === option
-                        ? 'border-[#2A73FF] bg-[#F7F9FF] text-[#2A73FF]'
-                        : 'border-gray-200 text-gray-500 hover:border-[#2A73FF]/40'
-                    }`}
-                  >
-                    {option === 'program' ? 'Program' : 'Organisation'}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <label className="block text-xs text-gray-600">
-              Publisher Coverage
-              <select
-                value={publisherProgramMode}
-                onChange={(event) => setPublisherProgramMode(event.target.value as PublisherProgramMode)}
-                className="mt-2 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#2A73FF]"
-              >
-                <option value="selected_program">Select specific programs</option>
-                <option value="all_programs_in_organisation">All programs in organisation</option>
-              </select>
-            </label>
-          </div>
-        </div>
-
-        <div>
-          <div className="text-xs font-semibold text-[#2A73FF]">3. Load Program</div>
+          <div className="text-xs font-semibold text-[#2A73FF]">2. Load Program</div>
           <div className="mt-2 grid gap-4">
             <div className="text-xs text-gray-600">
               <span className="block">Load Programs</span>
@@ -345,90 +296,82 @@ export function QbrRequestForm({ onSubmit, disabled }: QbrRequestFormProps) {
               </button>
             </div>
 
-            {publisherProgramMode === 'selected_program' && (
-              <div className="text-xs text-gray-600">
-                <div className="flex items-center justify-between gap-3">
-                  <span className="font-medium text-gray-700">Programs to include in report</span>
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const next = programs.map((program) => program.id)
-                        setCoverageProgramIds(next)
-                        const primary = programs[0]
-                        setProgramId(primary?.id || '')
-                        setProgramName(primary?.name || '')
-                      }}
-                      disabled={programs.length === 0}
-                      className="rounded-md border border-gray-200 px-2 py-1 text-[11px] font-semibold text-gray-600 hover:bg-gray-50 disabled:opacity-60"
-                    >
-                      Select all
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setCoverageProgramIds([])
-                        setProgramId('')
-                        setProgramName('')
-                      }}
-                      disabled={programs.length === 0}
-                      className="rounded-md border border-gray-200 px-2 py-1 text-[11px] font-semibold text-gray-600 hover:bg-gray-50 disabled:opacity-60"
-                    >
-                      Clear all
-                    </button>
-                  </div>
+            <div className="text-xs text-gray-600">
+              <div className="flex items-center justify-between gap-3">
+                <span className="font-medium text-gray-700">Programs to include in report</span>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const next = programs.map((program) => program.id)
+                      setCoverageProgramIds(next)
+                      const primary = programs[0]
+                      setProgramId(primary?.id || '')
+                      setProgramName(primary?.name || '')
+                    }}
+                    disabled={programs.length === 0}
+                    className="rounded-md border border-gray-200 px-2 py-1 text-[11px] font-semibold text-gray-600 hover:bg-gray-50 disabled:opacity-60"
+                  >
+                    Select all
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCoverageProgramIds([])
+                      setProgramId('')
+                      setProgramName('')
+                    }}
+                    disabled={programs.length === 0}
+                    className="rounded-md border border-gray-200 px-2 py-1 text-[11px] font-semibold text-gray-600 hover:bg-gray-50 disabled:opacity-60"
+                  >
+                    Clear all
+                  </button>
                 </div>
-                <div className="mt-2 max-h-36 overflow-y-auto rounded-lg border border-gray-200 bg-white p-2">
-                  {programs.length === 0 ? (
-                    <p className="text-[11px] text-gray-400">Load programs first to choose report coverage.</p>
-                  ) : (
-                    <div className="space-y-1">
-                      {programs.map((program) => {
-                        const checked = coverageProgramIds.includes(program.id)
-                        return (
-                          <label key={program.id} className="flex cursor-pointer items-center gap-2 rounded px-1 py-1 hover:bg-gray-50">
-                            <input
-                              type="checkbox"
-                              checked={checked}
-                              onChange={() => {
-                                const nextCoverage = checked
-                                  ? coverageProgramIds.filter((id) => id !== program.id)
-                                  : [...coverageProgramIds, program.id]
-                                setCoverageProgramIds(nextCoverage)
-                                const primaryId = nextCoverage[0] || ''
-                                const primaryProgram = programs.find((item) => item.id === primaryId)
-                                setProgramId(primaryId)
-                                setProgramName(primaryProgram?.name || '')
-                              }}
-                              className="h-3.5 w-3.5 rounded border-gray-300 text-[#2A73FF] focus:ring-[#2A73FF]"
-                            />
-                            <span className="truncate text-[11px] text-gray-700">
-                              {program.name} ({program.id})
-                            </span>
-                          </label>
-                        )
-                      })}
-                    </div>
-                  )}
-                </div>
-                <p className="mt-1 text-[11px] text-gray-500">
-                  {publisherProgramIds.length > 0
-                    ? `${publisherProgramIds.length} program${publisherProgramIds.length === 1 ? '' : 's'} selected for publisher coverage.`
-                    : 'Choose at least one program for publisher coverage.'}
-                </p>
               </div>
-            )}
-
-            {publisherProgramMode === 'all_programs_in_organisation' && programs.length > 0 && (
-              <p className="text-[11px] text-gray-500">
-                All loaded programs will be included in the report ({programs.length} total).
+              <div className="mt-2 max-h-36 overflow-y-auto rounded-lg border border-gray-200 bg-white p-2">
+                {programs.length === 0 ? (
+                  <p className="text-[11px] text-gray-400">Load programs first to choose report coverage.</p>
+                ) : (
+                  <div className="space-y-1">
+                    {programs.map((program) => {
+                      const checked = coverageProgramIds.includes(program.id)
+                      return (
+                        <label key={program.id} className="flex cursor-pointer items-center gap-2 rounded px-1 py-1 hover:bg-gray-50">
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => {
+                              const nextCoverage = checked
+                                ? coverageProgramIds.filter((id) => id !== program.id)
+                                : [...coverageProgramIds, program.id]
+                              setCoverageProgramIds(nextCoverage)
+                              const primaryId = nextCoverage[0] || ''
+                              const primaryProgram = programs.find((item) => item.id === primaryId)
+                              setProgramId(primaryId)
+                              setProgramName(primaryProgram?.name || '')
+                            }}
+                            className="h-3.5 w-3.5 rounded border-gray-300 text-[#2A73FF] focus:ring-[#2A73FF]"
+                          />
+                          <span className="truncate text-[11px] text-gray-700">
+                            {program.name} ({program.id})
+                          </span>
+                        </label>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+              <p className="mt-1 text-[11px] text-gray-500">
+                {publisherProgramIds.length > 0
+                  ? `${publisherProgramIds.length} program${publisherProgramIds.length === 1 ? '' : 's'} selected for report generation.`
+                  : 'Choose at least one program for the report.'}
               </p>
-            )}
+            </div>
           </div>
         </div>
 
         <div>
-          <div className="text-xs font-semibold text-[#2A73FF]">4. Output</div>
+          <div className="text-xs font-semibold text-[#2A73FF]">3. Output</div>
           <div className="mt-2 grid gap-4 lg:grid-cols-2">
             <label className="block text-xs text-gray-600">
               Language
@@ -472,7 +415,7 @@ export function QbrRequestForm({ onSubmit, disabled }: QbrRequestFormProps) {
         </div>
 
         <div>
-          <div className="text-xs font-semibold text-[#2A73FF]">5. Reporting Period</div>
+          <div className="text-xs font-semibold text-[#2A73FF]">4. Reporting Period</div>
           <div className="mt-2 grid gap-4 lg:grid-cols-3">
             <label className="block text-xs text-gray-600">
               Start Date
@@ -517,12 +460,6 @@ export function QbrRequestForm({ onSubmit, disabled }: QbrRequestFormProps) {
           <div className="mt-2 grid gap-1 lg:grid-cols-2">
             <div>
               Primary program: <span className="font-medium">{programName || 'None selected'}</span>
-            </div>
-            <div>
-              KPI scope: <span className="font-medium">{analysisLevel === 'organization' ? 'Organisation-level' : 'Program-level'}</span>
-            </div>
-            <div>
-              Publisher scope: <span className="font-medium">{publisherProgramMode === 'all_programs_in_organisation' ? 'All organisation programs' : 'Selected programs'}</span>
             </div>
             <div>
               Programs in report: <span className="font-medium">{publisherProgramIds.length}</span>

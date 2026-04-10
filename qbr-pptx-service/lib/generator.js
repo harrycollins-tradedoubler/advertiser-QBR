@@ -317,7 +317,11 @@ const AUTO_TRANSLATE_ENABLED = !/^(0|false|off)$/i.test(String(process.env.QBR_A
 function cleanText(value, fallback = "") {
   const raw = String(value ?? fallback);
   const repaired = TEXT_REPLACEMENTS.reduce((text, [pattern, replacement]) => text.replace(pattern, replacement), raw);
-  const xmlSafe = repaired.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, "");
+  const repairedCurrency = repaired
+    .replace(/Â£/g, "\u00A3")
+    .replace(/â‚¬/g, "\u20AC")
+    .replace(/zÅ‚/g, "z\u0142");
+  const xmlSafe = repairedCurrency.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, "");
   return xmlSafe.replace(/\s+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
 }
 
@@ -1097,12 +1101,32 @@ function buildProgramBreakdownTable(input) {
       .map((value) => cleanInlineText(value))
       .filter(Boolean)
   );
+  const canonicalizeProgramId = (value) => {
+    const raw = cleanInlineText(value);
+    if (!raw || raw === "-") return "";
+    if (/^\d+$/.test(raw)) return String(Number(raw));
+    return raw.toLowerCase();
+  };
+  const selectedProgramIdsCanonical = new Set(
+    Array.from(selectedProgramIds).map((value) => canonicalizeProgramId(value)).filter(Boolean)
+  );
+  const selectedProgramIdSingle = selectedProgramIds.size === 1 ? Array.from(selectedProgramIds)[0] : "";
 
   function isSelectedProgramId(programIdValue) {
     if (!selectedProgramIds.size) return true;
     const candidate = cleanInlineText(programIdValue);
     if (!candidate || candidate === "-") return false;
-    return selectedProgramIds.has(candidate);
+    if (selectedProgramIds.has(candidate)) return true;
+    const canonical = canonicalizeProgramId(candidate);
+    return canonical ? selectedProgramIdsCanonical.has(canonical) : false;
+  }
+
+  function rowHasMetrics(row) {
+    const cells = Array.isArray(row) ? row.slice(1) : [];
+    return cells.some((cell) => {
+      const value = cleanInlineText(cell);
+      return value && value !== "-";
+    });
   }
 
   function firstObjectValue(obj, aliases) {
@@ -1131,9 +1155,12 @@ function buildProgramBreakdownTable(input) {
 
   const scope = input.programScopeTable;
   if (Array.isArray(scope) && scope.length && typeof scope[0] === "object" && !Array.isArray(scope[0])) {
-    const rows = scope
+    const mappedRows = scope
       .map((row) => {
-        const programId = firstObjectValue(row, ["Program ID", "ProgramId", "ProgramID", "ID"]);
+        let programId = firstObjectValue(row, ["Program ID", "ProgramId", "ProgramID", "ID"]);
+        if ((!programId || cleanInlineText(programId) === "-") && selectedProgramIdSingle) {
+          programId = selectedProgramIdSingle;
+        }
         const market = firstObjectValue(row, ["Market", "Country", "Region"]);
         const clicks = firstObjectValue(row, ["Clicks", "Current Clicks"]);
         const impressions = firstObjectValue(row, ["Impressions"]);
@@ -1143,8 +1170,18 @@ function buildProgramBreakdownTable(input) {
         const totalOv = firstObjectValue(row, ["Total Order Value", "Current OV", "Order Value"]);
         const yoy = firstObjectValue(row, ["YoY Change", "OV YoY %", "Sales YoY %"]);
         return [programId, market, clicks, impressions, sales, convRate, aov, totalOv, yoy];
-      })
-      .filter((row) => isSelectedProgramId(row[0]));
+      });
+    const rows = mappedRows.filter((row) => isSelectedProgramId(row[0]));
+    const fallbackRows = mappedRows.filter((row) => rowHasMetrics(row));
+
+    if (!rows.length && selectedProgramIds.size && fallbackRows.length) {
+      return {
+        title: "Program-Level Breakdown",
+        columns: targetColumns,
+        rows: fallbackRows,
+        dense: false
+      };
+    }
 
     if (!rows.length && selectedProgramIds.size) {
       return {
@@ -1165,9 +1202,12 @@ function buildProgramBreakdownTable(input) {
 
   if (scope && Array.isArray(scope.rows) && scope.rows.length) {
     const idx = Object.fromEntries((scope.columns || []).map((col, i) => [cleanInlineText(col).toLowerCase(), i]));
-    const rows = scope.rows
+    const mappedRows = scope.rows
       .map((row) => {
-        const programId = firstRowCell(row, idx, ["program id", "programid", "id"]);
+        let programId = firstRowCell(row, idx, ["program id", "programid", "id"]);
+        if ((!programId || cleanInlineText(programId) === "-") && selectedProgramIdSingle) {
+          programId = selectedProgramIdSingle;
+        }
         const market = firstRowCell(row, idx, ["market", "country", "region"]);
         const clicks = firstRowCell(row, idx, ["clicks", "current clicks"]);
         const impressions = firstRowCell(row, idx, ["impressions"]);
@@ -1177,8 +1217,18 @@ function buildProgramBreakdownTable(input) {
         const totalOv = firstRowCell(row, idx, ["total order value", "current ov", "order value"]);
         const yoy = firstRowCell(row, idx, ["yoy change", "ov yoy %", "sales yoy %"]);
         return [programId, market, clicks, impressions, sales, convRate, aov, totalOv, yoy];
-      })
-      .filter((row) => isSelectedProgramId(row[0]));
+      });
+    const rows = mappedRows.filter((row) => isSelectedProgramId(row[0]));
+    const fallbackRows = mappedRows.filter((row) => rowHasMetrics(row));
+
+    if (!rows.length && selectedProgramIds.size && fallbackRows.length) {
+      return {
+        title: "Program-Level Breakdown",
+        columns: targetColumns,
+        rows: fallbackRows,
+        dense: false
+      };
+    }
 
     if (!rows.length && selectedProgramIds.size) {
       return {
