@@ -5,7 +5,7 @@ import { tdGetPrograms } from '../lib/api'
 type AnalysisLevel = 'program' | 'organization'
 type PublisherProgramMode = 'selected_program' | 'all_programs_in_organisation'
 type LanguageCode = 'EN' | 'FR' | 'NL' | 'DE' | 'IT' | 'NO' | 'SV' | 'DA' | 'FI' | 'ES' | 'PL'
-type CurrencyCode = 'GBP' | 'EUR' | 'USD' | 'SEK' | 'NOK' | 'DKK' | 'PLN'
+type CurrencyCode = 'GBP' | 'EUR' | 'USD' | 'AUD' | 'SEK' | 'NOK' | 'DKK' | 'PLN'
 type TdTokens = {
   user_access_token: string
   impersonate_access_token: string
@@ -461,6 +461,7 @@ export function QbrRequestForm({ onSubmit, disabled }: QbrRequestFormProps) {
                 <option value="EUR">EUR</option>
                 <option value="GBP">GBP</option>
                 <option value="USD">USD</option>
+                <option value="AUD">AUD</option>
                 <option value="SEK">SEK</option>
                 <option value="NOK">NOK</option>
                 <option value="DKK">DKK</option>

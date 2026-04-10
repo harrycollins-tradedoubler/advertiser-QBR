@@ -1,0 +1,671 @@
+{
+  "metadata": {
+    "requestId": "qbr-1775640710143",
+    "client": "HP Store",
+    "deckTitle": "QBR - HP Store",
+    "reportingPeriod": "2025-12-01 to 2026-03-25",
+    "comparisonPeriod": "2024-12-01 to 2025-03-25",
+    "languageCode": "EN",
+    "languageName": "English",
+    "currencyCode": "GBP",
+    "qbrFocus": "Increase sales",
+    "generatedAt": "2026-04-08T09:31:50.150Z"
+  },
+  "theme": {
+    "id": "td-default",
+    "name": "TD",
+    "companyName": "Tradedoubler",
+    "logoText": "Tradedoubler",
+    "fonts": {
+      "heading": "Instrument Sans",
+      "body": "Instrument Sans",
+      "mono": "Instrument Sans"
+    },
+    "colors": {
+      "ink": "#2F333B",
+      "paper": "#F3F4F6",
+      "canvas": "#E8EDF9",
+      "accent": "#2F6FF2",
+      "accentAlt": "#EB5757",
+      "success": "#57A66C",
+      "warning": "#F2C94C",
+      "highlight": "#AFC4F5",
+      "muted": "#5B6372",
+      "border": "#D8DCE5"
+    }
+  },
+  "slides": [
+    {
+      "id": "cover",
+      "kind": "cover",
+      "title": "HP Store Affiliate Program Quarterly Business Review",
+      "subtitle": "",
+      "headline": "Conversion improved despite softer traffic",
+      "summary": "A comprehensive year-over-year analysis of the HP Store affiliate program's performance, publisher dynamics, and strategic priorities to drive growth and optimise outcomes.",
+      "bullets": [
+        "Client: HP Store",
+        "Reporting currency: GBP",
+        "Language: English"
+      ],
+      "kpis": [],
+      "tables": []
+    },
+    {
+      "id": "reporting-period",
+      "kind": "reporting-period",
+      "title": "Reporting Period",
+      "subtitle": "Current and YoY comparison windows",
+      "headline": "",
+      "summary": "",
+      "bullets": [
+        "Current period: 2025-12-01 to 2026-03-25",
+        "Comparison period: 2024-12-01 to 2025-03-25",
+        "Primary focus: Increase sales"
+      ],
+      "kpis": [],
+      "tables": [],
+      "callout": "All figures are reported in GBP unless otherwise stated. YoY variance is calculated as current period vs comparison period."
+    },
+    {
+      "id": "executive-summary",
+      "kind": "program-executive-summary",
+      "title": "Program Performance: Executive Summary",
+      "headline": "",
+      "summary": "The HP Store Affiliate Program delivered mixed results in Dec 2025 – Mar 2026. While AOV grew +11.1% to £441.26 and conversion rate improved +9.6%, total sales declined -12.0% YoY driven by a -19.7% reduction in click volume. Total order value decreased -2.2% to £24,076,021. Full KPI breakdown follows on the next slides.",
+      "bullets": [],
+      "kpis": [
+        {
+          "label": "Sales",
+          "value": "54,562",
+          "previous": "61,984",
+          "summary": "54,562 vs 61,984 PY - -12.0%",
+          "delta": "-12.0%",
+          "trend": "down",
+          "icon": "☰",
+          "iconPath": ""
+        },
+        {
+          "label": "Total Order Value",
+          "value": "£24,076,021",
+          "previous": "£24,608,446",
+          "summary": "£24,076,021 vs £24,608,446 PY - -2.2%",
+          "delta": "-2.2%",
+          "trend": "down",
+          "icon": "▤",
+          "iconPath": ""
+        },
+        {
+          "label": "Average Order Value (AOV)",
+          "value": "£441.26",
+          "previous": "£397.01",
+          "summary": "£441.26 vs £397.01 PY - +11.1%",
+          "delta": "+11.1%",
+          "trend": "up",
+          "icon": "↗",
+          "iconPath": ""
+        },
+        {
+          "label": "Conversion Rate",
+          "value": "0.13%",
+          "previous": "0.12%",
+          "summary": "0.13% vs 0.12% PY - +9.6%",
+          "delta": "+9.6%",
+          "trend": "up",
+          "icon": "⚡",
+          "iconPath": ""
+        },
+        {
+          "label": "ROI",
+          "value": "26.66",
+          "previous": "26.31",
+          "summary": "26.66 vs 26.31 PY - +1.3%",
+          "delta": "+1.3%",
+          "trend": "up",
+          "icon": "↻",
+          "iconPath": ""
+        }
+      ],
+      "tables": []
+    },
+    {
+      "id": "kpi-volume-conversion",
+      "kind": "kpi-table",
+      "title": "KPI Summary Table: Volume, Conversion, Cost & ROI",
+      "subtitle": "Unified KPI breakdown vs prior year.",
+      "bullets": [],
+      "kpis": [],
+      "tables": [
+        {
+          "title": "KPI Summary",
+          "columns": [
+            "Metric",
+            "Current Period",
+            "Prior Year",
+            "Change",
+            "% Variance"
+          ],
+          "rows": [
+            [
+              "Clicks",
+              "42,050,161",
+              "52,364,355",
+              "-10,314,194",
+              "-19.7%"
+            ],
+            [
+              "Sales (Transactions)",
+              "54,562",
+              "61,984",
+              "-7,422",
+              "-12.0%"
+            ],
+            [
+              "Conversion Rate",
+              "0.13%",
+              "0.12%",
+              "+0.01%",
+              "+9.6%"
+            ],
+            [
+              "Average Order Value (AOV)",
+              "£441.26",
+              "£397.01",
+              "+£44.25",
+              "+11.1%"
+            ],
+            [
+              "Total Order Value",
+              "£24,076,021",
+              "£24,608,446",
+              "-£532,425",
+              "-2.2%"
+            ],
+            [
+              "Publisher Commission",
+              "£903,086",
+              "£935,460",
+              "-£32,374",
+              "-3.5%"
+            ],
+            [
+              "Cost Per Acquisition (CPA)",
+              "£16.55",
+              "£15.09",
+              "+£1.46",
+              "+9.7%"
+            ],
+            [
+              "Return on Investment (ROI)",
+              "26.66",
+              "26.31",
+              "+0.35",
+              "+1.3%"
+            ]
+          ],
+          "dense": false
+        }
+      ],
+      "footerNote": "Conversion rate = Sales ÷ Clicks. AOV = Total Order Value ÷ Sales. ROI = Total Order Value ÷ Total Commission."
+    },
+    {
+      "id": "kpi-cost-roi",
+      "kind": "program-breakdown",
+      "title": "Program-Level Breakdown: Volume & Conversion",
+      "subtitle": "Per-program view for selected request scope.",
+      "bullets": [],
+      "kpis": [],
+      "tables": [
+        {
+          "title": "Program-Level Breakdown",
+          "columns": [
+            "Program ID",
+            "Market",
+            "Clicks",
+            "Impressions",
+            "Sales",
+            "Conversion Rate",
+            "AOV",
+            "Total Order Value",
+            "YoY Change"
+          ],
+          "rows": [
+            [
+              "12345",
+              "-",
+              "-",
+              "-",
+              "28,411",
+              "-",
+              "-",
+              "£12,544,201",
+              "-1.8%"
+            ],
+            [
+              "23456",
+              "-",
+              "-",
+              "-",
+              "19,084",
+              "-",
+              "-",
+              "€8,904,115",
+              "-3.6%"
+            ],
+            [
+              "34567",
+              "-",
+              "-",
+              "-",
+              "7,067",
+              "-",
+              "-",
+              "€2,627,705",
+              "+4.2%"
+            ]
+          ],
+          "dense": false
+        }
+      ]
+    },
+    {
+      "id": "kpi-highlights",
+      "kind": "insights-blue",
+      "title": "KPI Highlights & Business Implications",
+      "subtitle": "What the numbers mean for the business - key signals and context.",
+      "bullets": [
+        "Publ Commission / Total Commission: £903,086 (-£32,374, -3.5%)",
+        "Clicks decreased by 10,314,194 (-19.7%) and Sales decreased by 7,422 (-12.0%).",
+        "Conversion rate increased by 0.01% to 0.13% (+9.6%).",
+        "AOV increased by £44.25 (+11.1%) while Order value decreased by £532,425 (-2.2%).",
+        "Publisher/Total Commission decreased by £32,374 (-3.5%); CPA increased by £1.46 (+9.7%); ROI increased by 0.35 (+1.3%)."
+      ],
+      "kpis": [],
+      "tables": []
+    },
+    {
+      "id": "publisher-overview",
+      "kind": "publisher-overview",
+      "title": "Publisher Performance Overview",
+      "subtitle": "High-level summary of publisher activity, segmentation and YoY movement.",
+      "bullets": [
+        "Skimlinks drove the strongest YoY uplift (Content), adding +£590,200 in OV (+18.3%).",
+        "VoucherCodes recorded the largest decline (Voucher), with OV movement -£780,112 (-14.2%).",
+        "Publisher concentration remains high: VoucherCodes and Skimlinks account for £8,551,310 (64.7% of programme OV)."
+      ],
+      "kpis": [],
+      "tables": [
+        {
+          "title": "Publisher Activity Summary",
+          "columns": [
+            "Segment",
+            "Total Sales",
+            "Sales YoY %",
+            "Total OV",
+            "OV YoY %",
+            "Publishers"
+          ],
+          "rows": [
+            [
+              "Voucher",
+              "19,221",
+              "-10.1%",
+              "£7,112,230",
+              "-8.4%",
+              "18"
+            ],
+            [
+              "Content",
+              "15,604",
+              "+6.8%",
+              "£6,108,554",
+              "+7.2%",
+              "23"
+            ]
+          ],
+          "dense": false
+        }
+      ]
+    },
+    {
+      "id": "segment-performance",
+      "kind": "segment-performance-blue",
+      "title": "Publisher Segment Performance",
+      "subtitle": "Year-over-year order value performance broken down by publisher segment, revealing growth and decline patterns.",
+      "bullets": [
+        "🚀 Voucher - -8.4% OV YoY\n£7,112,230 total OV | 18 active publishers | Sales: 19,221 (-10.1% YoY). VoucherCodes is the primary drag, with -£780,112 OV YoY (-14.2%). Leading current contributors include VoucherCodes (£4,731,100).",
+        "📊 Content - +7.2% OV YoY\n£6,108,554 total OV | 23 active publishers | Sales: 15,604 (+6.8% YoY). Skimlinks is the dominant growth driver, delivering +£590,200 OV YoY (+18.3%). Leading current contributors include Skimlinks (£3,820,210)."
+      ],
+      "kpis": [],
+      "tables": []
+    },
+    {
+      "id": "movers-shakers-sales",
+      "kind": "publisher-table",
+      "title": "Movers & Shakers: Sales",
+      "subtitle": "Largest YoY sales movers and decliners.",
+      "bullets": [],
+      "kpis": [],
+      "tables": [
+        {
+          "title": "Movers & Shakers - Sales",
+          "columns": [
+            "Publisher",
+            "Site ID",
+            "Current Sales",
+            "YoY Change",
+            "YoY %"
+          ],
+          "colW": [
+            3.5,
+            1.8,
+            2.1,
+            2.1,
+            1.5
+          ],
+          "rows": [
+            [
+              "Top 5 Up",
+              "",
+              "",
+              "",
+              ""
+            ],
+            [
+              "-",
+              "-",
+              "-",
+              "-",
+              "-"
+            ],
+            [
+              "Top 5 Down",
+              "",
+              "",
+              "",
+              ""
+            ],
+            [
+              "-",
+              "-",
+              "-",
+              "-",
+              "-"
+            ]
+          ]
+        }
+      ],
+      "callout": "Up = positive YoY movement; Down = negative YoY movement."
+    },
+    {
+      "id": "movers-shakers-ov",
+      "kind": "publisher-table",
+      "title": "Movers & Shakers: Order Value",
+      "subtitle": "Largest YoY order value movers and decliners.",
+      "bullets": [],
+      "kpis": [],
+      "tables": [
+        {
+          "title": "Movers & Shakers - Order Value",
+          "columns": [
+            "Publisher",
+            "Site ID",
+            "Current OV",
+            "YoY Change",
+            "YoY %"
+          ],
+          "colW": [
+            3.5,
+            1.8,
+            2.1,
+            2.1,
+            1.5
+          ],
+          "rows": [
+            [
+              "Top 5 Up",
+              "",
+              "",
+              "",
+              ""
+            ],
+            [
+              "-",
+              "-",
+              "-",
+              "-",
+              "-"
+            ],
+            [
+              "Top 5 Down",
+              "",
+              "",
+              "",
+              ""
+            ],
+            [
+              "-",
+              "-",
+              "-",
+              "-",
+              "-"
+            ]
+          ]
+        }
+      ],
+      "callout": "Order value movers indicate where incremental revenue was won or lost YoY."
+    },
+    {
+      "id": "movers-shakers-clicks",
+      "kind": "publisher-table",
+      "title": "Movers & Shakers: Clicks",
+      "subtitle": "Largest YoY click movers and decliners.",
+      "bullets": [],
+      "kpis": [],
+      "tables": [
+        {
+          "title": "Movers & Shakers - Clicks",
+          "columns": [
+            "Publisher",
+            "Site ID",
+            "Current Clicks",
+            "YoY Change",
+            "YoY %"
+          ],
+          "colW": [
+            3.5,
+            1.8,
+            2.1,
+            2.1,
+            1.5
+          ],
+          "rows": [
+            [
+              "Top 5 Up",
+              "",
+              "",
+              "",
+              ""
+            ],
+            [
+              "-",
+              "-",
+              "-",
+              "-",
+              "-"
+            ],
+            [
+              "Top 5 Down",
+              "",
+              "",
+              "",
+              ""
+            ],
+            [
+              "-",
+              "-",
+              "-",
+              "-",
+              "-"
+            ]
+          ]
+        }
+      ],
+      "callout": "Traffic movement helps explain volume and conversion shifts across the publisher mix."
+    },
+    {
+      "id": "brand-new-publishers",
+      "kind": "publisher-table",
+      "title": "Brand New Publishers",
+      "subtitle": "Publishers activated for the first time in the current period.",
+      "bullets": [],
+      "kpis": [],
+      "tables": [
+        {
+          "title": "Brand New Publishers",
+          "columns": [
+            "Publisher",
+            "Segment",
+            "Current Sales",
+            "Current OV",
+            "CPA"
+          ],
+          "rows": [
+            [
+              "-",
+              "-",
+              "-",
+              "-",
+              "-"
+            ]
+          ]
+        }
+      ],
+      "callout": "Brand-new publishers are not included in YoY comparisons until a prior-year baseline exists."
+    },
+    {
+      "id": "sales-growth-signals",
+      "kind": "sales-growth-signals-blue",
+      "title": "Sales Growth Signals",
+      "subtitle": "Factual observations from the data relevant to the programme's sales performance - 2025-12-01 to 2026-03-25.",
+      "bullets": [],
+      "signals": [
+        {
+          "title": "Voucher Segment: Highest YoY Sales Growth",
+          "detail": "Voucher growth signal is not fully available in the current extract."
+        },
+        {
+          "title": "Conversion Rate: Improved to 0.13%",
+          "detail": "Programme conversion rate moved from 0.12% to 0.13% (+9.6%). Sales changed -7,422 while clicks changed -10,314,194, indicating the quality shift in converting traffic."
+        },
+        {
+          "title": "AOV Growth Across Multiple Publishers",
+          "detail": "Programme AOV moved +11.1% to £441.26."
+        },
+        {
+          "title": "Cashback Segment: Largest Volume Base with Sales Decline",
+          "detail": "Cashback segment-level signal is not fully available in the current extract."
+        },
+        {
+          "title": "Click Volume Decline Concentrated in Two Publishers",
+          "detail": "Top click decline concentration could not be confirmed from available movers data."
+        }
+      ],
+      "kpis": [],
+      "tables": []
+    },
+    {
+      "id": "thank-you",
+      "kind": "thank-you",
+      "title": "HP Store - Thank you.",
+      "subtitle": "",
+      "bullets": [],
+      "kpis": [],
+      "tables": []
+    },
+    {
+      "id": "appendix-program-yoy",
+      "kind": "appendix",
+      "title": "Appendix: Program YoY Table",
+      "bullets": [],
+      "kpis": [],
+      "tables": [
+        {
+          "title": "Program YoY Table",
+          "columns": [
+            "Metric",
+            "Current",
+            "Previous",
+            "Difference",
+            "Variance"
+          ],
+          "rows": [
+            [
+              "Clicks",
+              "42,050,161",
+              "52,364,355",
+              "-10,314,194",
+              "-19.7%"
+            ],
+            [
+              "Sales",
+              "54,562",
+              "61,984",
+              "-7,422",
+              "-12.0%"
+            ],
+            [
+              "Conv Rate",
+              "0.13%",
+              "0.12%",
+              "+0.01%",
+              "+9.6%"
+            ],
+            [
+              "Order value",
+              "£24,076,021",
+              "£24,608,446",
+              "-£532,425",
+              "-2.2%"
+            ],
+            [
+              "AOV",
+              "£441.26",
+              "£397.01",
+              "+£44.25",
+              "+11.1%"
+            ],
+            [
+              "Publ Commission",
+              "£903,086",
+              "£935,460",
+              "-£32,374",
+              "-3.5%"
+            ],
+            [
+              "Total Commission",
+              "£903,086",
+              "£935,460",
+              "-£32,374",
+              "-3.5%"
+            ],
+            [
+              "CPA",
+              "£16.55",
+              "£15.09",
+              "+£1.46",
+              "+9.7%"
+            ],
+            [
+              "ROI",
+              "26.66",
+              "26.31",
+              "+0.35",
+              "+1.3%"
+            ]
+          ],
+          "dense": true
+        }
+      ]
+    }
+  ]
+}

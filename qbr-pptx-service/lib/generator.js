@@ -2,6 +2,7 @@ const fs = require("node:fs/promises");
 const fsSync = require("node:fs");
 const path = require("node:path");
 const crypto = require("node:crypto");
+const https = require("node:https");
 
 function loadPackage(name) {
   try {
@@ -91,6 +92,228 @@ const DEFAULT_THEME = {
   }
 };
 
+const LANGUAGE_LOCALE_MAP = {
+  EN: "en-GB",
+  FR: "fr-FR",
+  NL: "nl-NL",
+  DE: "de-DE",
+  IT: "it-IT",
+  NO: "nb-NO",
+  SV: "sv-SE",
+  DA: "da-DK",
+  FI: "fi-FI",
+  ES: "es-ES",
+  PL: "pl-PL"
+};
+
+const LANGUAGE_TRANSLATION_TARGET_MAP = {
+  EN: "en",
+  FR: "fr",
+  NL: "nl",
+  DE: "de",
+  IT: "it",
+  NO: "no",
+  SV: "sv",
+  DA: "da",
+  FI: "fi",
+  ES: "es",
+  PL: "pl"
+};
+
+const DEFAULT_UI_LABELS = {
+  qbrReport: "QBR Report",
+  anyQuestions: "Any Questions?",
+  thankYouSubtitleTemplate: "TD Affiliate Program - {period} Quarterly Business Review",
+  currentPeriod: "Current Period",
+  comparisonPeriodYoy: "Comparison Period (YoY)",
+  basisYoy: "Basis: Year-over-Year (YoY)",
+  publisherActivityBySegment: "Publisher Activity by Segment",
+  keyObservations: "Key Observations",
+  reportingPeriodPrefix: "Reporting Period",
+  dataAsOfPrefix: "Data as of",
+  comparisonPeriodPrefix: "Comparison Period",
+  allFiguresStatement: "All figures are reported in {currency} unless otherwise stated. YoY variance is calculated as Current Period vs Comparison Period.",
+  analysisTagSuffix: "Analysis",
+  segmentSignalUnavailable: "Segment signal not available.",
+  detailedMovementUnavailable: "Detailed movement not available from this extract.",
+  kpiSignalGeneric: "KPI Signal",
+  kpiDriverUnavailable: "Driver not confirmed from available KPI data.",
+  kpiDetailUnavailable: "Detail not available from current extract.",
+  kpiTitleConversionRateImprovement: "Conversion Rate Improvement",
+  kpiTitleSalesVolumePressure: "Sales Volume Pressure",
+  kpiTitleAovGrowthOffset: "AOV Growth Partially Offsetting Volume Decline",
+  kpiTitleRisingCpa: "Rising CPA",
+  kpiTitleRoiTrend: "ROI Trend"
+};
+
+const UI_LABELS_BY_LANGUAGE = {
+  FR: {
+    qbrReport: "Rapport QBR",
+    anyQuestions: "Des questions ?",
+    thankYouSubtitleTemplate: "Programme d'affiliation TD - {period} Revue trimestrielle",
+    currentPeriod: "Période actuelle",
+    comparisonPeriodYoy: "Période de comparaison (YoY)",
+    basisYoy: "Référence : glissement annuel (YoY)",
+    publisherActivityBySegment: "Activité des éditeurs par segment",
+    keyObservations: "Observations clés",
+    reportingPeriodPrefix: "Période de reporting",
+    dataAsOfPrefix: "Données au",
+    comparisonPeriodPrefix: "Période de comparaison",
+    allFiguresStatement: "Toutes les valeurs sont présentées en {currency}, sauf indication contraire. La variation YoY est calculée entre la période actuelle et la période de comparaison.",
+    analysisTagSuffix: "Analyse"
+  },
+  NL: {
+    qbrReport: "QBR-rapport",
+    anyQuestions: "Vragen?",
+    thankYouSubtitleTemplate: "TD Affiliate Programma - {period} Kwartaalreview",
+    currentPeriod: "Huidige periode",
+    comparisonPeriodYoy: "Vergelijkingsperiode (YoY)",
+    basisYoy: "Basis: jaar-op-jaar (YoY)",
+    publisherActivityBySegment: "Publisheractiviteit per segment",
+    keyObservations: "Belangrijkste observaties",
+    reportingPeriodPrefix: "Rapportageperiode",
+    dataAsOfPrefix: "Gegevens per",
+    comparisonPeriodPrefix: "Vergelijkingsperiode",
+    allFiguresStatement: "Alle cijfers worden gerapporteerd in {currency}, tenzij anders vermeld. De YoY-variantie wordt berekend als huidige periode versus vergelijkingsperiode.",
+    analysisTagSuffix: "Analyse"
+  },
+  DE: {
+    qbrReport: "QBR-Bericht",
+    anyQuestions: "Fragen?",
+    thankYouSubtitleTemplate: "TD Affiliate-Programm - {period} Quartalsbericht",
+    currentPeriod: "Aktueller Zeitraum",
+    comparisonPeriodYoy: "Vergleichszeitraum (YoY)",
+    basisYoy: "Basis: Jahr-über-Jahr (YoY)",
+    publisherActivityBySegment: "Publisher-Aktivität nach Segment",
+    keyObservations: "Wichtigste Erkenntnisse",
+    reportingPeriodPrefix: "Berichtszeitraum",
+    dataAsOfPrefix: "Datenstand",
+    comparisonPeriodPrefix: "Vergleichszeitraum",
+    allFiguresStatement: "Alle Werte werden in {currency} angegeben, sofern nicht anders vermerkt. Die YoY-Abweichung wird als aktueller Zeitraum gegenüber Vergleichszeitraum berechnet.",
+    analysisTagSuffix: "Analyse"
+  },
+  IT: {
+    qbrReport: "Report QBR",
+    anyQuestions: "Domande?",
+    thankYouSubtitleTemplate: "Programma di affiliazione TD - {period} Revisione trimestrale",
+    currentPeriod: "Periodo corrente",
+    comparisonPeriodYoy: "Periodo di confronto (YoY)",
+    basisYoy: "Base: anno su anno (YoY)",
+    publisherActivityBySegment: "Attività publisher per segmento",
+    keyObservations: "Osservazioni chiave",
+    reportingPeriodPrefix: "Periodo di reporting",
+    dataAsOfPrefix: "Dati al",
+    comparisonPeriodPrefix: "Periodo di confronto",
+    allFiguresStatement: "Tutti i valori sono riportati in {currency}, salvo diversa indicazione. La variazione YoY è calcolata come periodo corrente vs periodo di confronto.",
+    analysisTagSuffix: "Analisi"
+  },
+  NO: {
+    qbrReport: "QBR-rapport",
+    anyQuestions: "Spørsmål?",
+    thankYouSubtitleTemplate: "TD affiliateprogram - {period} kvartalsgjennomgang",
+    currentPeriod: "Gjeldende periode",
+    comparisonPeriodYoy: "Sammenligningsperiode (YoY)",
+    basisYoy: "Grunnlag: år-over-år (YoY)",
+    publisherActivityBySegment: "Publisheraktivitet etter segment",
+    keyObservations: "Nøkkelobservasjoner",
+    reportingPeriodPrefix: "Rapporteringsperiode",
+    dataAsOfPrefix: "Data per",
+    comparisonPeriodPrefix: "Sammenligningsperiode",
+    allFiguresStatement: "Alle tall er oppgitt i {currency}, med mindre annet er angitt. YoY-variansen er beregnet som gjeldende periode mot sammenligningsperioden.",
+    analysisTagSuffix: "Analyse"
+  },
+  SV: {
+    qbrReport: "QBR-rapport",
+    anyQuestions: "Några frågor?",
+    thankYouSubtitleTemplate: "TD affiliateprogram - {period} kvartalsgenomgång",
+    currentPeriod: "Aktuell period",
+    comparisonPeriodYoy: "Jämförelseperiod (YoY)",
+    basisYoy: "Grund: år över år (YoY)",
+    publisherActivityBySegment: "Publisheraktivitet per segment",
+    keyObservations: "Viktiga observationer",
+    reportingPeriodPrefix: "Rapporteringsperiod",
+    dataAsOfPrefix: "Data per",
+    comparisonPeriodPrefix: "Jämförelseperiod",
+    allFiguresStatement: "Alla siffror rapporteras i {currency} om inget annat anges. YoY-variansen beräknas som aktuell period jämfört med jämförelseperiod.",
+    analysisTagSuffix: "Analys"
+  },
+  DA: {
+    qbrReport: "QBR-rapport",
+    anyQuestions: "Nogen spørgsmål?",
+    thankYouSubtitleTemplate: "TD affiliateprogram - {period} kvartalsgennemgang",
+    currentPeriod: "Aktuel periode",
+    comparisonPeriodYoy: "Sammenligningsperiode (YoY)",
+    basisYoy: "Grundlag: år-til-år (YoY)",
+    publisherActivityBySegment: "Publisheraktivitet efter segment",
+    keyObservations: "Nøgleobservationer",
+    reportingPeriodPrefix: "Rapporteringsperiode",
+    dataAsOfPrefix: "Data pr.",
+    comparisonPeriodPrefix: "Sammenligningsperiode",
+    allFiguresStatement: "Alle tal rapporteres i {currency}, medmindre andet er angivet. YoY-variansen beregnes som aktuel periode versus sammenligningsperiode.",
+    analysisTagSuffix: "Analyse"
+  },
+  FI: {
+    qbrReport: "QBR-raportti",
+    anyQuestions: "Kysymyksiä?",
+    thankYouSubtitleTemplate: "TD-kumppanuusohjelma - {period} neljännesvuosikatsaus",
+    currentPeriod: "Nykyinen jakso",
+    comparisonPeriodYoy: "Vertailujakso (YoY)",
+    basisYoy: "Perusta: vuosi vuodelta (YoY)",
+    publisherActivityBySegment: "Julkaisija-aktiivisuus segmenteittäin",
+    keyObservations: "Keskeiset havainnot",
+    reportingPeriodPrefix: "Raportointijakso",
+    dataAsOfPrefix: "Tiedot päivältä",
+    comparisonPeriodPrefix: "Vertailujakso",
+    allFiguresStatement: "Kaikki luvut raportoidaan valuutassa {currency}, ellei toisin mainita. YoY-vaihtelu lasketaan nykyisen jakson ja vertailujakson välillä.",
+    analysisTagSuffix: "Analyysi"
+  },
+  ES: {
+    qbrReport: "Informe QBR",
+    anyQuestions: "¿Preguntas?",
+    thankYouSubtitleTemplate: "Programa de afiliación TD - {period} Revisión trimestral",
+    currentPeriod: "Período actual",
+    comparisonPeriodYoy: "Período de comparación (YoY)",
+    basisYoy: "Base: interanual (YoY)",
+    publisherActivityBySegment: "Actividad de publishers por segmento",
+    keyObservations: "Observaciones clave",
+    reportingPeriodPrefix: "Período del informe",
+    dataAsOfPrefix: "Datos a fecha de",
+    comparisonPeriodPrefix: "Período de comparación",
+    allFiguresStatement: "Todas las cifras se presentan en {currency}, salvo que se indique lo contrario. La variación YoY se calcula como período actual frente a período de comparación.",
+    analysisTagSuffix: "Análisis"
+  },
+  PL: {
+    qbrReport: "Raport QBR",
+    anyQuestions: "Pytania?",
+    thankYouSubtitleTemplate: "Program partnerski TD - {period} Przegląd kwartalny",
+    currentPeriod: "Bieżący okres",
+    comparisonPeriodYoy: "Okres porównawczy (r/r)",
+    basisYoy: "Podstawa: rok do roku (r/r)",
+    publisherActivityBySegment: "Aktywność wydawców według segmentu",
+    keyObservations: "Kluczowe obserwacje",
+    reportingPeriodPrefix: "Okres raportowania",
+    dataAsOfPrefix: "Dane na dzień",
+    comparisonPeriodPrefix: "Okres porównawczy",
+    allFiguresStatement: "Wszystkie wartości raportowane są w walucie {currency}, o ile nie wskazano inaczej. Zmiana r/r jest liczona jako bieżący okres względem okresu porównawczego.",
+    analysisTagSuffix: "Analiza",
+    segmentSignalUnavailable: "Sygnał segmentu jest niedostępny.",
+    detailedMovementUnavailable: "Szczegółowy opis zmian nie jest dostępny w tym wyciągu.",
+    kpiSignalGeneric: "Sygnał KPI",
+    kpiDriverUnavailable: "Brak potwierdzonego czynnika na podstawie dostępnych danych KPI.",
+    kpiDetailUnavailable: "Szczegóły nie są dostępne w bieżącym wyciągu.",
+    kpiTitleConversionRateImprovement: "Poprawa współczynnika konwersji",
+    kpiTitleSalesVolumePressure: "Presja na wolumen sprzedaży",
+    kpiTitleAovGrowthOffset: "Wzrost AOV częściowo kompensujący spadek wolumenu",
+    kpiTitleRisingCpa: "Wzrost CPA",
+    kpiTitleRoiTrend: "Trend ROI"
+  }
+};
+
+const TRANSLATE_TIMEOUT_MS = Math.max(700, Number(process.env.QBR_TRANSLATE_TIMEOUT_MS || 1500));
+const TRANSLATE_CONCURRENCY = Math.max(1, Number(process.env.QBR_TRANSLATE_CONCURRENCY || 12));
+const TRANSLATE_MAX_TEXTS = Math.max(200, Number(process.env.QBR_TRANSLATE_MAX_TEXTS || 1200));
+const AUTO_TRANSLATE_ENABLED = !/^(0|false|off)$/i.test(String(process.env.QBR_AUTO_TRANSLATE || "true"));
+
 function cleanText(value, fallback = "") {
   const raw = String(value ?? fallback);
   const repaired = TEXT_REPLACEMENTS.reduce((text, [pattern, replacement]) => text.replace(pattern, replacement), raw);
@@ -100,6 +323,208 @@ function cleanText(value, fallback = "") {
 
 function cleanInlineText(value, fallback = "") {
   return cleanText(value, fallback).replace(/\s+/g, " ").trim();
+}
+
+function normalizeLanguageCode(value) {
+  const code = cleanInlineText(value || "EN").toUpperCase();
+  return LANGUAGE_TRANSLATION_TARGET_MAP[code] ? code : "EN";
+}
+
+function localeForLanguageCode(languageCode) {
+  return LANGUAGE_LOCALE_MAP[normalizeLanguageCode(languageCode)] || "en-GB";
+}
+
+function uiLabelsForLanguage(languageCode) {
+  const code = normalizeLanguageCode(languageCode);
+  return {
+    ...DEFAULT_UI_LABELS,
+    ...(UI_LABELS_BY_LANGUAGE[code] || {})
+  };
+}
+
+function uiLabel(deck, key, fallback) {
+  const labels = deck?.metadata?.uiLabels || {};
+  return cleanInlineText(labels[key] || fallback || "");
+}
+
+function shouldTranslateText(value) {
+  const text = cleanInlineText(value || "");
+  if (!text) return false;
+  if (text.length < 2 || text.length > 2400) return false;
+  if (/^https?:\/\//i.test(text)) return false;
+  if (/^[\d\s.,:+\-\u2013\u2014/%()\u00A3\u20AC$z\u0142kr]+$/i.test(text)) return false;
+  return /\p{L}/u.test(text);
+}
+
+function fetchJsonWithHttps(url, timeoutMs) {
+  return new Promise((resolve, reject) => {
+    const request = https.get(url, {
+      headers: {
+        "User-Agent": "qbr-pptx-service/1.0"
+      }
+    }, (response) => {
+      const chunks = [];
+      response.on("data", (chunk) => chunks.push(chunk));
+      response.on("end", () => {
+        const body = Buffer.concat(chunks).toString("utf8");
+        if (response.statusCode < 200 || response.statusCode >= 300) {
+          reject(new Error(`Unexpected status ${response.statusCode}`));
+          return;
+        }
+        try {
+          resolve(JSON.parse(body));
+        } catch (error) {
+          reject(error);
+        }
+      });
+    });
+    request.on("error", reject);
+    request.setTimeout(timeoutMs, () => {
+      request.destroy(new Error("Request timed out"));
+    });
+  });
+}
+async function translateWithGoogle(text, targetLang) {
+  if (!AUTO_TRANSLATE_ENABLED) return text;
+  const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=${encodeURIComponent(targetLang)}&dt=t&q=${encodeURIComponent(text)}`;
+  const canUseFetch = typeof fetch === "function" && typeof AbortController === "function";
+  const controller = canUseFetch ? new AbortController() : null;
+  const timer = canUseFetch
+    ? setTimeout(() => controller.abort(), TRANSLATE_TIMEOUT_MS)
+    : null;
+  try {
+    const data = canUseFetch
+      ? await (async () => {
+        const response = await fetch(url, { signal: controller.signal });
+        if (!response.ok) return null;
+        return response.json();
+      })()
+      : await fetchJsonWithHttps(url, TRANSLATE_TIMEOUT_MS);
+    if (!Array.isArray(data) || !Array.isArray(data[0])) return text;
+    const translated = data[0]
+      .map((part) => (Array.isArray(part) && typeof part[0] === "string" ? part[0] : ""))
+      .join("")
+      .trim();
+    return translated || text;
+  } catch (_) {
+    return text;
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+function collectDeckTextRefs(deckSpec) {
+  const refs = [];
+  const addRef = (container, key, priority = 2) => {
+    if (!container) return;
+    const value = container[key];
+    if (typeof value !== "string") return;
+    if (!shouldTranslateText(value)) return;
+    refs.push({ container, key, text: value, priority });
+  };
+
+  for (const slide of deckSpec.slides || []) {
+    ["title", "subtitle", "headline", "summary", "callout", "footerNote"].forEach((key) => addRef(slide, key, 4));
+
+    if (Array.isArray(slide.bullets)) {
+      slide.bullets.forEach((_, idx) => addRef(slide.bullets, idx, 4));
+    }
+
+    if (Array.isArray(slide.signals)) {
+      slide.signals.forEach((signal) => {
+        addRef(signal, "title", 4);
+        addRef(signal, "detail", 4);
+      });
+    }
+
+    if (Array.isArray(slide.kpis)) {
+      slide.kpis.forEach((kpi) => {
+        addRef(kpi, "label", 4);
+        addRef(kpi, "summary", 4);
+      });
+    }
+
+    if (Array.isArray(slide.tables)) {
+      slide.tables.forEach((table) => {
+        addRef(table, "title", 3);
+        if (Array.isArray(table.columns)) {
+          table.columns.forEach((_, idx) => addRef(table.columns, idx, 3));
+        }
+        if (Array.isArray(table.rows)) {
+          table.rows.forEach((row) => {
+            if (!Array.isArray(row)) return;
+            row.forEach((cell, idx) => {
+              if (typeof cell !== "string") return;
+              const trimmed = cleanInlineText(cell);
+              if (!shouldTranslateText(trimmed)) return;
+              refs.push({ container: row, key: idx, text: cell, priority: 2 });
+            });
+          });
+        }
+      });
+    }
+  }
+
+  return refs;
+}
+
+async function localizeDeckSpec(deckSpec, languageCode) {
+  const code = normalizeLanguageCode(languageCode);
+  const locale = localeForLanguageCode(code);
+  deckSpec.metadata.locale = locale;
+  deckSpec.metadata.uiLabels = uiLabelsForLanguage(code);
+
+  const targetLang = LANGUAGE_TRANSLATION_TARGET_MAP[code] || "en";
+  if (targetLang === "en") return deckSpec;
+
+  const refs = collectDeckTextRefs(deckSpec);
+  if (!refs.length) return deckSpec;
+
+  const cache = new Map();
+  const rankedTexts = new Map();
+  refs.forEach((ref) => {
+    const key = cleanText(ref.text || "");
+    if (!key) return;
+    const existing = rankedTexts.get(key);
+    const currentPriority = Number(ref.priority || 1);
+    if (!existing || currentPriority > existing.priority) {
+      rankedTexts.set(key, { text: key, priority: currentPriority });
+    }
+  });
+  const uniqueTexts = Array.from(rankedTexts.values())
+    .sort((a, b) => (b.priority - a.priority) || (b.text.length - a.text.length))
+    .slice(0, TRANSLATE_MAX_TEXTS)
+    .map((entry) => entry.text);
+  const translatableTexts = [];
+  for (const text of uniqueTexts) {
+    if (!shouldTranslateText(text)) {
+      cache.set(text, text);
+    } else {
+      translatableTexts.push(text);
+    }
+  }
+
+  if (translatableTexts.length) {
+    let nextIndex = 0;
+    const workerCount = Math.min(TRANSLATE_CONCURRENCY, translatableTexts.length);
+    const workers = Array.from({ length: workerCount }, async () => {
+      while (nextIndex < translatableTexts.length) {
+        const idx = nextIndex;
+        nextIndex += 1;
+        const text = translatableTexts[idx];
+        const translated = await translateWithGoogle(text, targetLang);
+        cache.set(text, cleanText(translated || text));
+      }
+    });
+    await Promise.all(workers);
+  }
+
+  refs.forEach((ref) => {
+    const key = cleanText(ref.text || "");
+    const translated = cache.get(key);
+    if (translated) ref.container[ref.key] = translated;
+  });
+
+  return deckSpec;
 }
 
 function normalizeHex(value, fallback) {
@@ -391,8 +816,9 @@ function normalizePayload(payload) {
   const comparisonPeriod = cleanInlineText(payload.comparisonPeriod || "Comparison period not provided");
   const qbrFocus = cleanInlineText(payload.qbrFocus || "General performance review");
   const qbrFocusDetail = cleanInlineText(payload.qbrFocusDetail || "");
-  const languageCode = cleanInlineText(payload.languageCode || "EN").toUpperCase();
+  const languageCode = normalizeLanguageCode(payload.languageCode || "EN");
   const languageName = cleanInlineText(payload.languageName || "English");
+  const locale = localeForLanguageCode(languageCode);
   const currencyCode = cleanInlineText(payload.currencyCode || "EUR").toUpperCase();
   const programOutput = cleanText(payload.programOutput || "");
   const publisherAnalysis = cleanText(payload.publisherAnalysis || "");
@@ -462,6 +888,7 @@ function normalizePayload(payload) {
     qbrFocusDetail,
     languageCode,
     languageName,
+    locale,
     currencyCode,
     fullContent: payload.fullContent !== false,
     includeAppendix: payload.includeAppendix === true,
@@ -511,18 +938,19 @@ function getCurrencySymbol(code) {
   if (c === "GBP") return "\u00A3";
   if (c === "EUR") return "\u20AC";
   if (c === "USD") return "$";
+  if (c === "AUD") return "A$";
   if (c === "PLN") return "z\u0142";
   if (["SEK", "NOK", "DKK", "ISK"].includes(c)) return "kr";
   return "";
 }
 
-function formatSignedMoney(value, currencyCode) {
+function formatSignedMoney(value, currencyCode, locale = "en-GB") {
   if (value === null || value === undefined || Number.isNaN(Number(value))) return "N/A";
   const symbol = getCurrencySymbol(currencyCode);
   const n = Number(value);
   const abs = Math.abs(n);
   const rounded = abs >= 1000 ? Math.round(abs) : Number(abs.toFixed(0));
-  const txt = Number(rounded).toLocaleString("en-GB");
+  const txt = Number(rounded).toLocaleString(locale || "en-GB");
   const sign = n >= 0 ? "+" : "-";
   return `${sign}${symbol}${txt}`;
 }
@@ -548,7 +976,7 @@ function buildHeadline(input) {
   return "Performance was mixed across volume and value measures";
 }
 
-function parsePeriodRange(reportingPeriod) {
+function parsePeriodRange(reportingPeriod, locale = "en-GB") {
   const text = cleanInlineText(reportingPeriod || "");
   const match = text.match(/(\d{4}-\d{2}-\d{2})\s*(?:to|\u2013|-)\s*(\d{4}-\d{2}-\d{2})/i);
   if (!match) return text || "the current period";
@@ -558,8 +986,8 @@ function parsePeriodRange(reportingPeriod) {
   if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return text || "the current period";
 
   const options = { month: "short", year: "numeric", timeZone: "UTC" };
-  const startLabel = start.toLocaleString("en-GB", options);
-  const endLabel = end.toLocaleString("en-GB", options);
+  const startLabel = start.toLocaleString(locale, options);
+  const endLabel = end.toLocaleString(locale, options);
   return `${startLabel} \u2013 ${endLabel}`;
 }
 
@@ -574,9 +1002,9 @@ function parseIsoPeriod(periodText) {
   return { start, end, startRaw: match[1], endRaw: match[2] };
 }
 
-function formatLongDate(date) {
+function formatLongDate(date, locale = "en-GB") {
   if (!(date instanceof Date) || Number.isNaN(date.getTime())) return "";
-  return date.toLocaleDateString("en-GB", {
+  return date.toLocaleDateString(locale, {
     day: "numeric",
     month: "long",
     year: "numeric",
@@ -584,9 +1012,9 @@ function formatLongDate(date) {
   });
 }
 
-function formatCompactDate(date) {
+function formatCompactDate(date, locale = "en-GB") {
   if (!(date instanceof Date) || Number.isNaN(date.getTime())) return "";
-  return date.toLocaleDateString("en-GB", {
+  return date.toLocaleDateString(locale, {
     day: "2-digit",
     month: "2-digit",
     year: "2-digit",
@@ -594,16 +1022,16 @@ function formatCompactDate(date) {
   }).replace(/\//g, "");
 }
 
-function formatPeriodForSlide(periodText) {
+function formatPeriodForSlide(periodText, locale = "en-GB") {
   const parsed = parseIsoPeriod(periodText);
   if (!parsed) return cleanInlineText(periodText || "Not specified");
-  return `${formatLongDate(parsed.start)} to ${formatLongDate(parsed.end)}`;
+  return `${formatLongDate(parsed.start, locale)} \u2013 ${formatLongDate(parsed.end, locale)}`;
 }
 
-function buildCoverPeriodTag(periodText) {
+function buildCoverPeriodTag(periodText, locale = "en-GB") {
   const parsed = parseIsoPeriod(periodText);
   if (!parsed) return "PERIOD";
-  return `${formatCompactDate(parsed.start)}-${formatCompactDate(parsed.end)}`;
+  return `${formatCompactDate(parsed.start, locale)}-${formatCompactDate(parsed.end, locale)}`;
 }
 
 function movementVerb(metric, positive = "increased", negative = "decreased") {
@@ -629,7 +1057,7 @@ function buildExecutiveSummaryText(input) {
   const affiliateLabel = /affiliate program/i.test(programLabel)
     ? programLabel
     : `${programLabel} Affiliate Program`;
-  const periodLabel = parsePeriodRange(input.reportingPeriod);
+  const periodLabel = parsePeriodRange(input.reportingPeriod, input.locale);
 
   return cleanInlineText(
     `The ${affiliateLabel} delivered mixed results in ${periodLabel}. While AOV grew ${aov.variance || "N/A"} to ${aov.current || "-"} and conversion rate improved ${conv.variance || "N/A"}, total sales declined ${sales.variance || "N/A"} YoY driven by a ${clicks.variance || "N/A"} reduction in click volume. Total order value ${movementVerb(ov)} ${ov.variance || "N/A"} to ${ov.current || "-"}. Full KPI breakdown follows on the next slides.`
@@ -931,7 +1359,7 @@ function buildPublisherOverviewBullets(input) {
 
   if (brandNew?.rows?.length) {
     const totalOv = brandNew.rows.reduce((sum, row) => sum + (parseNumber(row["Current OV"]) || 0), 0);
-    obs.push(`${brandNew.rows.length} brand-new publishers were activated, contributing ${getCurrencySymbol(input.currencyCode)}${Math.round(totalOv).toLocaleString("en-GB")} in combined OV.`);
+    obs.push(`${brandNew.rows.length} brand-new publishers were activated, contributing ${getCurrencySymbol(input.currencyCode)}${Math.round(totalOv).toLocaleString(input.locale || "en-GB")} in combined OV.`);
   }
 
   if (current?.rows?.length) {
@@ -943,7 +1371,7 @@ function buildPublisherOverviewBullets(input) {
       const top2Ov = top2.reduce((sum, item) => sum + (item.ov || 0), 0);
       const totalOv = (segment?.rows || []).reduce((sum, row) => sum + (parseNumber(row["Total OV"]) || 0), 0);
       const share = totalOv > 0 ? ` (${((top2Ov / totalOv) * 100).toFixed(1)}% of programme OV)` : "";
-      obs.push(`Publisher concentration remains high: ${top2[0].name} and ${top2[1].name} account for ${getCurrencySymbol(input.currencyCode)}${Math.round(top2Ov).toLocaleString("en-GB")}${share}.`);
+      obs.push(`Publisher concentration remains high: ${top2[0].name} and ${top2[1].name} account for ${getCurrencySymbol(input.currencyCode)}${Math.round(top2Ov).toLocaleString(input.locale || "en-GB")}${share}.`);
     }
   }
 
@@ -976,11 +1404,11 @@ function buildSegmentPerformanceBlocks(input) {
       .trim();
 
   const iconBySegment = {
-    voucher: "\uD83D\uDE80",
-    cashback: "\uD83D\uDCB3",
-    other: "\uD83D\uDCC9",
-    content: "\uD83D\uDCCA",
-    css: "\u26A0"
+    voucher: "[V]",
+    cashback: "[C]",
+    other: "[O]",
+    content: "[T]",
+    css: "[CSS]"
   };
 
   const aiNarrativeCandidates = (input.publisherSections || [])
@@ -1037,6 +1465,12 @@ function buildSegmentPerformanceBlocks(input) {
       return ai - bi;
     });
 
+  const clampDetail = (value, maxChars = 420) => {
+    const text = cleanInlineText(value || "");
+    if (!text || text.length <= maxChars) return text;
+    return `${text.slice(0, maxChars - 1).trimEnd()}…`;
+  };
+
   return rows.slice(0, 5).map((row) => {
     const icon = iconBySegment[row.segment.toLowerCase()] || "\u25AA";
     const growthForSegment = growthRows.find((item) => item.segment.toLowerCase() === row.segment.toLowerCase());
@@ -1070,16 +1504,17 @@ function buildSegmentPerformanceBlocks(input) {
       .replace(/\s*-\s*I\s+/gi, " ")
       .replace(/\s+/g, " ")
       .trim();
+    detail = clampDetail(detail, 420);
     return `${icon} ${row.segment} - ${row.ovYoy} OV YoY\n${detail}`;
   });
 }
 
-function formatSignedCount(value) {
+function formatSignedCount(value, locale = "en-GB") {
   if (value === null || value === undefined) return "N/A";
   const n = Number(value);
   if (!Number.isFinite(n)) return "N/A";
   const rounded = Math.round(n);
-  const abs = Math.abs(rounded).toLocaleString("en-GB");
+  const abs = Math.abs(rounded).toLocaleString(locale || "en-GB");
   return `${rounded >= 0 ? "+" : "-"}${abs}`;
 }
 
@@ -1131,7 +1566,7 @@ function buildSalesGrowthSignals(input) {
     },
     {
       title: `Conversion Rate: ${directionWord(m.convrate?.varianceValue) === "increased" ? "Improved" : "Moved"} to ${cleanInlineText(m.convrate?.current || "N/A")}`,
-      detail: `Programme conversion rate moved from ${cleanInlineText(m.convrate?.previous || "N/A")} to ${cleanInlineText(m.convrate?.current || "N/A")} (${cleanInlineText(m.convrate?.variance || "N/A")}). Sales changed ${formatSignedCount(parseNumber(m.sales?.difference))} while clicks changed ${formatSignedCount(parseNumber(m.clicks?.difference))}, indicating the quality shift in converting traffic.`
+      detail: `Programme conversion rate moved from ${cleanInlineText(m.convrate?.previous || "N/A")} to ${cleanInlineText(m.convrate?.current || "N/A")} (${cleanInlineText(m.convrate?.variance || "N/A")}). Sales changed ${formatSignedCount(parseNumber(m.sales?.difference), input.locale)} while clicks changed ${formatSignedCount(parseNumber(m.clicks?.difference), input.locale)}, indicating the quality shift in converting traffic.`
     },
     {
       title: "AOV Growth Across Multiple Publishers",
@@ -1601,6 +2036,8 @@ function buildDeckSpec(input, theme) {
             title: "Publisher Activity Summary",
             columns: segmentTable.columns,
             rows: segmentTable.rows.map((row) => segmentTable.columns.map((column) => row[column] || "-")),
+            colW: [1.25, 1.15, 1.25, 1.2, 1.15, 0.9],
+            colAlign: ["left", "right", "right", "right", "right", "right"],
             dense: false
           }
         ]
@@ -1611,7 +2048,7 @@ function buildDeckSpec(input, theme) {
     id: "segment-performance",
     kind: "segment-performance-blue",
     title: "Publisher Segment Performance",
-    subtitle: "Year-over-year order value performance broken down by publisher segment, revealing growth and decline patterns.",
+    subtitle: "",
     bullets: segmentPerformanceBlocks,
     kpis: [],
     tables: []
@@ -1765,6 +2202,8 @@ function buildDeckSpec(input, theme) {
       comparisonPeriod: input.comparisonPeriod,
       languageCode: input.languageCode,
       languageName: input.languageName,
+      locale: input.locale || "en-GB",
+      uiLabels: uiLabelsForLanguage(input.languageCode),
       currencyCode: input.currencyCode,
       qbrFocus: input.qbrFocus,
       analysisProgramIds: Array.isArray(input.analysisProgramIds) ? input.analysisProgramIds : [],
@@ -1954,6 +2393,36 @@ function addBullets(slide, deck, bullets, box, color) {
   });
 }
 
+function isTableValueNumeric(value) {
+  const text = cleanInlineText(value || "");
+  if (!text || text === "-" || /^n\/a$/i.test(text)) return false;
+  const normalized = text
+    .replace(/[£$€,\s]/g, "")
+    .replace(/%$/, "")
+    .replace(/^\+/, "");
+  return /^-?\d+(\.\d+)?$/.test(normalized);
+}
+
+function inferTableColumnAlign(table, columnIndex, columnName) {
+  if (columnIndex === 0) return "left";
+  const explicitAlign = Array.isArray(table.colAlign) && table.colAlign.length === table.columns.length
+    ? table.colAlign[columnIndex]
+    : null;
+  if (explicitAlign === "left" || explicitAlign === "center" || explicitAlign === "right") {
+    return explicitAlign;
+  }
+
+  const numericHeaderPattern = /sales|clicks?|impressions?|ov|order value|commission|cost|cpa|roi|aov|rate|variance|change|yoy|publishers?|count|rank|id|current|prior|previous|total/i;
+  const sampleValues = (table.rows || [])
+    .slice(0, 8)
+    .map((row) => row[columnIndex]);
+  const numericCount = sampleValues.filter(isTableValueNumeric).length;
+
+  if (sampleValues.length && numericCount >= Math.ceil(sampleValues.length * 0.5)) return "right";
+  if (numericHeaderPattern.test(cleanInlineText(columnName || ""))) return "right";
+  return "left";
+}
+
 function addCallout(slide, deck, text, y, darkText = true) {
   if (!text) return;
   slide.addShape("roundRect", {
@@ -2103,8 +2572,9 @@ function addTable(slide, deck, table, box, mode = "light") {
   const innerY = box.y + 0.10;
   const innerW = box.w - 0.24;
   const innerH = box.h - 0.20;
+  const columnAlignments = table.columns.map((column, index) => inferTableColumnAlign(table, index, column));
 
-  const header = table.columns.map((column) => ({
+  const header = table.columns.map((column, columnIndex) => ({
     text: column,
     options: {
       bold: true,
@@ -2113,6 +2583,7 @@ function addTable(slide, deck, table, box, mode = "light") {
       color: toColor(deck.theme.colors.ink),
       fill: { color: toColor("#F1F3F7") },
       margin: 0.045,
+      align: columnAlignments[columnIndex] || "left",
       valign: "mid"
     }
   }));
@@ -2136,6 +2607,7 @@ function addTable(slide, deck, table, box, mode = "light") {
           : cellTextColor(table, table.columns[cellIndex] || "", value, deck),
         fill: { color: toColor(rowFill) },
         margin: 0.045,
+        align: columnAlignments[cellIndex] || "left",
         valign: "mid"
       }
     }));
@@ -2199,7 +2671,8 @@ function renderSlide(slide, deck, spec, pageNumber) {
   if (spec.kind === "cover") {
     addBlueChrome(slide, deck);
     addSlideWatermark(slide, deck, true);
-    const periodTag = parsePeriodRange(deck.metadata.reportingPeriod);
+    const locale = deck.metadata.locale || "en-GB";
+    const periodTag = parsePeriodRange(deck.metadata.reportingPeriod, locale);
     const coverTitle = cleanInlineText(spec.title || `${deck.metadata.client} Quarterly Business Review`);
     const match = coverTitle.match(/^(.*?)(business review)$/i);
     const titleRunsData = match
@@ -2242,7 +2715,7 @@ function renderSlide(slide, deck, spec, pageNumber) {
       line: { color: toColor(deck.theme.colors.paper), pt: 0 },
       fill: { color: toColor(deck.theme.colors.paper), transparency: 25 }
     });
-    slide.addText("QBR Report", {
+    slide.addText(uiLabel(deck, "qbrReport", "QBR Report"), {
       x: 0.83,
       y: 3.08,
       w: 1.0,
@@ -2262,7 +2735,7 @@ function renderSlide(slide, deck, spec, pageNumber) {
       line: { color: toColor(deck.theme.colors.accent), pt: 0.8 },
       fill: { color: toColor(deck.theme.colors.accent), transparency: 100 }
     });
-    slide.addText(`${periodTag} Analysis`, {
+    slide.addText(`${periodTag} ${uiLabel(deck, "analysisTagSuffix", "Analysis")}`.trim(), {
       x: 2.18,
       y: 3.08,
       w: 3.2,
@@ -2318,7 +2791,7 @@ function renderSlide(slide, deck, spec, pageNumber) {
       line: { color: toColor(deck.theme.colors.paper), pt: 0.35, transparency: 55 },
       fill: { color: toColor(deck.theme.colors.paper), transparency: 42 }
     });
-    slide.addText("Any Questions?", {
+    slide.addText(uiLabel(deck, "anyQuestions", "Any Questions?"), {
       x: 0.95,
       y: 2.84,
       w: 10.6,
@@ -2328,7 +2801,15 @@ function renderSlide(slide, deck, spec, pageNumber) {
       color: toColor(deck.theme.colors.paper),
       margin: 0
     });
-    slide.addText(`TD Affiliate Program - ${deck.metadata.reportingPeriod} Quarterly Business Review`, {
+    const thankYouSubtitleTemplate = uiLabel(
+      deck,
+      "thankYouSubtitleTemplate",
+      "TD Affiliate Program - {period} Quarterly Business Review"
+    );
+    const thankYouSubtitle = thankYouSubtitleTemplate.includes("{period}")
+      ? thankYouSubtitleTemplate.replace("{period}", deck.metadata.reportingPeriod)
+      : `${thankYouSubtitleTemplate} ${deck.metadata.reportingPeriod}`;
+    slide.addText(thankYouSubtitle, {
       x: 0.95,
       y: 3.17,
       w: 10.8,
@@ -2351,16 +2832,22 @@ function renderSlide(slide, deck, spec, pageNumber) {
   }
 
   if (spec.kind === "reporting-period") {
-    const currentPeriodReadable = formatPeriodForSlide(deck.metadata.reportingPeriod);
-    const comparisonPeriodReadable = formatPeriodForSlide(deck.metadata.comparisonPeriod);
+    const locale = deck.metadata.locale || "en-GB";
+    const currentPeriodReadable = formatPeriodForSlide(deck.metadata.reportingPeriod, locale);
+    const comparisonPeriodReadable = formatPeriodForSlide(deck.metadata.comparisonPeriod, locale);
     const currentPeriodParsed = parseIsoPeriod(deck.metadata.reportingPeriod);
-    const asOfLabel = currentPeriodParsed ? formatLongDate(currentPeriodParsed.end) : "N/A";
+    const asOfLabel = currentPeriodParsed ? formatLongDate(currentPeriodParsed.end, locale) : "N/A";
     const currencySymbol = getCurrencySymbol(deck.metadata.currencyCode);
     const currencyLabel = currencySymbol
       ? `${deck.metadata.currencyCode} (${currencySymbol})`
       : deck.metadata.currencyCode;
+    const allFiguresStatement = uiLabel(
+      deck,
+      "allFiguresStatement",
+      "All figures are reported in {currency} unless otherwise stated. YoY variance is calculated as Current Period vs Comparison Period."
+    ).replace("{currency}", currencyLabel);
 
-    slide.addText("Current Period", {
+    slide.addText(uiLabel(deck, "currentPeriod", "Current Period"), {
       x: 0.7,
       y: 2.0,
       w: 5.6,
@@ -2370,7 +2857,7 @@ function renderSlide(slide, deck, spec, pageNumber) {
       color: toColor(deck.theme.colors.ink),
       margin: 0
     });
-    slide.addText("Comparison Period (YoY)", {
+    slide.addText(uiLabel(deck, "comparisonPeriodYoy", "Comparison Period (YoY)"), {
       x: 6.9,
       y: 2.0,
       w: 5.6,
@@ -2380,7 +2867,7 @@ function renderSlide(slide, deck, spec, pageNumber) {
       color: toColor(deck.theme.colors.ink),
       margin: 0
     });
-    slide.addText(`Reporting Period: ${currentPeriodReadable}`, {
+    slide.addText(`${uiLabel(deck, "reportingPeriodPrefix", "Reporting Period")}: ${currentPeriodReadable}`, {
       x: 0.7,
       y: 2.55,
       w: 5.8,
@@ -2390,7 +2877,7 @@ function renderSlide(slide, deck, spec, pageNumber) {
       color: toColor(deck.theme.colors.muted),
       margin: 0
     });
-    slide.addText(`Data as of: ${asOfLabel}`, {
+    slide.addText(`${uiLabel(deck, "dataAsOfPrefix", "Data as of")}: ${asOfLabel}`, {
       x: 0.7,
       y: 2.86,
       w: 5.8,
@@ -2400,7 +2887,7 @@ function renderSlide(slide, deck, spec, pageNumber) {
       color: toColor(deck.theme.colors.muted),
       margin: 0
     });
-    slide.addText(`Comparison Period: ${comparisonPeriodReadable}`, {
+    slide.addText(`${uiLabel(deck, "comparisonPeriodPrefix", "Comparison Period")}: ${comparisonPeriodReadable}`, {
       x: 6.9,
       y: 2.55,
       w: 5.8,
@@ -2410,7 +2897,7 @@ function renderSlide(slide, deck, spec, pageNumber) {
       color: toColor(deck.theme.colors.muted),
       margin: 0
     });
-    slide.addText("Basis: Year-over-Year (YoY)", {
+    slide.addText(uiLabel(deck, "basisYoy", "Basis: Year-over-Year (YoY)"), {
       x: 6.9,
       y: 2.86,
       w: 5.8,
@@ -2429,7 +2916,7 @@ function renderSlide(slide, deck, spec, pageNumber) {
       line: { color: toColor(deck.theme.colors.highlight), pt: 0.5 },
       fill: { color: toColor(deck.theme.colors.highlight), transparency: 10 }
     });
-    slide.addText(`\u25AD  All figures are reported in ${currencyLabel} unless otherwise stated. YoY variance is calculated as Current Period vs Comparison Period.`, {
+    slide.addText(`\u25AD  ${allFiguresStatement}`, {
       x: 0.95,
       y: 3.9,
       w: 11.35,
@@ -2462,16 +2949,28 @@ function renderSlide(slide, deck, spec, pageNumber) {
 
   if (spec.kind === "insights-blue") {
     const insightItems = (spec.bullets || []).slice(0, 5);
-    const items = insightItems.length ? insightItems : ["Driver not confirmed from available KPI data."];
+    const items = insightItems.length
+      ? insightItems
+      : [uiLabel(deck, "kpiDriverUnavailable", "Driver not confirmed from available KPI data.")];
+
+    const localizeKpiTitle = (title) => {
+      const t = cleanInlineText(title || "").toLowerCase();
+      if (/^conversion rate improvement$/.test(t)) return uiLabel(deck, "kpiTitleConversionRateImprovement", "Conversion Rate Improvement");
+      if (/^sales volume pressure$/.test(t)) return uiLabel(deck, "kpiTitleSalesVolumePressure", "Sales Volume Pressure");
+      if (/^aov growth partially offsetting volume decline$/.test(t)) return uiLabel(deck, "kpiTitleAovGrowthOffset", "AOV Growth Partially Offsetting Volume Decline");
+      if (/^rising cpa$/.test(t)) return uiLabel(deck, "kpiTitleRisingCpa", "Rising CPA");
+      if (/^(roi trend|trend roi)$/.test(t)) return uiLabel(deck, "kpiTitleRoiTrend", "ROI Trend");
+      return cleanInlineText(title || "");
+    };
 
     const inferKpiSignalTitle = (text) => {
       const t = cleanInlineText(text).toLowerCase();
-      if (/(conv rate|conversion rate)/.test(t)) return "Conversion Rate Improvement";
-      if (/(click|sales)/.test(t)) return "Sales Volume Pressure";
-      if (/(aov|average order value|order value)/.test(t)) return "AOV Growth Partially Offsetting Volume Decline";
-      if (/\bcpa\b|cost per acquisition|commission/.test(t)) return "Rising CPA";
-      if (/\broi\b|return on investment/.test(t)) return "ROI Trend";
-      return "KPI Signal";
+      if (/(conv rate|conversion rate)/.test(t)) return uiLabel(deck, "kpiTitleConversionRateImprovement", "Conversion Rate Improvement");
+      if (/(click|sales)/.test(t)) return uiLabel(deck, "kpiTitleSalesVolumePressure", "Sales Volume Pressure");
+      if (/(aov|average order value|order value)/.test(t)) return uiLabel(deck, "kpiTitleAovGrowthOffset", "AOV Growth Partially Offsetting Volume Decline");
+      if (/\bcpa\b|cost per acquisition|commission/.test(t)) return uiLabel(deck, "kpiTitleRisingCpa", "Rising CPA");
+      if (/\broi\b|return on investment/.test(t)) return uiLabel(deck, "kpiTitleRoiTrend", "ROI Trend");
+      return uiLabel(deck, "kpiSignalGeneric", "KPI Signal");
     };
 
     const parsed = items.map((raw) => {
@@ -2479,8 +2978,8 @@ function renderSlide(slide, deck, spec, pageNumber) {
       const idx = text.indexOf(":");
       if (idx > 8 && idx < 68) {
         return {
-          title: text.slice(0, idx).trim(),
-          detail: text.slice(idx + 1).trim() || "Detail not available from current extract."
+          title: localizeKpiTitle(text.slice(0, idx).trim()),
+          detail: text.slice(idx + 1).trim() || uiLabel(deck, "kpiDetailUnavailable", "Detail not available from current extract.")
         };
       }
       return {
@@ -2631,7 +3130,7 @@ function renderSlide(slide, deck, spec, pageNumber) {
 
   if (spec.kind === "publisher-overview") {
     let overviewTableMetrics = null;
-    slide.addText("Publisher Activity by Segment", {
+    slide.addText(uiLabel(deck, "publisherActivityBySegment", "Publisher Activity by Segment"), {
       x: 0.35,
       y: 2.04,
       w: 5.6,
@@ -2645,7 +3144,7 @@ function renderSlide(slide, deck, spec, pageNumber) {
       overviewTableMetrics = addTable(slide, deck, spec.tables[0], { x: 0.35, y: 2.38, w: 5.55, h: 4.32 });
     }
     const points = (spec.bullets || []).slice(0, 4);
-    slide.addText("Key Observations", {
+    slide.addText(uiLabel(deck, "keyObservations", "Key Observations"), {
       x: 6.25,
       y: 2.04,
       w: 5.6,
@@ -2656,16 +3155,23 @@ function renderSlide(slide, deck, spec, pageNumber) {
       margin: 0
     });
     const notes = points.length ? points : ["Driver not confirmed from available data."];
-    slide.addText(notes.map((item) => `\u2022 ${item}`).join("\n\n"), {
-      x: 6.28,
-      y: 2.38,
-      w: 5.25,
-      h: 5.0,
+    const observationRuns = [];
+    notes.forEach((item, index) => {
+      observationRuns.push({ text: `\u2022 ${item}`, options: { breakLine: true } });
+      if (index < notes.length - 1) {
+        observationRuns.push({ text: " ", options: { breakLine: true } });
+      }
+    });
+    slide.addText(observationRuns, {
+      x: 6.26,
+      y: 2.56,
+      w: 5.22,
+      h: 4.74,
       fontFace: deck.theme.fonts.body,
-      fontSize: 11.6,
+      fontSize: 11.4,
       color: toColor(deck.theme.colors.ink),
       breakLine: true,
-      margin: 0.01,
+      margin: 0.02,
       valign: "top"
     });
     if (overviewTableMetrics && overviewTableMetrics.containerH < 4.32) {
@@ -2682,28 +3188,41 @@ function renderSlide(slide, deck, spec, pageNumber) {
 
   if (spec.kind === "segment-performance-blue" || spec.kind === "segment-performance") {
     const blocks = (spec.bullets || []).slice(0, 5);
+    const segmentTileRadiusIn = Number((4 / 96).toFixed(4)); // 4px at 96 DPI
+    const segmentSignalUnavailable = uiLabel(deck, "segmentSignalUnavailable", "Segment signal not available.");
+    const detailedMovementUnavailable = uiLabel(deck, "detailedMovementUnavailable", "Detailed movement not available from this extract.");
+    const clampText = (value, maxChars = 9999) => {
+      const text = cleanInlineText(value || "");
+      if (!text || text.length <= maxChars) return text;
+      return `${text.slice(0, maxChars - 1).trimEnd()}…`;
+    };
+    // Use larger tiles and full-width bottom row so segment analysis does not clip.
     const layout = [
-      { x: 0.56, y: 2.02, w: 5.85, h: 1.82 },
-      { x: 6.82, y: 2.02, w: 5.85, h: 1.82 },
-      { x: 0.56, y: 3.96, w: 5.85, h: 1.82 },
-      { x: 6.82, y: 3.96, w: 5.85, h: 1.82 },
-      { x: 0.56, y: 5.90, w: 5.85, h: 1.30 }
+      { x: 0.56, y: 1.54, w: 5.85, h: 1.90 },
+      { x: 6.82, y: 1.54, w: 5.85, h: 1.90 },
+      { x: 0.56, y: 3.56, w: 5.85, h: 1.90 },
+      { x: 6.82, y: 3.56, w: 5.85, h: 1.90 },
+      { x: 0.56, y: 5.58, w: 12.11, h: 1.72 }
     ];
     layout.forEach((box, idx) => {
-      const raw = cleanText(blocks[idx] || "Segment signal not available.");
+      const isBottomRow = idx === 4;
+      const raw = cleanText(blocks[idx] || segmentSignalUnavailable);
       const lines = raw.split(/\r?\n/).map((line) => cleanInlineText(line)).filter(Boolean);
-      const heading = lines[0] || "Segment";
-      const detail = lines.slice(1).join(" ") || "Detailed movement not available from this extract.";
+      const heading = clampText(lines[0] || "Segment", isBottomRow ? 160 : 120);
+      const detail = clampText(lines.slice(1).join(" ") || detailedMovementUnavailable, isBottomRow ? 620 : 420);
       const headingMatch = heading.match(/^(.+?)\s*-\s*([+-]?\d+(?:[.,]\d+)?%.*)$/i);
       const headingPrefix = headingMatch ? headingMatch[1].trim() : heading;
       const headingSuffix = headingMatch ? headingMatch[2].trim() : "";
+      const headingFontSize = isBottomRow ? 12.0 : 12.4;
+      const detailFontSize = isBottomRow ? 9.8 : 10.0;
 
       slide.addShape("roundRect", {
         x: box.x,
         y: box.y,
         w: box.w,
         h: box.h,
-        radius: 0.04,
+        radius: segmentTileRadiusIn,
+        rectRadius: segmentTileRadiusIn,
         line: { color: toColor("#AFC4F5"), pt: 0.7 },
         fill: { color: toColor(deck.theme.colors.paper), transparency: 0 }
       });
@@ -2717,18 +3236,18 @@ function renderSlide(slide, deck, spec, pageNumber) {
         x: box.x + 0.22,
         y: box.y + 0.14,
         w: box.w - 0.36,
-        h: 0.34,
+        h: isBottomRow ? 0.32 : 0.34,
         fontFace: deck.theme.fonts.heading,
-        fontSize: 12.5,
+        fontSize: headingFontSize,
         margin: 0
       });
       slide.addText(detail, {
         x: box.x + 0.22,
-        y: box.y + 0.50,
+        y: box.y + 0.48,
         w: box.w - 0.36,
-        h: box.h - 0.62,
+        h: box.h - 0.56,
         fontFace: deck.theme.fonts.body,
-        fontSize: 10.2,
+        fontSize: detailFontSize,
         color: toColor(deck.theme.colors.ink),
         breakLine: true,
         margin: 0
@@ -2928,10 +3447,11 @@ async function generatePresentation(payload, options = {}) {
   const normalized = normalizePayload(payload || {});
   const theme = resolveTheme(normalized.themeName, normalized.themeOverrides);
   const deckSpec = buildDeckSpec(normalized, theme);
-  const buffer = await renderDeck(deckSpec);
-  const fileName = normalized.outputFileName || `${safeName(deckSpec.metadata.deckTitle)}_${crypto.randomUUID()}.pptx`;
+  const localizedDeckSpec = await localizeDeckSpec(deckSpec, normalized.languageCode);
+  const buffer = await renderDeck(localizedDeckSpec);
+  const fileName = normalized.outputFileName || `${safeName(localizedDeckSpec.metadata.deckTitle)}_${crypto.randomUUID()}.pptx`;
 
-  return { normalized, deckSpec, buffer, fileName };
+  return { normalized, deckSpec: localizedDeckSpec, buffer, fileName };
 }
 
 async function saveOutput(result, outputDir) {
@@ -2952,4 +3472,3 @@ module.exports = {
   generatePresentation,
   saveOutput
 };
-
