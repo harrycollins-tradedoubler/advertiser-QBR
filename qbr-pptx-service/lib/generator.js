@@ -1048,7 +1048,17 @@ function movementVerb(metric, positive = "increased", negative = "decreased") {
 }
 
 function buildExecutiveSummaryText(input) {
-  if (input.executiveSummaryText) return input.executiveSummaryText;
+  const selectedProgramIds = Array.isArray(input.analysisProgramIds)
+    ? input.analysisProgramIds.map((value) => cleanInlineText(value)).filter(Boolean)
+    : [];
+  const selectedProgramCount = new Set(selectedProgramIds).size;
+  const isMultiProgramScope = selectedProgramCount > 1;
+
+  const providedSummary = cleanInlineText(input.executiveSummaryText || "");
+  if (providedSummary) {
+    const providedLooksMultiProgram = /selected programs?|all programs?|combined|portfolio|across\s+\d+\s+programs?/i.test(providedSummary);
+    if (!isMultiProgramScope || providedLooksMultiProgram) return providedSummary;
+  }
 
   const m = input.metricMap || {};
   const sales = m.sales || {};
@@ -1058,13 +1068,18 @@ function buildExecutiveSummaryText(input) {
   const ov = m.ordervalue || {};
 
   const programLabel = cleanInlineText(input.client || "Program");
-  const affiliateLabel = /affiliate program/i.test(programLabel)
-    ? programLabel
-    : `${programLabel} Affiliate Program`;
   const periodLabel = parsePeriodRange(input.reportingPeriod, input.locale);
+  const openingLine = isMultiProgramScope
+    ? `Across ${selectedProgramCount} selected programs, performance was mixed in ${periodLabel}.`
+    : (() => {
+        const affiliateLabel = /affiliate program/i.test(programLabel)
+          ? programLabel
+          : `${programLabel} Affiliate Program`;
+        return `The ${affiliateLabel} delivered mixed results in ${periodLabel}.`;
+      })();
 
   return cleanInlineText(
-    `The ${affiliateLabel} delivered mixed results in ${periodLabel}. While AOV grew ${aov.variance || "N/A"} to ${aov.current || "-"} and conversion rate improved ${conv.variance || "N/A"}, total sales declined ${sales.variance || "N/A"} YoY driven by a ${clicks.variance || "N/A"} reduction in click volume. Total order value ${movementVerb(ov)} ${ov.variance || "N/A"} to ${ov.current || "-"}. Full KPI breakdown follows on the next slides.`
+    `${openingLine} While AOV grew ${aov.variance || "N/A"} to ${aov.current || "-"} and conversion rate improved ${conv.variance || "N/A"}, total sales declined ${sales.variance || "N/A"} YoY driven by a ${clicks.variance || "N/A"} reduction in click volume. Total order value ${movementVerb(ov)} ${ov.variance || "N/A"} to ${ov.current || "-"}. Full KPI breakdown follows on the next slides.`
   );
 }
 
