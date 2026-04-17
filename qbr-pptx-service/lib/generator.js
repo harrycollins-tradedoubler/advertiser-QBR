@@ -1,4 +1,4 @@
-const fs = require("node:fs/promises");
+﻿const fs = require("node:fs/promises");
 const fsSync = require("node:fs");
 const path = require("node:path");
 const crypto = require("node:crypto");
@@ -30,15 +30,15 @@ const HAS_KPI_ICON = Object.fromEntries(
 );
 
 const TEXT_REPLACEMENTS = [
-  [/Ã‚Â£|ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â£|Ãâ€œÃ¢â‚¬Å¡Ãâ€™ÃË†|ÃË†/g, "\u00A3"],
-  [/Ã‚â‚¬|ÃƒÆ’Ã‚Â¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬|Ãâ€œÃ¢â‚¬Å¡Ãâ€™Ã‚Â¤/g, "\u20AC"],
-  [/Ã‚Â¥/g, "\u00A5"],
-  [/Ã‚/g, ""],
-  [/Ã‚Â /g, " "],
-  [/Ã¢â‚¬â€œ|Ã¢â‚¬â€/g, "-"],
-  [/Ã¢â‚¬Ëœ|Ã¢â‚¬â„¢/g, "'"],
-  [/Ã¢â‚¬Å“|Ã¢â‚¬ï¿½/g, '"'],
-  [/zÃ…â€š|zÃƒÆ’Ã¢â‚¬Â¦ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡/g, "z\u0142"]
+  [/Ãƒâ€šÃ‚Â£|ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â£|ÃƒÂÃ¢â‚¬Å“ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÂÃ¢â‚¬â„¢ÃƒÂÃ‹â€ |ÃƒÂÃ‹â€ /g, "\u00A3"],
+  [/Ãƒâ€šÃ¢â€šÂ¬|ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬|ÃƒÂÃ¢â‚¬Å“ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÂÃ¢â‚¬â„¢Ãƒâ€šÃ‚Â¤/g, "\u20AC"],
+  [/Ãƒâ€šÃ‚Â¥/g, "\u00A5"],
+  [/Ãƒâ€š/g, ""],
+  [/Ãƒâ€šÃ‚Â /g, " "],
+  [/ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Å“|ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â/g, "-"],
+  [/ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“|ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢/g, "'"],
+  [/ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œ|ÃƒÂ¢Ã¢â€šÂ¬Ã¯Â¿Â½/g, '"'],
+  [/zÃƒâ€¦Ã¢â‚¬Å¡|zÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡/g, "z\u0142"]
 ];
 
 const TABLE_KEY_MAP = {
@@ -56,7 +56,29 @@ const TABLE_KEY_MAP = {
   brandnewtop: "brandNewPublishers",
   newemergingtop: "newEmergingPublishers",
   stoppedactivitytop: "stoppedActivity",
-  newpublisherprospects: "newPublisherProspects"
+  newpublisherprospects: "newPublisherProspects",
+  publisherperformancesummarytable: "publisherPerformanceSummary",
+  kpisummarytable: "kpiSummary",
+  programlevelbreakdown: "programLevelBreakdown",
+  kpihighlightstable: "kpiHighlights",
+  kpihighlightnarrativetable: "kpiHighlightNarrative",
+  kpihighlightnarrative: "kpiHighlightNarrative",
+  kpivariancecolorhintstable: "kpiVarianceColorHints",
+  kpivariancecolorhints: "kpiVarianceColorHints",
+  moversshakerscommission: "moversCommission",
+  brandnewprogramstable: "brandNewPrograms",
+  salesgrowthsignalstable: "salesGrowthSignals",
+  riskdependenciestable: "riskDependencies",
+  publisherperformancesummary: "publisherPerformanceSummary",
+  kpisummary: "kpiSummary",
+  programlevelbreakdown: "programLevelBreakdown",
+  kpihighlights: "kpiHighlights",
+  moverscommission: "moversCommission",
+  moverssales: "moversSales",
+  moversclicks: "moversClicks",
+  brandnewprograms: "brandNewPrograms",
+  salesgrowthsignals: "salesGrowthSignals",
+  riskdependencies: "riskDependencies"
 };
 
 const PROGRAM_BREAKDOWN_COLUMNS = [
@@ -151,15 +173,15 @@ const UI_LABELS_BY_LANGUAGE = {
     qbrReport: "Rapport QBR",
     anyQuestions: "Des questions ?",
     thankYouSubtitleTemplate: "Programme d'affiliation TD - {period} Revue trimestrielle",
-    currentPeriod: "Période actuelle",
-    comparisonPeriodYoy: "Période de comparaison (YoY)",
-    basisYoy: "Référence : glissement annuel (YoY)",
-    publisherActivityBySegment: "Activité des éditeurs par segment",
-    keyObservations: "Observations clés",
-    reportingPeriodPrefix: "Période de reporting",
-    dataAsOfPrefix: "Données au",
-    comparisonPeriodPrefix: "Période de comparaison",
-    allFiguresStatement: "Toutes les valeurs sont présentées en {currency}, sauf indication contraire. La variation YoY est calculée entre la période actuelle et la période de comparaison.",
+    currentPeriod: "PÃ©riode actuelle",
+    comparisonPeriodYoy: "PÃ©riode de comparaison (YoY)",
+    basisYoy: "RÃ©fÃ©rence : glissement annuel (YoY)",
+    publisherActivityBySegment: "ActivitÃ© des Ã©diteurs par segment",
+    keyObservations: "Observations clÃ©s",
+    reportingPeriodPrefix: "PÃ©riode de reporting",
+    dataAsOfPrefix: "DonnÃ©es au",
+    comparisonPeriodPrefix: "PÃ©riode de comparaison",
+    allFiguresStatement: "Toutes les valeurs sont prÃ©sentÃ©es en {currency}, sauf indication contraire. La variation YoY est calculÃ©e entre la pÃ©riode actuelle et la pÃ©riode de comparaison.",
     analysisTagSuffix: "Analyse"
   },
   NL: {
@@ -183,13 +205,13 @@ const UI_LABELS_BY_LANGUAGE = {
     thankYouSubtitleTemplate: "TD Affiliate-Programm - {period} Quartalsbericht",
     currentPeriod: "Aktueller Zeitraum",
     comparisonPeriodYoy: "Vergleichszeitraum (YoY)",
-    basisYoy: "Basis: Jahr-über-Jahr (YoY)",
-    publisherActivityBySegment: "Publisher-Aktivität nach Segment",
+    basisYoy: "Basis: Jahr-Ã¼ber-Jahr (YoY)",
+    publisherActivityBySegment: "Publisher-AktivitÃ¤t nach Segment",
     keyObservations: "Wichtigste Erkenntnisse",
     reportingPeriodPrefix: "Berichtszeitraum",
     dataAsOfPrefix: "Datenstand",
     comparisonPeriodPrefix: "Vergleichszeitraum",
-    allFiguresStatement: "Alle Werte werden in {currency} angegeben, sofern nicht anders vermerkt. Die YoY-Abweichung wird als aktueller Zeitraum gegenüber Vergleichszeitraum berechnet.",
+    allFiguresStatement: "Alle Werte werden in {currency} angegeben, sofern nicht anders vermerkt. Die YoY-Abweichung wird als aktueller Zeitraum gegenÃ¼ber Vergleichszeitraum berechnet.",
     analysisTagSuffix: "Analyse"
   },
   IT: {
@@ -199,23 +221,23 @@ const UI_LABELS_BY_LANGUAGE = {
     currentPeriod: "Periodo corrente",
     comparisonPeriodYoy: "Periodo di confronto (YoY)",
     basisYoy: "Base: anno su anno (YoY)",
-    publisherActivityBySegment: "Attività publisher per segmento",
+    publisherActivityBySegment: "AttivitÃ  publisher per segmento",
     keyObservations: "Osservazioni chiave",
     reportingPeriodPrefix: "Periodo di reporting",
     dataAsOfPrefix: "Dati al",
     comparisonPeriodPrefix: "Periodo di confronto",
-    allFiguresStatement: "Tutti i valori sono riportati in {currency}, salvo diversa indicazione. La variazione YoY è calcolata come periodo corrente vs periodo di confronto.",
+    allFiguresStatement: "Tutti i valori sono riportati in {currency}, salvo diversa indicazione. La variazione YoY Ã¨ calcolata come periodo corrente vs periodo di confronto.",
     analysisTagSuffix: "Analisi"
   },
   NO: {
     qbrReport: "QBR-rapport",
-    anyQuestions: "Spørsmål?",
+    anyQuestions: "SpÃ¸rsmÃ¥l?",
     thankYouSubtitleTemplate: "TD affiliateprogram - {period} kvartalsgjennomgang",
     currentPeriod: "Gjeldende periode",
     comparisonPeriodYoy: "Sammenligningsperiode (YoY)",
-    basisYoy: "Grunnlag: år-over-år (YoY)",
+    basisYoy: "Grunnlag: Ã¥r-over-Ã¥r (YoY)",
     publisherActivityBySegment: "Publisheraktivitet etter segment",
-    keyObservations: "Nøkkelobservasjoner",
+    keyObservations: "NÃ¸kkelobservasjoner",
     reportingPeriodPrefix: "Rapporteringsperiode",
     dataAsOfPrefix: "Data per",
     comparisonPeriodPrefix: "Sammenligningsperiode",
@@ -224,28 +246,28 @@ const UI_LABELS_BY_LANGUAGE = {
   },
   SV: {
     qbrReport: "QBR-rapport",
-    anyQuestions: "Några frågor?",
-    thankYouSubtitleTemplate: "TD affiliateprogram - {period} kvartalsgenomgång",
+    anyQuestions: "NÃ¥gra frÃ¥gor?",
+    thankYouSubtitleTemplate: "TD affiliateprogram - {period} kvartalsgenomgÃ¥ng",
     currentPeriod: "Aktuell period",
-    comparisonPeriodYoy: "Jämförelseperiod (YoY)",
-    basisYoy: "Grund: år över år (YoY)",
+    comparisonPeriodYoy: "JÃ¤mfÃ¶relseperiod (YoY)",
+    basisYoy: "Grund: Ã¥r Ã¶ver Ã¥r (YoY)",
     publisherActivityBySegment: "Publisheraktivitet per segment",
     keyObservations: "Viktiga observationer",
     reportingPeriodPrefix: "Rapporteringsperiod",
     dataAsOfPrefix: "Data per",
-    comparisonPeriodPrefix: "Jämförelseperiod",
-    allFiguresStatement: "Alla siffror rapporteras i {currency} om inget annat anges. YoY-variansen beräknas som aktuell period jämfört med jämförelseperiod.",
+    comparisonPeriodPrefix: "JÃ¤mfÃ¶relseperiod",
+    allFiguresStatement: "Alla siffror rapporteras i {currency} om inget annat anges. YoY-variansen berÃ¤knas som aktuell period jÃ¤mfÃ¶rt med jÃ¤mfÃ¶relseperiod.",
     analysisTagSuffix: "Analys"
   },
   DA: {
     qbrReport: "QBR-rapport",
-    anyQuestions: "Nogen spørgsmål?",
+    anyQuestions: "Nogen spÃ¸rgsmÃ¥l?",
     thankYouSubtitleTemplate: "TD affiliateprogram - {period} kvartalsgennemgang",
     currentPeriod: "Aktuel periode",
     comparisonPeriodYoy: "Sammenligningsperiode (YoY)",
-    basisYoy: "Grundlag: år-til-år (YoY)",
+    basisYoy: "Grundlag: Ã¥r-til-Ã¥r (YoY)",
     publisherActivityBySegment: "Publisheraktivitet efter segment",
-    keyObservations: "Nøgleobservationer",
+    keyObservations: "NÃ¸gleobservationer",
     reportingPeriodPrefix: "Rapporteringsperiode",
     dataAsOfPrefix: "Data pr.",
     comparisonPeriodPrefix: "Sammenligningsperiode",
@@ -254,56 +276,56 @@ const UI_LABELS_BY_LANGUAGE = {
   },
   FI: {
     qbrReport: "QBR-raportti",
-    anyQuestions: "Kysymyksiä?",
-    thankYouSubtitleTemplate: "TD-kumppanuusohjelma - {period} neljännesvuosikatsaus",
+    anyQuestions: "KysymyksiÃ¤?",
+    thankYouSubtitleTemplate: "TD-kumppanuusohjelma - {period} neljÃ¤nnesvuosikatsaus",
     currentPeriod: "Nykyinen jakso",
     comparisonPeriodYoy: "Vertailujakso (YoY)",
     basisYoy: "Perusta: vuosi vuodelta (YoY)",
-    publisherActivityBySegment: "Julkaisija-aktiivisuus segmenteittäin",
+    publisherActivityBySegment: "Julkaisija-aktiivisuus segmenteittÃ¤in",
     keyObservations: "Keskeiset havainnot",
     reportingPeriodPrefix: "Raportointijakso",
-    dataAsOfPrefix: "Tiedot päivältä",
+    dataAsOfPrefix: "Tiedot pÃ¤ivÃ¤ltÃ¤",
     comparisonPeriodPrefix: "Vertailujakso",
-    allFiguresStatement: "Kaikki luvut raportoidaan valuutassa {currency}, ellei toisin mainita. YoY-vaihtelu lasketaan nykyisen jakson ja vertailujakson välillä.",
+    allFiguresStatement: "Kaikki luvut raportoidaan valuutassa {currency}, ellei toisin mainita. YoY-vaihtelu lasketaan nykyisen jakson ja vertailujakson vÃ¤lillÃ¤.",
     analysisTagSuffix: "Analyysi"
   },
   ES: {
     qbrReport: "Informe QBR",
-    anyQuestions: "¿Preguntas?",
-    thankYouSubtitleTemplate: "Programa de afiliación TD - {period} Revisión trimestral",
-    currentPeriod: "Período actual",
-    comparisonPeriodYoy: "Período de comparación (YoY)",
+    anyQuestions: "Â¿Preguntas?",
+    thankYouSubtitleTemplate: "Programa de afiliaciÃ³n TD - {period} RevisiÃ³n trimestral",
+    currentPeriod: "PerÃ­odo actual",
+    comparisonPeriodYoy: "PerÃ­odo de comparaciÃ³n (YoY)",
     basisYoy: "Base: interanual (YoY)",
     publisherActivityBySegment: "Actividad de publishers por segmento",
     keyObservations: "Observaciones clave",
-    reportingPeriodPrefix: "Período del informe",
+    reportingPeriodPrefix: "PerÃ­odo del informe",
     dataAsOfPrefix: "Datos a fecha de",
-    comparisonPeriodPrefix: "Período de comparación",
-    allFiguresStatement: "Todas las cifras se presentan en {currency}, salvo que se indique lo contrario. La variación YoY se calcula como período actual frente a período de comparación.",
-    analysisTagSuffix: "Análisis"
+    comparisonPeriodPrefix: "PerÃ­odo de comparaciÃ³n",
+    allFiguresStatement: "Todas las cifras se presentan en {currency}, salvo que se indique lo contrario. La variaciÃ³n YoY se calcula como perÃ­odo actual frente a perÃ­odo de comparaciÃ³n.",
+    analysisTagSuffix: "AnÃ¡lisis"
   },
   PL: {
     qbrReport: "Raport QBR",
     anyQuestions: "Pytania?",
-    thankYouSubtitleTemplate: "Program partnerski TD - {period} Przegląd kwartalny",
-    currentPeriod: "Bieżący okres",
-    comparisonPeriodYoy: "Okres porównawczy (r/r)",
+    thankYouSubtitleTemplate: "Program partnerski TD - {period} PrzeglÄ…d kwartalny",
+    currentPeriod: "BieÅ¼Ä…cy okres",
+    comparisonPeriodYoy: "Okres porÃ³wnawczy (r/r)",
     basisYoy: "Podstawa: rok do roku (r/r)",
-    publisherActivityBySegment: "Aktywność wydawców według segmentu",
+    publisherActivityBySegment: "AktywnoÅ›Ä‡ wydawcÃ³w wedÅ‚ug segmentu",
     keyObservations: "Kluczowe obserwacje",
     reportingPeriodPrefix: "Okres raportowania",
-    dataAsOfPrefix: "Dane na dzień",
-    comparisonPeriodPrefix: "Okres porównawczy",
-    allFiguresStatement: "Wszystkie wartości raportowane są w walucie {currency}, o ile nie wskazano inaczej. Zmiana r/r jest liczona jako bieżący okres względem okresu porównawczego.",
+    dataAsOfPrefix: "Dane na dzieÅ„",
+    comparisonPeriodPrefix: "Okres porÃ³wnawczy",
+    allFiguresStatement: "Wszystkie wartoÅ›ci raportowane sÄ… w walucie {currency}, o ile nie wskazano inaczej. Zmiana r/r jest liczona jako bieÅ¼Ä…cy okres wzglÄ™dem okresu porÃ³wnawczego.",
     analysisTagSuffix: "Analiza",
-    segmentSignalUnavailable: "Sygnał segmentu jest niedostępny.",
-    detailedMovementUnavailable: "Szczegółowy opis zmian nie jest dostępny w tym wyciągu.",
-    kpiSignalGeneric: "Sygnał KPI",
-    kpiDriverUnavailable: "Brak potwierdzonego czynnika na podstawie dostępnych danych KPI.",
-    kpiDetailUnavailable: "Szczegóły nie są dostępne w bieżącym wyciągu.",
-    kpiTitleConversionRateImprovement: "Poprawa współczynnika konwersji",
-    kpiTitleSalesVolumePressure: "Presja na wolumen sprzedaży",
-    kpiTitleAovGrowthOffset: "Wzrost AOV częściowo kompensujący spadek wolumenu",
+    segmentSignalUnavailable: "SygnaÅ‚ segmentu jest niedostÄ™pny.",
+    detailedMovementUnavailable: "SzczegÃ³Å‚owy opis zmian nie jest dostÄ™pny w tym wyciÄ…gu.",
+    kpiSignalGeneric: "SygnaÅ‚ KPI",
+    kpiDriverUnavailable: "Brak potwierdzonego czynnika na podstawie dostÄ™pnych danych KPI.",
+    kpiDetailUnavailable: "SzczegÃ³Å‚y nie sÄ… dostÄ™pne w bieÅ¼Ä…cym wyciÄ…gu.",
+    kpiTitleConversionRateImprovement: "Poprawa wspÃ³Å‚czynnika konwersji",
+    kpiTitleSalesVolumePressure: "Presja na wolumen sprzedaÅ¼y",
+    kpiTitleAovGrowthOffset: "Wzrost AOV czÄ™Å›ciowo kompensujÄ…cy spadek wolumenu",
     kpiTitleRisingCpa: "Wzrost CPA",
     kpiTitleRoiTrend: "Trend ROI"
   }
@@ -318,9 +340,9 @@ function cleanText(value, fallback = "") {
   const raw = String(value ?? fallback);
   const repaired = TEXT_REPLACEMENTS.reduce((text, [pattern, replacement]) => text.replace(pattern, replacement), raw);
   const repairedCurrency = repaired
-    .replace(/Â£/g, "\u00A3")
-    .replace(/â‚¬/g, "\u20AC")
-    .replace(/zÅ‚/g, "z\u0142");
+    .replace(/Ã‚Â£/g, "\u00A3")
+    .replace(/Ã¢â€šÂ¬/g, "\u20AC")
+    .replace(/zÃ…â€š/g, "z\u0142");
   const xmlSafe = repairedCurrency.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, "");
   return xmlSafe.replace(/\s+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
 }
@@ -781,6 +803,47 @@ function normalizeStringList(input) {
   return [];
 }
 
+function normalizePositiveInt(input, fallback = 0) {
+  const raw = Number(input);
+  if (!Number.isFinite(raw)) return fallback;
+  const value = Math.floor(raw);
+  return value > 0 ? value : fallback;
+}
+
+function normalizeSlideBlueprint(input) {
+  if (!Array.isArray(input)) return [];
+  return input
+    .map((item, index) => {
+      if (!item || typeof item !== "object") return null;
+      const key = cleanInlineText(item.key || item.id || item.kind || "");
+      const title = cleanInlineText(item.title || "");
+      if (!key && !title) return null;
+      const slideNo = normalizePositiveInt(item.slide, index + 1);
+      return { slide: slideNo, key, title };
+    })
+    .filter(Boolean)
+    .sort((a, b) => a.slide - b.slide);
+}
+
+function normalizeSlideTableBindings(input) {
+  if (!input || typeof input !== "object" || Array.isArray(input)) return {};
+  const out = {};
+  for (const [rawKey, rawValue] of Object.entries(input)) {
+    const key = cleanInlineText(rawKey).toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+    if (!key) continue;
+
+    const values = Array.isArray(rawValue) ? rawValue : [rawValue];
+    const normalized = values
+      .flatMap((value) => String(value || "").split(/[+,|]/))
+      .map((value) => normalizeTableKey(value))
+      .filter(Boolean);
+
+    if (!normalized.length) continue;
+    out[key] = Array.from(new Set(normalized));
+  }
+  return out;
+}
+
 function resolveTheme(themeName, overrides) {
   const colors = (overrides && overrides.colors) || {};
   const fonts = (overrides && overrides.fonts) || {};
@@ -814,6 +877,21 @@ function normalizePayload(payload) {
   const nestedPayload = payload && typeof payload.payload === "object" && payload.payload
     ? payload.payload
     : {};
+  const analysisLevel = cleanInlineText(payload.analysisLevel || nestedPayload.analysisLevel || "");
+  const targetSlides = normalizePositiveInt(
+    payload.targetSlides
+    ?? payload.n_slides
+    ?? payload.target_slides
+    ?? nestedPayload.targetSlides
+    ?? nestedPayload.n_slides
+    ?? nestedPayload.target_slides,
+    0
+  );
+  const normalizedSlideBlueprint = normalizeSlideBlueprint(payload.slideBlueprint || nestedPayload.slideBlueprint);
+  const slideBlueprint = targetSlides > 0
+    ? normalizedSlideBlueprint.slice(0, targetSlides)
+    : normalizedSlideBlueprint;
+  const slideTableBindings = normalizeSlideTableBindings(payload.slideTableBindings || nestedPayload.slideTableBindings || {});
   const client = cleanInlineText(payload.client || payload.clientName || "Client");
   const deckTitle = cleanInlineText(payload.deckTitle || `QBR - ${client}`);
   const reportingPeriod = cleanInlineText(payload.reportingPeriod || "Reporting period not provided");
@@ -835,7 +913,7 @@ function normalizePayload(payload) {
   const salesGrowthSignals = normalizeSignalItems(
     payload.salesGrowthSignals || payload.salesGrowthSignalBullets || payload.salesGrowthAnalysis
   );
-  const rawProgramScopeTable = payload.programScopeTable || payload.programLevelBreakdown || payload.programBreakdownTable;
+  const rawProgramScopeTable = payload.programScopeTable || nestedPayload.programScopeTable || payload.programLevelBreakdown || payload.programBreakdownTable;
   const scopeRowsForIds = Array.isArray(rawProgramScopeTable)
     ? rawProgramScopeTable
     : rawProgramScopeTable && typeof rawProgramScopeTable === "object" && Array.isArray(rawProgramScopeTable.rows)
@@ -871,7 +949,7 @@ function normalizePayload(payload) {
   const analysisProgramIds = explicitAnalysisProgramIds.length
     ? Array.from(new Set([...explicitAnalysisProgramIds, ...scopeDerivedProgramIds]))
     : (scopeDerivedProgramIds.length ? scopeDerivedProgramIds : fallbackProgramIds);
-  const tables = normalizeTables(payload.publisherTables || {});
+  const tables = normalizeTables(payload.publisherTables || nestedPayload.publisherTables || {});
   const { metrics, metricMap } = normalizeMetrics(payload.programYoYTable || []);
   const programScopeTable = (
     Array.isArray(rawProgramScopeTable)
@@ -890,6 +968,10 @@ function normalizePayload(payload) {
     comparisonPeriod,
     qbrFocus,
     qbrFocusDetail,
+    analysisLevel,
+    targetSlides,
+    slideBlueprint,
+    slideTableBindings,
     languageCode,
     languageName,
     locale,
@@ -1333,6 +1415,70 @@ function tableOrPlaceholderNoRank(table, title, columns, placeholderRows = 5) {
   };
 }
 
+function extractVarianceToneMap(table) {
+  const base = tableRows(table, 24);
+  if (!base || !base.rows.length) return {};
+  const findCol = (aliases) =>
+    base.columns.findIndex((column) => aliases.includes(cleanInlineText(column).toLowerCase()));
+  const idxMetric = findCol(["metric", "kpi"]);
+  const idxTone = findCol(["tone", "direction", "signal"]);
+  if (idxMetric < 0 || idxTone < 0) return {};
+  const out = {};
+  base.rows.forEach((row) => {
+    const metric = cleanInlineText(row[idxMetric] || "").toLowerCase().replace(/[^a-z0-9]+/g, "");
+    const tone = cleanInlineText(row[idxTone] || "").toLowerCase();
+    if (!metric || !tone) return;
+    out[metric] = tone;
+  });
+  return out;
+}
+
+function sortProgramLevelAnalysisTable(table) {
+  if (!table || !Array.isArray(table.rows) || !table.rows.length) return table;
+  const rows = table.rows
+    .filter((row) => row && typeof row === "object" && !Array.isArray(row))
+    .slice();
+  if (!rows.length) return table;
+
+  const read = (row, aliases) => {
+    for (const alias of aliases) {
+      const direct = row[alias];
+      if (direct !== undefined && direct !== null && String(direct).trim() !== "") return direct;
+      const matchedKey = Object.keys(row).find((key) => cleanInlineText(key).toLowerCase() === String(alias).toLowerCase());
+      if (matchedKey) return row[matchedKey];
+    }
+    return "-";
+  };
+
+  rows.sort((a, b) => {
+    const aCommission = parseNumber(read(a, ["Commission", "Publisher Commission", "Current Commission"]));
+    const bCommission = parseNumber(read(b, ["Commission", "Publisher Commission", "Current Commission"]));
+    const aOrderValue = parseNumber(read(a, ["Order Value", "Current OV", "Total Order Value"]));
+    const bOrderValue = parseNumber(read(b, ["Order Value", "Current OV", "Total Order Value"]));
+    const aSales = parseNumber(read(a, ["Sales", "Current Sales"]));
+    const bSales = parseNumber(read(b, ["Sales", "Current Sales"]));
+    const aClicks = parseNumber(read(a, ["Clicks", "Current Clicks"]));
+    const bClicks = parseNumber(read(b, ["Clicks", "Current Clicks"]));
+    const aLowSignal = aCommission <= 0 && aOrderValue <= 0 && aSales <= 0;
+    const bLowSignal = bCommission <= 0 && bOrderValue <= 0 && bSales <= 0;
+
+    if (aLowSignal !== bLowSignal) return aLowSignal ? 1 : -1;
+    if (aCommission !== bCommission) return bCommission - aCommission;
+    if (aOrderValue !== bOrderValue) return bOrderValue - aOrderValue;
+    if (aSales !== bSales) return bSales - aSales;
+    if (aClicks !== bClicks) return bClicks - aClicks;
+
+    const aName = cleanInlineText(read(a, ["Program Name", "Program", "Name"]));
+    const bName = cleanInlineText(read(b, ["Program Name", "Program", "Name"]));
+    return aName.localeCompare(bName);
+  });
+
+  return {
+    ...table,
+    rows
+  };
+}
+
 function buildPublisherOverviewBullets(input) {
   const tidyObservationLine = (line) => {
     let text = cleanInlineText(line || "");
@@ -1358,7 +1504,7 @@ function buildPublisherOverviewBullets(input) {
     if (!text || text.length < 30 || text.length > 260) return false;
     if (/\bsite\s*id\b/i.test(text)) return false;
     if (/\bcurrent sales:\b|\bcurrent ov:\b|\bov yoy change:\b|\bsales yoy %:\b/i.test(text)) return false;
-    if (/^(voucher|cashback|other|content|css)\s*[-—]/i.test(text)) return false;
+    if (/^(voucher|cashback|other|content|css)\s*[-â€”]/i.test(text)) return false;
     if (/\btotal sales:\b|\btotal ov:\b|\bpublishers:\b/i.test(text)) return false;
     if (/^\d{4}-\d{2}-\d{2}\s+to\s+\d{4}-\d{2}-\d{2}/i.test(text)) return false;
     if (/\|\s/.test(text)) return false;
@@ -1533,7 +1679,7 @@ function buildSegmentPerformanceBlocks(input) {
   const clampDetail = (value, maxChars = 420) => {
     const text = cleanInlineText(value || "");
     if (!text || text.length <= maxChars) return text;
-    return `${text.slice(0, maxChars - 1).trimEnd()}…`;
+    return `${text.slice(0, maxChars - 1).trimEnd()}â€¦`;
   };
 
   return rows.slice(0, 5).map((row) => {
@@ -1683,8 +1829,8 @@ function buildDirectionalMoversTable(table, title, columns, upCount = 5, downCou
   if (!table || !Array.isArray(table.rows) || !table.rows.length) return fallback;
 
   const rows = table.rows.map((row) => {
-    const publisher = compactLabel(readTableCell(row, ["Publisher"]), 36);
-    const siteId = readTableCell(row, ["Site ID", "SiteID", "Site Id"]);
+    const publisher = compactLabel(readTableCell(row, ["Publisher", "Program Name", "Program", "Name"]), 36);
+    const siteId = readTableCell(row, ["Site ID", "SiteID", "Site Id", "Program ID", "ProgramId", "ProgramID"]);
     const current = readTableCell(row, [columns[2]]);
     const yoyChange = readTableCell(row, ["YoY Change", "Sales YoY Change", "OV YoY Change", "Clicks YoY Change"]);
     const yoyPct = readTableCell(row, ["YoY %", "Sales YoY %", "OV YoY %", "Clicks YoY %"]);
@@ -1960,7 +2106,535 @@ function buildRiskRows(input) {
   ];
 }
 
+function canonicalPublisherSlideKey(rawKey) {
+  const key = cleanInlineText(rawKey).toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+  if (!key) return "";
+  const aliases = {
+    quarterly_business_review_cover: "cover",
+    executive: "executive_summary",
+    executive_overview: "executive_summary",
+    kpi_summary: "kpi_summary_table",
+    program_breakdown: "program_level_analysis",
+    summary_next_steps: "sales_growth_risk_dependencies",
+    movers_shakers_commission: "movers_commission",
+    movers_shakers_sales: "movers_sales",
+    movers_shakers_clicks: "movers_clicks",
+    sales_growth_signals_and_risk_and_dependencies: "sales_growth_risk_dependencies",
+    sales_growth_signals_risk_dependencies: "sales_growth_risk_dependencies",
+    sales_growth_and_risk_dependencies: "sales_growth_risk_dependencies",
+    risks_and_dependencies: "risks_dependencies",
+    thankyou: "thank_you"
+  };
+  return aliases[key] || key;
+}
+
+function defaultPublisherProgramSlideBlueprint() {
+  return [
+    { slide: 1, key: "cover", title: "Quarterly Business Review Cover" },
+    { slide: 2, key: "executive_summary", title: "Executive Summary" },
+    { slide: 3, key: "publisher_performance_summary", title: "Publisher Performance Summary" },
+    { slide: 4, key: "kpi_summary_table", title: "KPI Summary" },
+    { slide: 5, key: "program_level_analysis", title: "Program Level Analysis" },
+    { slide: 6, key: "kpi_highlights", title: "KPI Highlights" },
+    { slide: 7, key: "movers_commission", title: "Movers & Shakers - Commission" },
+    { slide: 8, key: "movers_sales", title: "Movers & Shakers - Sales" },
+    { slide: 9, key: "movers_clicks", title: "Movers & Shakers - Clicks" },
+    { slide: 10, key: "brand_new_programs", title: "Brand New Programs" },
+    { slide: 11, key: "sales_growth_risk_dependencies", title: "Sales Growth Signals & Risk and Dependencies" },
+    { slide: 12, key: "thank_you", title: "Thank You" }
+  ];
+}
+
+function resolvePublisherProgramSlideBlueprint(input) {
+  const provided = Array.isArray(input.slideBlueprint) && input.slideBlueprint.length
+    ? input.slideBlueprint
+    : defaultPublisherProgramSlideBlueprint();
+
+  const normalized = provided
+    .map((item, index) => ({
+      slide: normalizePositiveInt(item.slide, index + 1),
+      key: canonicalPublisherSlideKey(item.key || item.id || item.kind || ""),
+      title: cleanInlineText(item.title || "")
+    }))
+    .filter((item) => item.key)
+    .sort((a, b) => a.slide - b.slide);
+
+  if (input.targetSlides > 0) return normalized.slice(0, input.targetSlides);
+  return normalized;
+}
+
+function boundTableKeysForSlide(input, slideKey, fallbackKeys = []) {
+  const bindings = input.slideTableBindings || {};
+  const normalizedSlideKey = canonicalPublisherSlideKey(slideKey);
+  const fallbackBindingKey = cleanInlineText(slideKey).toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+  const bindingKeys = Array.from(new Set([normalizedSlideKey, fallbackBindingKey].filter(Boolean)));
+
+  const mappedCandidates = [];
+  bindingKeys.forEach((key) => {
+    const mapped = bindings[key];
+    if (Array.isArray(mapped)) mappedCandidates.push(...mapped);
+  });
+
+  const candidates = [...mappedCandidates, ...fallbackKeys]
+    .map((candidate) => normalizeTableKey(candidate))
+    .filter(Boolean);
+  return Array.from(new Set(candidates));
+}
+
+function boundTableForSlide(input, slideKey, fallbackKeys = []) {
+  const candidates = boundTableKeysForSlide(input, slideKey, fallbackKeys);
+  for (const candidate of candidates) {
+    if (input.tables[candidate]) return input.tables[candidate];
+  }
+  return null;
+}
+
+function boundTablesForSlide(input, slideKey, fallbackKeys = []) {
+  return boundTableKeysForSlide(input, slideKey, fallbackKeys)
+    .map((key) => input.tables[key])
+    .filter(Boolean);
+}
+
+function buildKpiHighlightsBulletsFromTable(table) {
+  const base = tableRows(table, 16);
+  if (!base || !base.rows.length) return [];
+  const lookup = (aliases) => {
+    const idx = base.columns.findIndex((column) => aliases.includes(cleanInlineText(column).toLowerCase()));
+    return idx;
+  };
+  const idxKpi = lookup(["kpi", "metric"]);
+  const idxRecent = lookup(["recent", "current", "current period"]);
+  const idxPrevious = lookup(["previous", "prior year"]);
+  const idxYoY = lookup(["yoy %", "% variance", "variance"]);
+  const idxHighlight = lookup(["highlight", "bullet", "detail", "text", "narrative"]);
+
+  if (idxKpi < 0 && idxRecent < 0 && idxPrevious < 0 && idxYoY < 0 && idxHighlight > -1) {
+    return base.rows
+      .map((row) => cleanInlineText(row[idxHighlight] || ""))
+      .filter(Boolean)
+      .slice(0, 12);
+  }
+
+  return base.rows
+    .slice(0, 12)
+    .map((row) => {
+      const kpi = idxKpi > -1 ? cleanInlineText(row[idxKpi] || "") : "";
+      const recent = idxRecent > -1 ? cleanInlineText(row[idxRecent] || "") : "";
+      const previous = idxPrevious > -1 ? cleanInlineText(row[idxPrevious] || "") : "";
+      const yoy = idxYoY > -1 ? cleanInlineText(row[idxYoY] || "") : "";
+      if (!kpi) return "";
+      if (recent && previous && yoy) return `${kpi}: ${recent} vs ${previous} (${yoy}).`;
+      if (recent && previous) return `${kpi}: ${recent} vs ${previous}.`;
+      if (recent) return `${kpi}: ${recent}.`;
+      return "";
+    })
+    .filter(Boolean);
+}
+
+function buildSalesRiskDependenciesTable(input, salesGrowthTable, riskDependenciesTable) {
+  const growthBase = tableRows(salesGrowthTable, 5);
+  const riskBase = tableRows(riskDependenciesTable, 5);
+  const rows = [];
+
+  if (growthBase && growthBase.rows.length) {
+    const findGrowthCol = (aliases) =>
+      growthBase.columns.findIndex((column) => aliases.includes(cleanInlineText(column).toLowerCase()));
+    const idxProgram = findGrowthCol(["program", "program name", "publisher", "name"]);
+    const idxSalesYoY = findGrowthCol(["sales yoy %", "yoy %", "sales % yoy"]);
+    const idxSalesChange = findGrowthCol(["sales yoy change", "yoy change"]);
+    const idxOvChange = findGrowthCol(["order value yoy change"]);
+    const idxCommChange = findGrowthCol(["commission yoy change"]);
+
+    growthBase.rows.slice(0, 5).forEach((row) => {
+      const program = idxProgram > -1 ? cleanInlineText(row[idxProgram] || "-") : "-";
+      const signal = idxSalesYoY > -1
+        ? `Sales YoY ${cleanInlineText(row[idxSalesYoY] || "-")}`
+        : idxSalesChange > -1
+          ? `Sales Change ${cleanInlineText(row[idxSalesChange] || "-")}`
+          : "Positive movement";
+      const details = [
+        idxOvChange > -1 ? `OV ${cleanInlineText(row[idxOvChange] || "-")}` : "",
+        idxCommChange > -1 ? `Commission ${cleanInlineText(row[idxCommChange] || "-")}` : ""
+      ].filter(Boolean).join(" | ");
+      rows.push(["Growth Signal", program || "-", signal, details || "-"]);
+    });
+  }
+
+  if (riskBase && riskBase.rows.length) {
+    const findRiskCol = (aliases) =>
+      riskBase.columns.findIndex((column) => aliases.includes(cleanInlineText(column).toLowerCase()));
+    const idxProgram = findRiskCol(["program", "program name", "publisher", "name"]);
+    const idxRiskType = findRiskCol(["risk type", "risk", "type"]);
+    const idxEvidence = findRiskCol(["evidence", "detail", "mitigation", "note"]);
+
+    riskBase.rows.slice(0, 5).forEach((row) => {
+      const program = idxProgram > -1 ? cleanInlineText(row[idxProgram] || "-") : "-";
+      const risk = idxRiskType > -1 ? cleanInlineText(row[idxRiskType] || "Risk") : "Risk";
+      const evidence = idxEvidence > -1 ? cleanInlineText(row[idxEvidence] || "-") : "-";
+      rows.push(["Risk / Dependency", program || "-", risk || "Risk", evidence || "-"]);
+    });
+  }
+
+  return {
+    title: "Sales Growth Signals & Risk and Dependencies",
+    columns: ["Type", "Program", "Signal / Risk", "Detail"],
+    colW: [1.9, 3.0, 2.3, 5.5],
+    rows: rows.length ? rows : [["-", "-", "-", "-"]],
+    dense: false
+  };
+}
+
+function buildPublisherProgramDeckSpec(input, theme) {
+  const slides = [];
+  const headline = buildHeadline(input);
+  const executiveNarrative = buildExecutiveSummaryText(input);
+  const reportingSummary = `${input.reportingPeriod} vs ${input.comparisonPeriod}`;
+  const blueprint = resolvePublisherProgramSlideBlueprint(input);
+
+  const executiveCardConfig = [
+    { key: "sales", label: "Sales", iconKey: "sales", icon: "\u2630" },
+    { key: "ordervalue", label: "Total Order Value", iconKey: "ordervalue", icon: "\u25A4" },
+    { key: "aov", label: "Average Order Value (AOV)", iconKey: "aov", icon: "\u2197" },
+    { key: "convrate", label: "Conversion Rate", iconKey: "convrate", icon: "\u26A1" },
+    { key: "roi", label: "ROI", iconKey: "roi", icon: "\u21BB" }
+  ];
+
+  const topCards = executiveCardConfig
+    .map((cfg) => {
+      const card = metricCard(input.metricMap[cfg.key]);
+      if (!card) return null;
+      const hasIconPath = Boolean(cfg.iconKey && HAS_KPI_ICON[cfg.iconKey]);
+      return {
+        ...card,
+        label: cfg.label,
+        icon: cfg.icon,
+        iconPath: hasIconPath ? KPI_ICON_PATHS[cfg.iconKey] : ""
+      };
+    })
+    .filter(Boolean);
+
+  const publisherOverviewBullets = buildPublisherOverviewBullets(input);
+  const fallbackKpiBullets = buildKpiAnalysisBullets(input);
+  const kpiHighlightTables = boundTablesForSlide(input, "kpi_highlights", ["kpiHighlights", "kpiHighlightNarrative"]);
+  const kpiHighlightsBullets = kpiHighlightTables.flatMap((table) => buildKpiHighlightsBulletsFromTable(table));
+  const mergedKpiBullets = [];
+  for (const bullet of [...kpiHighlightsBullets, ...fallbackKpiBullets]) {
+    const text = cleanInlineText(bullet || "");
+    if (!text) continue;
+    if (mergedKpiBullets.some((existing) => existing.toLowerCase() === text.toLowerCase())) continue;
+    mergedKpiBullets.push(text);
+    if (mergedKpiBullets.length >= 12) break;
+  }
+  const kpiAnalysisBullets = mergedKpiBullets.length ? mergedKpiBullets : fallbackKpiBullets;
+
+  const publisherPerformanceSummaryTable = tableOrPlaceholderNoRank(
+    boundTableForSlide(input, "publisher_performance_summary", ["publisherPerformanceSummary"]),
+    "Publisher Performance Summary",
+    ["Metric", "Recent", "Previous", "Difference", "% Variance"],
+    12
+  );
+
+  const kpiSummaryBoundTables = boundTablesForSlide(input, "kpi_summary_table", ["kpiSummary", "kpiVarianceColorHints"]);
+  const kpiSummarySourceTable = kpiSummaryBoundTables.find((table) => cleanInlineText(table && table.key).toLowerCase() !== "kpivariancecolorhints")
+    || boundTableForSlide(input, "kpi_summary_table", ["kpiSummary"]);
+  const kpiSummaryTable = tableOrPlaceholderNoRank(
+    kpiSummarySourceTable,
+    "KPI Summary",
+    ["Period", "Clicks", "Sales", "Conv Rate", "AOV", "EPC", "Order Value", "Publisher Commission", "Active Programs", "Programs w/ Commission"],
+    8
+  );
+  const kpiVarianceHintsTable = kpiSummaryBoundTables.find((table) => cleanInlineText(table && table.key).toLowerCase() === "kpivariancecolorhints")
+    || boundTableForSlide(input, "kpi_variance_color_hints", ["kpiVarianceColorHints"]);
+  const varianceColorMap = extractVarianceToneMap(kpiVarianceHintsTable);
+  if (Object.keys(varianceColorMap).length) {
+    kpiSummaryTable.varianceColorMap = varianceColorMap;
+  }
+
+  const boundProgramBreakdown = boundTableForSlide(input, "program_level_analysis", ["programLevelBreakdown"]);
+  const rankedProgramBreakdown = boundProgramBreakdown ? sortProgramLevelAnalysisTable(boundProgramBreakdown) : null;
+  const programBreakdownTable = boundProgramBreakdown
+    ? tableOrPlaceholderNoRank(
+      rankedProgramBreakdown,
+      "Program Level Breakdown",
+      ["Program ID", "Program Name", "Clicks", "Sales", "Order Value", "Commission", "Comm YoY %", "Sales YoY %", "Clicks YoY %"],
+      12
+    )
+    : buildProgramBreakdownTable(input);
+
+  const moversCommission = boundTableForSlide(input, "movers_commission", ["moversCommission"]);
+  const moversSales = boundTableForSlide(input, "movers_sales", ["moversSales"]);
+  const moversClicks = boundTableForSlide(input, "movers_clicks", ["moversClicks"]);
+
+  const brandNewProgramsTable = tableOrPlaceholderNoRank(
+    boundTableForSlide(input, "brand_new_programs", ["brandNewPrograms"]),
+    "Brand New Programs",
+    ["Program ID", "Program Name", "Clicks", "Sales", "Order Value", "Commission"],
+    10
+  );
+
+  const salesGrowthTable = boundTableForSlide(input, "sales_growth_risk_dependencies", ["salesGrowthSignals"]);
+  const riskDependenciesTable = boundTableForSlide(input, "sales_growth_risk_dependencies", ["riskDependencies"]);
+  const salesRiskDependenciesTable = buildSalesRiskDependenciesTable(input, salesGrowthTable, riskDependenciesTable);
+  const salesGrowthSignals = buildSalesGrowthSignals(input);
+
+  for (const blueprintSlide of blueprint) {
+    const key = canonicalPublisherSlideKey(blueprintSlide.key);
+    const customTitle = cleanInlineText(blueprintSlide.title || "");
+
+    if (key === "cover") {
+      slides.push({
+        id: "cover",
+        kind: "cover",
+        title: `${input.client} Affiliate Program Quarterly Business Review`,
+        subtitle: "",
+        headline,
+        summary: input.qbrFocusDetail
+          ? `${input.qbrFocus}. ${input.qbrFocusDetail}`
+          : `A comprehensive year-over-year analysis of the ${input.client} affiliate program's performance, publisher dynamics, and strategic priorities to drive growth and optimise outcomes.`,
+        bullets: [`Client: ${input.client}`, `Reporting currency: ${input.currencyCode}`, `Language: ${input.languageName}`],
+        kpis: [],
+        tables: []
+      });
+      continue;
+    }
+
+    if (key === "reporting_period") {
+      slides.push({
+        id: "reporting-period",
+        kind: "reporting-period",
+        title: customTitle || "Reporting Period",
+        subtitle: "Current and YoY comparison windows",
+        headline: "",
+        summary: "",
+        bullets: [
+          `Current period: ${input.reportingPeriod}`,
+          `Comparison period: ${input.comparisonPeriod}`,
+          `Primary focus: ${input.qbrFocus}${input.qbrFocusDetail ? ` - ${input.qbrFocusDetail}` : ""}`
+        ],
+        kpis: [],
+        tables: [],
+        callout: `All figures are reported in ${input.currencyCode} unless otherwise stated. YoY variance is calculated as current period vs comparison period.`
+      });
+      continue;
+    }
+
+    if (key === "executive_summary") {
+      slides.push({
+        id: "executive-summary",
+        kind: "program-executive-summary",
+        title: customTitle || "Executive Summary",
+        headline: "",
+        summary: executiveNarrative,
+        bullets: [],
+        kpis: topCards,
+        tables: []
+      });
+      continue;
+    }
+
+    if (key === "publisher_performance_summary") {
+      slides.push({
+        id: "publisher-performance-summary",
+        kind: "publisher-overview",
+        title: customTitle || "Publisher Performance Summary",
+        subtitle: reportingSummary,
+        bullets: publisherOverviewBullets.slice(0, 4),
+        kpis: [],
+        tables: [publisherPerformanceSummaryTable]
+      });
+      continue;
+    }
+
+    if (key === "kpi_summary_table") {
+      slides.push({
+        id: "kpi-summary",
+        kind: "kpi-table",
+        title: customTitle || "KPI Summary",
+        subtitle: "Unified KPI breakdown vs prior year.",
+        bullets: [],
+        kpis: [],
+        tables: [kpiSummaryTable]
+      });
+      continue;
+    }
+
+    if (key === "program_level_analysis") {
+      slides.push({
+        id: "program-level-analysis",
+        kind: "program-breakdown",
+        title: customTitle || "Program Level Analysis",
+        subtitle: "Per-program publisher performance for current period vs prior year.",
+        bullets: [],
+        kpis: [],
+        tables: [programBreakdownTable]
+      });
+      continue;
+    }
+
+    if (key === "kpi_highlights") {
+      slides.push({
+        id: "kpi-highlights",
+        kind: "insights-blue",
+        title: customTitle || "KPI Highlights",
+        subtitle: "What the numbers mean for the business - key signals and context.",
+        bullets: kpiAnalysisBullets,
+        kpis: [],
+        tables: []
+      });
+      continue;
+    }
+
+    if (key === "movers_commission") {
+      slides.push({
+        id: "movers-shakers-commission",
+        kind: "publisher-table",
+        title: customTitle || "Movers & Shakers - Commission",
+        subtitle: "Largest YoY commission movers and decliners.",
+        bullets: [],
+        kpis: [],
+        tables: [
+          buildDirectionalMoversTable(moversCommission, "Movers & Shakers - Commission", [
+            "Program",
+            "Program ID",
+            "Current Commission",
+            "YoY Change",
+            "YoY %"
+          ])
+        ],
+        callout: "Up = positive YoY movement; Down = negative YoY movement."
+      });
+      continue;
+    }
+
+    if (key === "movers_sales") {
+      slides.push({
+        id: "movers-shakers-sales",
+        kind: "publisher-table",
+        title: customTitle || "Movers & Shakers - Sales",
+        subtitle: "Largest YoY sales movers and decliners.",
+        bullets: [],
+        kpis: [],
+        tables: [
+          buildDirectionalMoversTable(moversSales, "Movers & Shakers - Sales", [
+            "Program",
+            "Program ID",
+            "Current Sales",
+            "YoY Change",
+            "YoY %"
+          ])
+        ],
+        callout: "Up = positive YoY movement; Down = negative YoY movement."
+      });
+      continue;
+    }
+
+    if (key === "movers_clicks") {
+      slides.push({
+        id: "movers-shakers-clicks",
+        kind: "publisher-table",
+        title: customTitle || "Movers & Shakers - Clicks",
+        subtitle: "Largest YoY click movers and decliners.",
+        bullets: [],
+        kpis: [],
+        tables: [
+          buildDirectionalMoversTable(moversClicks, "Movers & Shakers - Clicks", [
+            "Program",
+            "Program ID",
+            "Current Clicks",
+            "YoY Change",
+            "YoY %"
+          ])
+        ],
+        callout: "Traffic movement helps explain volume and conversion shifts across program mix."
+      });
+      continue;
+    }
+
+    if (key === "brand_new_programs") {
+      slides.push({
+        id: "brand-new-programs",
+        kind: "publisher-table",
+        title: customTitle || "Brand New Programs",
+        subtitle: "Programs activated for the first time in the current period.",
+        bullets: [],
+        kpis: [],
+        tables: [brandNewProgramsTable],
+        callout: "Brand-new programs are not included in YoY comparisons until a prior-year baseline exists."
+      });
+      continue;
+    }
+
+    if (key === "sales_growth_signals") {
+      slides.push({
+        id: "sales-growth-signals",
+        kind: "sales-growth-signals-blue",
+        title: customTitle || "Sales Growth Signals",
+        subtitle: `Factual observations from the data relevant to programme's sales performance - ${input.reportingPeriod}.`,
+        bullets: [],
+        signals: salesGrowthSignals,
+        kpis: [],
+        tables: []
+      });
+      continue;
+    }
+
+    if (key === "sales_growth_risk_dependencies" || key === "risks_dependencies") {
+      slides.push({
+        id: "sales-growth-risk-dependencies",
+        kind: "risks-dependencies",
+        title: customTitle || "Sales Growth Signals & Risk and Dependencies",
+        subtitle: "Growth indicators and key risks/dependencies for the next review cycle.",
+        bullets: [],
+        kpis: [],
+        tables: [salesRiskDependenciesTable]
+      });
+      continue;
+    }
+
+    if (key === "thank_you") {
+      slides.push({
+        id: "thank-you",
+        kind: "thank-you",
+        title: `${input.client} - Thank you.`,
+        subtitle: "",
+        bullets: [],
+        kpis: [],
+        tables: []
+      });
+      continue;
+    }
+  }
+
+  if (!slides.length) {
+    return buildDeckSpec({ ...input, analysisLevel: "" }, theme);
+  }
+
+  return {
+    metadata: {
+      requestId: input.requestId,
+      client: input.client,
+      deckTitle: input.deckTitle,
+      reportingPeriod: input.reportingPeriod,
+      comparisonPeriod: input.comparisonPeriod,
+      languageCode: input.languageCode,
+      languageName: input.languageName,
+      locale: input.locale || "en-GB",
+      uiLabels: uiLabelsForLanguage(input.languageCode),
+      currencyCode: input.currencyCode,
+      qbrFocus: input.qbrFocus,
+      analysisProgramIds: Array.isArray(input.analysisProgramIds) ? input.analysisProgramIds : [],
+      generatedAt: new Date().toISOString()
+    },
+    theme,
+    slides
+  };
+}
+
 function buildDeckSpec(input, theme) {
+  if (cleanInlineText(input.analysisLevel).toLowerCase() === "publisher_program") {
+    return buildPublisherProgramDeckSpec(input, theme);
+  }
+
   const slides = [];
   const headline = buildHeadline(input);
   const executiveCardConfig = [
@@ -2462,7 +3136,7 @@ function isTableValueNumeric(value) {
   const text = cleanInlineText(value || "");
   if (!text || text === "-" || /^n\/a$/i.test(text)) return false;
   const normalized = text
-    .replace(/[£$€,\s]/g, "")
+    .replace(/[Â£$â‚¬,\s]/g, "")
     .replace(/%$/, "")
     .replace(/^\+/, "");
   return /^-?\d+(\.\d+)?$/.test(normalized);
@@ -2624,11 +3298,43 @@ function isDeltaColumn(header) {
   return lower.includes("change") || lower.includes("variance") || lower.includes("yoy") || lower.includes("trend");
 }
 
-function cellTextColor(table, column, value, deck) {
-  if (!isDeltaColumn(column)) return toColor(deck.theme.colors.ink);
+function isVarianceRow(table, row) {
+  if (!Array.isArray(row) || !row.length) return false;
+
+  const values = row.map((value) => cleanInlineText(value || "").toLowerCase());
+  if (values.some((value) => value.includes("variance"))) return true;
+
+  const firstHeader = cleanInlineText((table.columns && table.columns[0]) || "").toLowerCase();
+  const firstValue = values[0] || "";
+  return (firstHeader === "period" || firstHeader === "row" || firstHeader === "metric") && firstValue.includes("variance");
+}
+
+function metricToneFromVarianceHints(table, column) {
+  const map = table && table.varianceColorMap && typeof table.varianceColorMap === "object"
+    ? table.varianceColorMap
+    : null;
+  if (!map) return "";
+  const key = cleanInlineText(column || "").toLowerCase().replace(/[^a-z0-9]+/g, "");
+  return key ? cleanInlineText(map[key] || "").toLowerCase() : "";
+}
+
+function cellTextColor(table, column, value, deck, row = [], cellIndex = 0) {
+  const varianceRow = isVarianceRow(table, row);
+  const labelCell = cleanInlineText(value || "").toLowerCase().includes("variance");
+  const useDeltaColor = isDeltaColumn(column) || (varianceRow && !labelCell);
+  if (!useDeltaColor) return toColor(deck.theme.colors.ink);
+
+  const hintedTone = metricToneFromVarianceHints(table, column);
+  if (hintedTone.startsWith("pos")) return toColor(deck.theme.colors.success);
+  if (hintedTone.startsWith("neg")) return toColor(deck.theme.colors.accentAlt);
+  if (hintedTone.startsWith("neu") || hintedTone === "na") return toColor(deck.theme.colors.ink);
+
   const text = cleanInlineText(value);
-  if (text.startsWith("+")) return toColor(deck.theme.colors.success);
-  if (text.startsWith("-")) return toColor(deck.theme.colors.accentAlt);
+  if (text.startsWith("+") || text.startsWith("â–²")) return toColor(deck.theme.colors.success);
+  if (text.startsWith("-") || text.startsWith("â–¼")) return toColor(deck.theme.colors.accentAlt);
+  const numeric = parseNumber(text);
+  if (Number.isFinite(numeric) && numeric > 0) return toColor(deck.theme.colors.success);
+  if (Number.isFinite(numeric) && numeric < 0) return toColor(deck.theme.colors.accentAlt);
   return toColor(deck.theme.colors.ink);
 }
 
@@ -2661,21 +3367,42 @@ function addTable(slide, deck, table, box, mode = "light") {
         ? "#F4F5F7"
         : "#ECEDEF";
 
-    return row.map((value, cellIndex) => ({
-      text: value,
-      options: {
-        bold: isSectionRow,
-        fontFace: deck.theme.fonts.body,
-        fontSize: table.dense ? 9 : (isSectionRow ? 10.5 : 10),
-        color: isSectionRow
-          ? toColor(deck.theme.colors.ink)
-          : cellTextColor(table, table.columns[cellIndex] || "", value, deck),
-        fill: { color: toColor(rowFill) },
-        margin: 0.045,
-        align: columnAlignments[cellIndex] || "left",
-        valign: "mid"
+    const varianceRowLocal = row
+      .map((value) => cleanInlineText(value || "").toLowerCase())
+      .some((value) => value.includes("variance"));
+
+    return row.map((value, cellIndex) => {
+      const valueText = cleanInlineText(value || "");
+      const labelCell = valueText.toLowerCase().includes("variance");
+
+      let textColor = isSectionRow
+        ? toColor(deck.theme.colors.ink)
+        : cellTextColor(table, table.columns[cellIndex] || "", value, deck, row, cellIndex);
+
+      if (!isSectionRow && varianceRowLocal && !labelCell) {
+        if (valueText.startsWith("+") || valueText.startsWith("â–²") || parseNumber(valueText) > 0) {
+          textColor = toColor(deck.theme.colors.success);
+        } else if (valueText.startsWith("-") || valueText.startsWith("â–¼") || parseNumber(valueText) < 0) {
+          textColor = toColor(deck.theme.colors.accentAlt);
+        } else {
+          textColor = toColor(deck.theme.colors.ink);
+        }
       }
-    }));
+
+      return {
+        text: value,
+        options: {
+          bold: isSectionRow,
+          fontFace: deck.theme.fonts.body,
+          fontSize: table.dense ? 9 : (isSectionRow ? 10.5 : 10),
+          color: textColor,
+          fill: { color: toColor(rowFill) },
+          margin: 0.045,
+          align: columnAlignments[cellIndex] || "left",
+          valign: "mid"
+        }
+      };
+    });
   });
 
   let headerH = table.dense ? 0.34 : 0.58;
@@ -3013,7 +3740,7 @@ function renderSlide(slide, deck, spec, pageNumber) {
   }
 
   if (spec.kind === "insights-blue") {
-    const insightItems = (spec.bullets || []).slice(0, 5);
+    const insightItems = (spec.bullets || []).slice(0, 10);
     const items = insightItems.length
       ? insightItems
       : [uiLabel(deck, "kpiDriverUnavailable", "Driver not confirmed from available KPI data.")];
@@ -3054,18 +3781,19 @@ function renderSlide(slide, deck, spec, pageNumber) {
     });
 
     const detailChars = parsed.reduce((sum, item) => sum + item.detail.length, 0);
-    const titleSize = detailChars > 1250 ? 12.4 : 13.2;
-    const detailSize = detailChars > 1250 ? 10.4 : 11.1;
+    const titleSize = detailChars > 1800 ? 11.1 : detailChars > 1300 ? 11.6 : 12.2;
+    const detailSize = detailChars > 1800 ? 9.0 : detailChars > 1300 ? 9.5 : 10.0;
 
-    let y = 1.86;
+    let y = 1.62;
     parsed.forEach((item) => {
       const detailLength = item.detail.length;
-      const blockH = detailLength > 250 ? 1.24 : detailLength > 170 ? 1.06 : 0.92;
+      const blockH = detailLength > 260 ? 0.98 : detailLength > 190 ? 0.84 : 0.72;
+      if (y + blockH > 6.95) return;
       slide.addText(`\u2022 ${item.title}`, {
         x: 0.80,
         y,
         w: 12.0,
-        h: 0.30,
+        h: 0.24,
         align: "left",
         valign: "top",
         fontFace: deck.theme.fonts.heading,
@@ -3076,9 +3804,9 @@ function renderSlide(slide, deck, spec, pageNumber) {
       });
       slide.addText(item.detail, {
         x: 1.05,
-        y: y + 0.31,
+        y: y + 0.24,
         w: 11.65,
-        h: blockH - 0.20,
+        h: blockH - 0.12,
         align: "left",
         valign: "top",
         fontFace: deck.theme.fonts.body,
@@ -3087,7 +3815,7 @@ function renderSlide(slide, deck, spec, pageNumber) {
         breakLine: true,
         margin: 0
       });
-      y += blockH + 0.08;
+      y += blockH + 0.045;
     });
     return;
   }
@@ -3259,7 +3987,7 @@ function renderSlide(slide, deck, spec, pageNumber) {
     const clampText = (value, maxChars = 9999) => {
       const text = cleanInlineText(value || "");
       if (!text || text.length <= maxChars) return text;
-      return `${text.slice(0, maxChars - 1).trimEnd()}…`;
+      return `${text.slice(0, maxChars - 1).trimEnd()}â€¦`;
     };
     // Use larger tiles and full-width bottom row so segment analysis does not clip.
     const layout = [
@@ -3537,3 +4265,4 @@ module.exports = {
   generatePresentation,
   saveOutput
 };
+
