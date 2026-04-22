@@ -2873,7 +2873,7 @@ function buildDeckSpec(input, theme) {
     id: "sales-growth-signals",
     kind: "sales-growth-signals-blue",
     title: "Sales Growth Signals",
-    subtitle: `Factual observations from the data relevant to the programme's sales performance - ${input.reportingPeriod}.`,
+    subtitle: "",
     bullets: [],
     signals: salesGrowthSignals,
     kpis: [],
@@ -3630,25 +3630,6 @@ function renderSlide(slide, deck, spec, pageNumber) {
       fontFace: deck.theme.fonts.heading,
       fontSize: 17.5,
       color: toColor(deck.theme.colors.paper),
-      margin: 0
-    });
-    const thankYouSubtitleTemplate = uiLabel(
-      deck,
-      "thankYouSubtitleTemplate",
-      "TD Affiliate Program - {period} Quarterly Business Review"
-    );
-    const thankYouSubtitle = thankYouSubtitleTemplate.includes("{period}")
-      ? thankYouSubtitleTemplate.replace("{period}", deck.metadata.reportingPeriod)
-      : `${thankYouSubtitleTemplate} ${deck.metadata.reportingPeriod}`;
-    slide.addText(thankYouSubtitle, {
-      x: 0.95,
-      y: 3.17,
-      w: 10.8,
-      h: 0.24,
-      fontFace: deck.theme.fonts.body,
-      fontSize: 10.2,
-      color: toColor(deck.theme.colors.paper),
-      transparency: 15,
       margin: 0
     });
     return;
