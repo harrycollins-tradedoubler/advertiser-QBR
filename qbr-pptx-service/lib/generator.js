@@ -2476,7 +2476,7 @@ function buildPublisherProgramDeckSpec(input, theme) {
         id: "kpi-highlights",
         kind: "insights-blue",
         title: customTitle || "KPI Highlights",
-        subtitle: "What the numbers mean for the business - key signals and context.",
+        subtitle: "",
         bullets: kpiAnalysisBullets,
         kpis: [],
         tables: []
@@ -2756,7 +2756,7 @@ function buildDeckSpec(input, theme) {
     id: "kpi-highlights",
     kind: "insights-blue",
     title: "KPI Highlights & Business Implications",
-    subtitle: "What the numbers mean for the business - key signals and context.",
+    subtitle: "",
     bullets: kpiAnalysisBullets,
     kpis: [],
     tables: []
@@ -3423,7 +3423,6 @@ function addTable(slide, deck, table, box, mode = "light") {
 
   const effectiveTableH = Number((headerH + (bodyCount * bodyH)).toFixed(3));
   const containerH = Math.min(box.h, Number((effectiveTableH + 0.16).toFixed(3)));
-  const rowHeights = [headerH, ...Array.from({ length: bodyCount }, () => bodyH)];
   let colW;
   if (Array.isArray(table.colW) && table.colW.length === table.columns.length) {
     const numeric = table.colW.map((w) => Number(w)).filter((w) => Number.isFinite(w) && w > 0);
@@ -3433,6 +3432,12 @@ function addTable(slide, deck, table, box, mode = "light") {
         colW = numeric.map((w) => Number(((w / total) * innerW).toFixed(3)));
       }
     }
+  }
+  if (!colW) {
+    const equalWidth = Number((innerW / Math.max(1, table.columns.length)).toFixed(3));
+    colW = table.columns.map(() => equalWidth);
+    const consumed = colW.reduce((sum, width) => sum + width, 0);
+    colW[colW.length - 1] = Number((colW[colW.length - 1] + (innerW - consumed)).toFixed(3));
   }
 
   slide.addShape("rect", {
@@ -3444,16 +3449,50 @@ function addTable(slide, deck, table, box, mode = "light") {
     fill: { color: toColor(deck.theme.colors.paper) }
   });
 
-  slide.addTable([header, ...bodyRows], {
-    x: innerX,
-    y: innerY,
-    w: innerW,
-    h: effectiveTableH,
-    colW,
-    rowH: rowHeights,
-    border: { type: "solid", color: toColor("#E3E6EC"), pt: 0.3 },
-    margin: 0.02,
-    autoFit: false
+  const rowHeights = [headerH, ...Array.from({ length: bodyCount }, () => bodyH)];
+  const rows = [header, ...bodyRows];
+  const border = { color: toColor("#E3E6EC"), pt: 0.3 };
+  const cellPadX = 0.045;
+  const cellPadY = 0.02;
+  let cursorY = innerY;
+
+  rows.forEach((row, rowIndex) => {
+    const rowHeight = rowHeights[rowIndex] || bodyH;
+    const maxFontSize = Math.max(7, Number((((rowHeight * 72) - 4) * 0.62).toFixed(1)));
+    const defaultFontSize = rowIndex === 0
+      ? (table.dense ? 9 : 10.5)
+      : (table.dense ? 9 : 10);
+    let cursorX = innerX;
+
+    row.forEach((cell, cellIndex) => {
+      const cellWidth = colW[cellIndex] || colW[colW.length - 1] || innerW;
+      const fontSize = Math.min(defaultFontSize, maxFontSize);
+      slide.addShape("rect", {
+        x: cursorX,
+        y: cursorY,
+        w: cellWidth,
+        h: rowHeight,
+        line: border,
+        fill: cell.options.fill
+      });
+      slide.addText(cleanInlineText(cell.text || "-"), {
+        x: cursorX + cellPadX,
+        y: cursorY + cellPadY,
+        w: Math.max(0.08, cellWidth - (cellPadX * 2)),
+        h: Math.max(0.08, rowHeight - (cellPadY * 2)),
+        fontFace: cell.options.fontFace,
+        fontSize,
+        bold: cell.options.bold,
+        color: cell.options.color,
+        align: cell.options.align || "left",
+        valign: cell.options.valign || "mid",
+        margin: 0,
+        breakLine: true
+      });
+      cursorX = Number((cursorX + cellWidth).toFixed(3));
+    });
+
+    cursorY = Number((cursorY + rowHeight).toFixed(3));
   });
 
   return { containerH, tableH: effectiveTableH };
@@ -3780,42 +3819,50 @@ function renderSlide(slide, deck, spec, pageNumber) {
       };
     });
 
-    const detailChars = parsed.reduce((sum, item) => sum + item.detail.length, 0);
-    const titleSize = detailChars > 1800 ? 11.1 : detailChars > 1300 ? 11.6 : 12.2;
-    const detailSize = detailChars > 1800 ? 9.0 : detailChars > 1300 ? 9.5 : 10.0;
-
-    let y = 1.62;
-    parsed.forEach((item) => {
-      const detailLength = item.detail.length;
-      const blockH = detailLength > 260 ? 0.98 : detailLength > 190 ? 0.84 : 0.72;
-      if (y + blockH > 6.95) return;
-      slide.addText(`\u2022 ${item.title}`, {
-        x: 0.80,
-        y,
-        w: 12.0,
-        h: 0.24,
-        align: "left",
-        valign: "top",
+    parsed.slice(0, 5).forEach((item, index) => {
+      const y = 1.88 + index * 1.08;
+      slide.addShape("roundRect", {
+        x: 0.72,
+        y: y + 0.06,
+        w: 0.34,
+        h: 0.34,
+        radius: 0.05,
+        line: { color: toColor(deck.theme.colors.paper), pt: 0 },
+        fill: { color: toColor(deck.theme.colors.paper), transparency: 22 }
+      });
+      slide.addText(String(index + 1), {
+        x: 0.84,
+        y: y + 0.14,
+        w: 0.10,
+        h: 0.18,
         fontFace: deck.theme.fonts.heading,
-        fontSize: titleSize,
-        color: toColor(deck.theme.colors.paper),
+        fontSize: 11,
         bold: true,
+        align: "center",
+        color: toColor(deck.theme.colors.ink),
+        margin: 0
+      });
+      slide.addText(item.title, {
+        x: 1.18,
+        y,
+        w: 11.4,
+        h: 0.34,
+        fontFace: deck.theme.fonts.heading,
+        fontSize: 16,
+        color: toColor(deck.theme.colors.paper),
         margin: 0
       });
       slide.addText(item.detail, {
-        x: 1.05,
-        y: y + 0.24,
-        w: 11.65,
-        h: blockH - 0.12,
-        align: "left",
-        valign: "top",
+        x: 1.18,
+        y: y + 0.34,
+        w: 11.45,
+        h: 0.70,
         fontFace: deck.theme.fonts.body,
-        fontSize: detailSize,
+        fontSize: 10.8,
         color: toColor(deck.theme.colors.paper),
         breakLine: true,
         margin: 0
       });
-      y += blockH + 0.045;
     });
     return;
   }
