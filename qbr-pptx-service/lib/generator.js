@@ -96,9 +96,9 @@ const DEFAULT_THEME = {
   companyName: "Tradedoubler",
   logoText: "Tradedoubler",
   fonts: {
-    heading: "Instrument Sans",
-    body: "Instrument Sans",
-    mono: "Instrument Sans"
+    heading: "Aptos",
+    body: "Aptos",
+    mono: "Aptos"
   },
   colors: {
     ink: "#2F333B",
