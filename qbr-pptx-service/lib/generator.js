@@ -1729,6 +1729,150 @@ function formatSignedCount(value, locale = "en-GB") {
   return `${rounded >= 0 ? "+" : "-"}${abs}`;
 }
 
+function movementDirection(value) {
+  const parsed = parseNumber(value);
+  if (parsed === null || parsed === undefined) return "unknown";
+  if (parsed > 0) return "up";
+  if (parsed < 0) return "down";
+  return "flat";
+}
+
+function metricMovement(metric) {
+  if (!metric) return "unknown";
+  if (metric.varianceValue !== null && metric.varianceValue !== undefined) {
+    return movementDirection(metric.varianceValue);
+  }
+  if (metric.differenceValue !== null && metric.differenceValue !== undefined) {
+    return movementDirection(metric.differenceValue);
+  }
+  return movementDirection(metric.variance || metric.difference);
+}
+
+function entityLabel(value, fallback = "Publisher") {
+  return cleanInlineText(value || fallback)
+    .replace(/\s*-\s*I$/i, "")
+    .replace(/\s*-\s*I(?=\s|$)/gi, "")
+    .replace(/\s+/g, " ")
+    .trim() || fallback;
+}
+
+function segmentMovementTitle(segment, row, standoutPublisher) {
+  const salesDirection = movementDirection(row?.["Sales YoY %"]);
+  const ovDirection = movementDirection(row?.["OV YoY %"]);
+  const standoutName = standoutPublisher ? entityLabel(standoutPublisher.Publisher, "") : "";
+  const standoutDirection = standoutPublisher
+    ? [
+      movementDirection(standoutPublisher["Sales YoY %"]),
+      movementDirection(standoutPublisher["OV YoY %"]),
+      movementDirection(standoutPublisher["OV YoY Change"])
+    ]
+    : [];
+  const hasStandoutGrowth = standoutDirection.includes("up");
+
+  if (salesDirection === "down" && ovDirection === "down") {
+    return standoutName && hasStandoutGrowth
+      ? `${segment} Segment Declined Despite ${standoutName} Growth`
+      : `${segment} Segment Declined YoY`;
+  }
+  if (salesDirection === "down") return `${segment} Segment Sales Decline`;
+  if (ovDirection === "down") return `${segment} Segment OV Pressure`;
+  if (salesDirection === "up" && ovDirection === "up") return `${segment} Segment Sales and OV Growth`;
+  if (salesDirection === "up" || ovDirection === "up") return `${segment} Segment Growth Signal`;
+  return `${segment} Segment Performance Shift`;
+}
+
+function isLargestSegmentByValue(rows, targetSegment, column) {
+  const target = cleanInlineText(targetSegment).toLowerCase();
+  const normalized = (rows || [])
+    .map((row) => ({
+      segment: cleanInlineText(row.Segment).toLowerCase(),
+      value: parseNumber(row[column])
+    }))
+    .filter((row) => row.segment && row.value !== null && row.value !== undefined);
+  if (!normalized.length) return false;
+  const maxValue = Math.max(...normalized.map((row) => row.value));
+  const targetRow = normalized.find((row) => row.segment === target);
+  return Boolean(targetRow && targetRow.value === maxValue);
+}
+
+function cashbackSegmentTitle(cashbackRow, segmentRows) {
+  if (!cashbackRow) return "Cashback Segment Performance Signal";
+  const salesDirection = movementDirection(cashbackRow["Sales YoY %"]);
+  const ovDirection = movementDirection(cashbackRow["OV YoY %"]);
+  const isLargestBase = isLargestSegmentByValue(segmentRows, "Cashback", "Total OV");
+  const hasPressure = salesDirection === "down" || ovDirection === "down";
+  const hasGrowth = salesDirection === "up" || ovDirection === "up";
+
+  if (hasPressure && isLargestBase) return "Cashback Segment Under Pressure on Largest Volume Base";
+  if (hasPressure) return "Cashback Segment Under Pressure";
+  if (hasGrowth && isLargestBase) return "Cashback Segment Growth on Largest Volume Base";
+  if (hasGrowth) return "Cashback Segment Growth Signal";
+  return "Cashback Segment Performance Shift";
+}
+
+function conversionSignalTitle(metric) {
+  const current = cleanInlineText(metric?.current || "");
+  const suffix = current ? ` to ${current}` : "";
+  const direction = metricMovement(metric);
+  if (direction === "up") return `Conversion Rate Improved${suffix}`;
+  if (direction === "down") return `Conversion Rate Softened${suffix}`;
+  if (direction === "flat") return current ? `Conversion Rate Stable at ${current}` : "Conversion Rate Stable";
+  return current ? `Conversion Rate Moved to ${current}` : "Conversion Rate Movement";
+}
+
+function aovSignalTitle(metric, topAovUps) {
+  const direction = metricMovement(metric);
+  if (direction === "up" && topAovUps.length > 1) return "AOV Growth Across Multiple Publishers";
+  if (direction === "up" && topAovUps.length === 1) return `AOV Growth Led by ${entityLabel(topAovUps[0].Publisher)}`;
+  if (direction === "up") return "AOV Growth Signal";
+  if (direction === "down") return "AOV Pressure Across Publishers";
+  if (direction === "flat") return "AOV Broadly Stable";
+  return "AOV Movement";
+}
+
+function clickMovementFromMetric(metric) {
+  if (!metric) return "unknown";
+  if (metric.differenceValue !== null && metric.differenceValue !== undefined) {
+    return movementDirection(metric.differenceValue);
+  }
+  return metricMovement(metric);
+}
+
+function clickSignalTitle(clicksMetric, topDecliners, top2ShareValue) {
+  const direction = clickMovementFromMetric(clicksMetric);
+  if (direction === "up" && topDecliners.length) {
+    return "Publisher-Level Click Declines Within Overall Click Growth";
+  }
+  if (direction === "down" && topDecliners.length >= 2 && Number(top2ShareValue) >= 50) {
+    return "Click Volume Decline Concentrated in Two Publishers";
+  }
+  if (direction === "down" && topDecliners.length) {
+    return "Publisher Click Declines Drove Overall Click Loss";
+  }
+  if (direction === "up") return "Click Volume Growth";
+  if (direction === "flat") return "Click Volume Broadly Stable";
+  return "Click Volume Movement";
+}
+
+function clickSignalDetail(clicksMetric, topDecliners, top2ShareValue) {
+  const totalLine = `Total clicks ${directionWord(clicksMetric?.differenceValue ?? clicksMetric?.varianceValue)} ${cleanInlineText(clicksMetric?.variance || "N/A")} (${cleanInlineText(clicksMetric?.difference || "N/A")}).`;
+  if (!topDecliners.length) return `${totalLine} Publisher-level click decline concentration could not be confirmed from available movers data.`;
+
+  const contributorLine = topDecliners
+    .map((row) => `${entityLabel(row.Publisher)} contributed ${cleanInlineText(row["YoY Change"] || "N/A")} (${cleanInlineText(row["YoY %"] || "N/A")})`)
+    .join(" and ");
+  const direction = clickMovementFromMetric(clicksMetric);
+
+  if (direction === "up") {
+    return `${totalLine} ${contributorLine}, acting as localized drag despite overall click growth.`;
+  }
+  if (direction === "down") {
+    const share = Number.isFinite(Number(top2ShareValue)) ? `${Number(top2ShareValue).toFixed(0)}%` : "N/A";
+    return `${totalLine} ${contributorLine}, together representing approximately ${share} of total click loss.`;
+  }
+  return `${totalLine} ${contributorLine}, indicating uneven publisher-level traffic movement.`;
+}
+
 function buildSalesGrowthSignals(input) {
   if (Array.isArray(input.salesGrowthSignals) && input.salesGrowthSignals.length) {
     return input.salesGrowthSignals.slice(0, 5);
@@ -1766,36 +1910,35 @@ function buildSalesGrowthSignals(input) {
 
   const clickLossAbs = Math.abs(parseNumber(m.clicks?.difference) || 0);
   const top2LossAbs = topClickDecliners.reduce((sum, row) => sum + Math.abs(parseNumber(row["YoY Change"]) || 0), 0);
-  const top2Share = clickLossAbs > 0 ? `${((top2LossAbs / clickLossAbs) * 100).toFixed(0)}%` : "N/A";
+  const clickDirection = clickMovementFromMetric(m.clicks);
+  const top2ShareValue = clickDirection === "down" && clickLossAbs > 0 ? (top2LossAbs / clickLossAbs) * 100 : null;
 
   const signals = [
     {
-      title: "Voucher Segment: Highest YoY Sales Growth",
+      title: segmentMovementTitle("Voucher", voucherRow, topVoucherGrowth),
       detail: voucherRow && topVoucherGrowth
         ? `The Voucher segment recorded ${cleanInlineText(voucherRow["Sales YoY %"] || "N/A")} sales growth and ${cleanInlineText(voucherRow["OV YoY %"] || "N/A")} OV growth YoY. ${cleanInlineText(topVoucherGrowth.Publisher || "Top voucher publisher")} delivered ${cleanInlineText(topVoucherGrowth["Current Sales"] || "N/A")} sales (${cleanInlineText(topVoucherGrowth["Sales YoY %"] || "N/A")}) and ${cleanInlineText(topVoucherGrowth["OV YoY Change"] || "N/A")} in OV (${cleanInlineText(topVoucherGrowth["OV YoY %"] || "N/A")}) year-over-year.`
         : "Voucher growth signal is not fully available in the current extract."
     },
     {
-      title: `Conversion Rate: ${directionWord(m.convrate?.varianceValue) === "increased" ? "Improved" : "Moved"} to ${cleanInlineText(m.convrate?.current || "N/A")}`,
+      title: conversionSignalTitle(m.convrate),
       detail: `Programme conversion rate moved from ${cleanInlineText(m.convrate?.previous || "N/A")} to ${cleanInlineText(m.convrate?.current || "N/A")} (${cleanInlineText(m.convrate?.variance || "N/A")}). Sales changed ${formatSignedCount(parseNumber(m.sales?.difference), input.locale)} while clicks changed ${formatSignedCount(parseNumber(m.clicks?.difference), input.locale)}, indicating the quality shift in converting traffic.`
     },
     {
-      title: "AOV Growth Across Multiple Publishers",
+      title: aovSignalTitle(m.aov, topAovUps),
       detail: topAovUps.length
         ? `Programme AOV moved ${cleanInlineText(m.aov?.variance || "N/A")} to ${cleanInlineText(m.aov?.current || "N/A")}. Largest AOV uplifts came from ${topAovUps.map((row) => `${cleanInlineText(row.Publisher || "Publisher")} (${cleanInlineText(row["YoY Change"] || "N/A")}, ${cleanInlineText(row["YoY %"] || "N/A")})`).join(", ")}.`
         : `Programme AOV moved ${cleanInlineText(m.aov?.variance || "N/A")} to ${cleanInlineText(m.aov?.current || "N/A")}.`
     },
     {
-      title: "Cashback Segment: Largest Volume Base with Sales Decline",
+      title: cashbackSegmentTitle(cashbackRow, segmentRows),
       detail: cashbackRow
         ? `Cashback accounts for ${cleanInlineText(cashbackRow["Total OV"] || "N/A")} in OV (${cleanInlineText(cashbackRow["OV YoY %"] || "N/A")}) across ${cleanInlineText(cashbackRow.Publishers || "N/A")} publishers. ${topCashbackPublishers.length ? topCashbackPublishers.map((row) => `${cleanInlineText(row.Publisher || "Publisher")} (${cleanInlineText(row["Current Sales"] || "N/A")} sales, ${cleanInlineText(row["Sales YoY %"] || "N/A")})`).join(" and ") : "Top cashback contributors remain concentrated in a small group"} are the primary contributors by sales count.`
         : "Cashback segment-level signal is not fully available in the current extract."
     },
     {
-      title: "Click Volume Decline Concentrated in Two Publishers",
-      detail: topClickDecliners.length === 2
-        ? `Total clicks changed ${cleanInlineText(m.clicks?.variance || "N/A")} (${cleanInlineText(m.clicks?.difference || "N/A")}). ${cleanInlineText(topClickDecliners[0].Publisher || "Publisher 1")} contributed ${cleanInlineText(topClickDecliners[0]["YoY Change"] || "N/A")} (${cleanInlineText(topClickDecliners[0]["YoY %"] || "N/A")}) and ${cleanInlineText(topClickDecliners[1].Publisher || "Publisher 2")} contributed ${cleanInlineText(topClickDecliners[1]["YoY Change"] || "N/A")} (${cleanInlineText(topClickDecliners[1]["YoY %"] || "N/A")}), together representing approximately ${top2Share} of total click loss.`
-        : "Top click decline concentration could not be confirmed from available movers data."
+      title: clickSignalTitle(m.clicks, topClickDecliners, top2ShareValue),
+      detail: clickSignalDetail(m.clicks, topClickDecliners, top2ShareValue)
     }
   ];
 
@@ -1927,6 +2070,129 @@ function getTopDirection(table, directionLabel) {
   return change ? `${publisher} (${change})` : publisher;
 }
 
+function conversionKpiTitle(metric) {
+  const direction = metricMovement(metric);
+  if (direction === "up") return "Conversion Rate Improved";
+  if (direction === "down") return "Conversion Rate Pressure";
+  if (direction === "flat") return "Conversion Rate Stable";
+  return "Conversion Rate Movement";
+}
+
+function conversionKpiImplication(conv, clicks, sales) {
+  const convDirection = metricMovement(conv);
+  const clickDirection = metricMovement(clicks);
+  const salesDirection = metricMovement(sales);
+
+  if (convDirection === "up") return "indicating a more efficient sales-to-click mix than in the prior year.";
+  if (convDirection === "down" && clickDirection === "up" && salesDirection === "down") {
+    return "indicating added traffic did not convert into sales efficiently.";
+  }
+  if (convDirection === "down") return "indicating lower sales efficiency from available traffic.";
+  if (convDirection === "flat") return "indicating broadly stable traffic conversion efficiency.";
+  return "indicating a shift in converting traffic.";
+}
+
+function salesVolumeKpiTitle(metric) {
+  const direction = metricMovement(metric);
+  if (direction === "up") return "Sales Volume Growth";
+  if (direction === "down") return "Sales Volume Pressure";
+  if (direction === "flat") return "Sales Volume Stable";
+  return "Sales Volume Movement";
+}
+
+function aovKpiTitle(aov, sales, orderValue) {
+  const aovDirection = metricMovement(aov);
+  const salesDirection = metricMovement(sales);
+  const ovDirection = metricMovement(orderValue);
+
+  if (aovDirection === "up" && salesDirection === "down") return "AOV Growth Partially Offsetting Sales Decline";
+  if (aovDirection === "up" && ovDirection === "down") return "AOV Growth Partially Offsetting OV Decline";
+  if (aovDirection === "up") return "AOV Growth";
+  if (aovDirection === "down") return "AOV Pressure";
+  if (aovDirection === "flat") return "AOV Stable";
+  return "AOV Movement";
+}
+
+function aovKpiDetail(aov, sales, orderValue, topAovUpliftText) {
+  const aovSentence = metricSentence("AOV", aov);
+  const ovSentence = `Total order value ${directionWord(orderValue?.varianceValue)} ${orderValue?.variance || "N/A"} (${orderValue?.difference || "-"}).`;
+  const aovDirection = metricMovement(aov);
+  const salesDirection = metricMovement(sales);
+  const ovDirection = metricMovement(orderValue);
+
+  if (aovDirection === "up" && salesDirection === "down" && ovDirection === "down") {
+    return `${aovSentence} ${ovSentence} Higher basket value only partly offset lower transaction volume. ${topAovUpliftText}`;
+  }
+  if (aovDirection === "up" && salesDirection === "down") {
+    return `${aovSentence} ${ovSentence} Higher basket value helped offset lower transaction volume. ${topAovUpliftText}`;
+  }
+  if (aovDirection === "up") {
+    return `${aovSentence} ${ovSentence} ${topAovUpliftText}`;
+  }
+  if (aovDirection === "down") {
+    return `${aovSentence} ${ovSentence} Lower basket value added pressure to revenue performance.`;
+  }
+  return `${aovSentence} ${ovSentence} ${topAovUpliftText}`;
+}
+
+function cpaKpiTitle(metric) {
+  const direction = metricMovement(metric);
+  if (direction === "up") return "Rising CPA";
+  if (direction === "down") return "CPA Efficiency Improved";
+  if (direction === "flat") return "CPA Stable";
+  return "CPA Movement";
+}
+
+function cpaKpiDetail(cpa, publisherCommission) {
+  const direction = metricMovement(cpa);
+  const costPhrase = direction === "down"
+    ? "a lower acquisition cost"
+    : direction === "up"
+      ? "a higher acquisition cost"
+      : direction === "flat"
+        ? "a broadly stable acquisition cost"
+        : "a changed acquisition cost";
+  return `${metricSentence("CPA", cpa)} Publisher commission changed ${publisherCommission?.variance || "N/A"} (${publisherCommission?.difference || "-"}) year-over-year, so each conversion carried ${costPhrase}.`;
+}
+
+function roiKpiTitle(metric) {
+  const direction = metricMovement(metric);
+  if (direction === "up") return "ROI Improved";
+  if (direction === "down") return "ROI Pressure";
+  if (direction === "flat") return "ROI Stable";
+  return "ROI Trend";
+}
+
+function roiKpiDetail(metric) {
+  const direction = metricMovement(metric);
+  const efficiencyPhrase = direction === "up"
+    ? "improved spend efficiency"
+    : direction === "down"
+      ? "weaker spend efficiency"
+      : direction === "flat"
+        ? "stable spend efficiency"
+        : "changed spend efficiency";
+  return `${metricSentence("ROI", metric)} For every unit of commission in the current period, programme return moved from ${metric?.previous || "-"} to ${metric?.current || "-"}, showing ${efficiencyPhrase}.`;
+}
+
+function isSafeKpiSupplement(line, metrics) {
+  const text = cleanInlineText(line || "");
+  if (!text) return false;
+  const title = cleanInlineText(text.split(":")[0] || "");
+  const titleLower = title.toLowerCase();
+  const textLower = text.toLowerCase();
+
+  if (title.length > 68) return false;
+  if (!text.includes(":")) return false;
+  if (metricMovement(metrics.convrate) === "down" && /conversion rate improvement/.test(titleLower)) return false;
+  if (metricMovement(metrics.convrate) === "up" && /(conversion rate pressure|conversion rate decline|conversion rate declined)/.test(textLower)) return false;
+  if (metricMovement(metrics.cpa) === "down" && (/(rising cpa|higher acquisition cost)/.test(textLower))) return false;
+  if (metricMovement(metrics.cpa) === "up" && /(cpa efficiency improved|lower acquisition cost)/.test(textLower)) return false;
+  if (metricMovement(metrics.roi) === "up" && /(roi pressure|weaker spend efficiency)/.test(textLower)) return false;
+  if (metricMovement(metrics.roi) === "down" && /(roi improved|improved spend efficiency)/.test(textLower)) return false;
+  return true;
+}
+
 function buildKpiAnalysisBullets(input) {
   const m = input.metricMap;
   const sales = m.sales;
@@ -1990,6 +2256,10 @@ function buildKpiAnalysisBullets(input) {
     .filter((line) => !looksLikeRawKpiSnapshot(line) && !looksLikeProgramListing(line))
     .map((line) => cleanInlineText(line))
     .filter(Boolean);
+  const kpiHighlightTableBullets = ["kpiHighlights", "kpiHighlightNarrative"]
+    .flatMap((key) => buildKpiHighlightsBulletsFromTable(input.tables[key]))
+    .map((line) => cleanInlineText(line))
+    .filter(Boolean);
 
   const moversSales = input.tables.moversSales;
   const topUp = getTopDirection(moversSales, "Up");
@@ -2011,17 +2281,19 @@ function buildKpiAnalysisBullets(input) {
     : "AOV uplift was concentrated in a smaller set of higher-value publishers.";
 
   const bullets = [
-    `Conversion Rate Improvement: ${metricSentence("Conversion rate", conv)} Click volume ${directionWord(clicks?.varianceValue)} ${clicks?.variance || "N/A"} (${clicks?.difference || "-"}) while sales ${directionWord(sales?.varianceValue)} ${sales?.variance || "N/A"} (${sales?.difference || "-"}), indicating a more efficient sales-to-click mix than in the prior year.`,
-    `Sales Volume Pressure: Total sales ${directionWord(sales?.varianceValue)} ${sales?.variance || "N/A"} (${sales?.difference || "-"}). Click volume ${directionWord(clicks?.varianceValue)} ${clicks?.variance || "N/A"} (${clicks?.difference || "-"}). ${declineList ? `Largest declines came from ${declineList}.` : "Largest declining publisher contribution requires confirmation from mover tables."}`,
-    `AOV Growth Partially Offsetting Volume Decline: ${metricSentence("AOV", aov)} Total order value ${directionWord(ov?.varianceValue)} ${ov?.variance || "N/A"} (${ov?.difference || "-"}) despite lower transaction volume. ${topAovUpliftText}`,
-    `Rising CPA: ${metricSentence("CPA", cpa)} Publisher commission changed ${m.publcommission?.variance || "N/A"} (${m.publcommission?.difference || "-"}) year-over-year, so each conversion carried a higher acquisition cost.`,
-    `ROI Trend: ${metricSentence("ROI", roi)} For every unit of commission in the current period, programme return moved from ${roi?.previous || "-"} to ${roi?.current || "-"}, showing marginal improvement in spend efficiency.`
+    `${conversionKpiTitle(conv)}: ${metricSentence("Conversion rate", conv)} Click volume ${directionWord(clicks?.varianceValue)} ${clicks?.variance || "N/A"} (${clicks?.difference || "-"}) while sales ${directionWord(sales?.varianceValue)} ${sales?.variance || "N/A"} (${sales?.difference || "-"}), ${conversionKpiImplication(conv, clicks, sales)}`,
+    `${salesVolumeKpiTitle(sales)}: Total sales ${directionWord(sales?.varianceValue)} ${sales?.variance || "N/A"} (${sales?.difference || "-"}). Click volume ${directionWord(clicks?.varianceValue)} ${clicks?.variance || "N/A"} (${clicks?.difference || "-"}). ${declineList ? `Largest declines came from ${declineList}.` : "Largest declining publisher contribution requires confirmation from mover tables."}`,
+    `${aovKpiTitle(aov, sales, ov)}: ${aovKpiDetail(aov, sales, ov, topAovUpliftText)}`,
+    `${cpaKpiTitle(cpa)}: ${cpaKpiDetail(cpa, m.publcommission)}`,
+    `${roiKpiTitle(roi)}: ${roiKpiDetail(roi)}`
   ];
   const generated = bullets.map((line) => cleanInlineText(line)).filter(Boolean);
   const merged = [];
   const aiForUse = preferredAi.length >= 3 ? preferredAi : [];
-  // Keep rich, structured generated narrative first; then use AI lines as supplements.
-  [...generated, ...aiForUse].forEach((line) => {
+  const supplemental = [...kpiHighlightTableBullets, ...aiForUse]
+    .filter((line) => isSafeKpiSupplement(line, m));
+  // Keep clean validated headings first; only append AI/table lines that do not contradict metric direction.
+  [...generated, ...supplemental].forEach((line) => {
     const key = line.toLowerCase();
     if (merged.some((existing) => existing.toLowerCase() === key)) return;
     merged.push(line);
