@@ -41,6 +41,70 @@ const TEXT_REPLACEMENTS = [
   [/zÃƒâ€¦Ã¢â‚¬Å¡|zÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡/g, "z\u0142"]
 ];
 
+const WINDOWS_1252_BYTES = new Map([
+  [0x20AC, 0x80],
+  [0x201A, 0x82],
+  [0x0192, 0x83],
+  [0x201E, 0x84],
+  [0x2026, 0x85],
+  [0x2020, 0x86],
+  [0x2021, 0x87],
+  [0x02C6, 0x88],
+  [0x2030, 0x89],
+  [0x0160, 0x8A],
+  [0x2039, 0x8B],
+  [0x0152, 0x8C],
+  [0x017D, 0x8E],
+  [0x2018, 0x91],
+  [0x2019, 0x92],
+  [0x201C, 0x93],
+  [0x201D, 0x94],
+  [0x2022, 0x95],
+  [0x2013, 0x96],
+  [0x2014, 0x97],
+  [0x02DC, 0x98],
+  [0x2122, 0x99],
+  [0x0161, 0x9A],
+  [0x203A, 0x9B],
+  [0x0153, 0x9C],
+  [0x017E, 0x9E],
+  [0x0178, 0x9F]
+]);
+
+const MOJIBAKE_MARKER_PATTERN = /(?:Ã|Â|â|Å[¼º›š‚]|Ä[…™‡„]|Ãƒ|Ã¢|Ã…|Ã„)/;
+const MOJIBAKE_MARKER_GLOBAL_PATTERN = /(?:Ã|Â|â|Å[¼º›š‚]|Ä[…™‡„]|Ãƒ|Ã¢|Ã…|Ã„)/g;
+
+function cp1252ByteForChar(char) {
+  const code = char.codePointAt(0);
+  if (code <= 0xFF) return code;
+  return WINDOWS_1252_BYTES.get(code);
+}
+
+function decodeWindows1252AsUtf8(text) {
+  const bytes = [];
+  for (const char of text) {
+    const byte = cp1252ByteForChar(char);
+    if (byte === undefined) return text;
+    bytes.push(byte);
+  }
+  return Buffer.from(bytes).toString("utf8");
+}
+
+function mojibakeScore(text) {
+  return (String(text).match(MOJIBAKE_MARKER_GLOBAL_PATTERN) || []).length;
+}
+
+function repairMojibake(value) {
+  let current = String(value ?? "");
+  for (let pass = 0; pass < 3; pass += 1) {
+    if (!MOJIBAKE_MARKER_PATTERN.test(current)) break;
+    const decoded = decodeWindows1252AsUtf8(current);
+    if (decoded === current || decoded.includes("\uFFFD") || mojibakeScore(decoded) >= mojibakeScore(current)) break;
+    current = decoded;
+  }
+  return current;
+}
+
 const TABLE_KEY_MAP = {
   top10increase: "topGrowthPublishers",
   topgrowthpublishers: "topGrowthPublishers",
@@ -173,15 +237,15 @@ const UI_LABELS_BY_LANGUAGE = {
     qbrReport: "Rapport QBR",
     anyQuestions: "Des questions ?",
     thankYouSubtitleTemplate: "Programme d'affiliation TD - {period} Revue trimestrielle",
-    currentPeriod: "PÃ©riode actuelle",
-    comparisonPeriodYoy: "PÃ©riode de comparaison (YoY)",
-    basisYoy: "RÃ©fÃ©rence : glissement annuel (YoY)",
-    publisherActivityBySegment: "ActivitÃ© des Ã©diteurs par segment",
-    keyObservations: "Observations clÃ©s",
-    reportingPeriodPrefix: "PÃ©riode de reporting",
-    dataAsOfPrefix: "DonnÃ©es au",
-    comparisonPeriodPrefix: "PÃ©riode de comparaison",
-    allFiguresStatement: "Toutes les valeurs sont prÃ©sentÃ©es en {currency}, sauf indication contraire. La variation YoY est calculÃ©e entre la pÃ©riode actuelle et la pÃ©riode de comparaison.",
+    currentPeriod: "Période actuelle",
+    comparisonPeriodYoy: "Période de comparaison (YoY)",
+    basisYoy: "Référence : glissement annuel (YoY)",
+    publisherActivityBySegment: "Activité des éditeurs par segment",
+    keyObservations: "Observations clés",
+    reportingPeriodPrefix: "Période de reporting",
+    dataAsOfPrefix: "Données au",
+    comparisonPeriodPrefix: "Période de comparaison",
+    allFiguresStatement: "Toutes les valeurs sont présentées en {currency}, sauf indication contraire. La variation YoY est calculée entre la période actuelle et la période de comparaison.",
     analysisTagSuffix: "Analyse"
   },
   NL: {
@@ -205,13 +269,13 @@ const UI_LABELS_BY_LANGUAGE = {
     thankYouSubtitleTemplate: "TD Affiliate-Programm - {period} Quartalsbericht",
     currentPeriod: "Aktueller Zeitraum",
     comparisonPeriodYoy: "Vergleichszeitraum (YoY)",
-    basisYoy: "Basis: Jahr-Ã¼ber-Jahr (YoY)",
-    publisherActivityBySegment: "Publisher-AktivitÃ¤t nach Segment",
+    basisYoy: "Basis: Jahr-über-Jahr (YoY)",
+    publisherActivityBySegment: "Publisher-Aktivität nach Segment",
     keyObservations: "Wichtigste Erkenntnisse",
     reportingPeriodPrefix: "Berichtszeitraum",
     dataAsOfPrefix: "Datenstand",
     comparisonPeriodPrefix: "Vergleichszeitraum",
-    allFiguresStatement: "Alle Werte werden in {currency} angegeben, sofern nicht anders vermerkt. Die YoY-Abweichung wird als aktueller Zeitraum gegenÃ¼ber Vergleichszeitraum berechnet.",
+    allFiguresStatement: "Alle Werte werden in {currency} angegeben, sofern nicht anders vermerkt. Die YoY-Abweichung wird als aktueller Zeitraum gegenüber Vergleichszeitraum berechnet.",
     analysisTagSuffix: "Analyse"
   },
   IT: {
@@ -221,23 +285,23 @@ const UI_LABELS_BY_LANGUAGE = {
     currentPeriod: "Periodo corrente",
     comparisonPeriodYoy: "Periodo di confronto (YoY)",
     basisYoy: "Base: anno su anno (YoY)",
-    publisherActivityBySegment: "AttivitÃ  publisher per segmento",
+    publisherActivityBySegment: "Attività publisher per segmento",
     keyObservations: "Osservazioni chiave",
     reportingPeriodPrefix: "Periodo di reporting",
     dataAsOfPrefix: "Dati al",
     comparisonPeriodPrefix: "Periodo di confronto",
-    allFiguresStatement: "Tutti i valori sono riportati in {currency}, salvo diversa indicazione. La variazione YoY Ã¨ calcolata come periodo corrente vs periodo di confronto.",
+    allFiguresStatement: "Tutti i valori sono riportati in {currency}, salvo diversa indicazione. La variazione YoY è calcolata come periodo corrente vs periodo di confronto.",
     analysisTagSuffix: "Analisi"
   },
   NO: {
     qbrReport: "QBR-rapport",
-    anyQuestions: "SpÃ¸rsmÃ¥l?",
+    anyQuestions: "Spørsmål?",
     thankYouSubtitleTemplate: "TD affiliateprogram - {period} kvartalsgjennomgang",
     currentPeriod: "Gjeldende periode",
     comparisonPeriodYoy: "Sammenligningsperiode (YoY)",
-    basisYoy: "Grunnlag: Ã¥r-over-Ã¥r (YoY)",
+    basisYoy: "Grunnlag: år-over-år (YoY)",
     publisherActivityBySegment: "Publisheraktivitet etter segment",
-    keyObservations: "NÃ¸kkelobservasjoner",
+    keyObservations: "Nøkkelobservasjoner",
     reportingPeriodPrefix: "Rapporteringsperiode",
     dataAsOfPrefix: "Data per",
     comparisonPeriodPrefix: "Sammenligningsperiode",
@@ -246,28 +310,28 @@ const UI_LABELS_BY_LANGUAGE = {
   },
   SV: {
     qbrReport: "QBR-rapport",
-    anyQuestions: "NÃ¥gra frÃ¥gor?",
-    thankYouSubtitleTemplate: "TD affiliateprogram - {period} kvartalsgenomgÃ¥ng",
+    anyQuestions: "Några frågor?",
+    thankYouSubtitleTemplate: "TD affiliateprogram - {period} kvartalsgenomgång",
     currentPeriod: "Aktuell period",
-    comparisonPeriodYoy: "JÃ¤mfÃ¶relseperiod (YoY)",
-    basisYoy: "Grund: Ã¥r Ã¶ver Ã¥r (YoY)",
+    comparisonPeriodYoy: "Jämförelseperiod (YoY)",
+    basisYoy: "Grund: år över år (YoY)",
     publisherActivityBySegment: "Publisheraktivitet per segment",
     keyObservations: "Viktiga observationer",
     reportingPeriodPrefix: "Rapporteringsperiod",
     dataAsOfPrefix: "Data per",
-    comparisonPeriodPrefix: "JÃ¤mfÃ¶relseperiod",
-    allFiguresStatement: "Alla siffror rapporteras i {currency} om inget annat anges. YoY-variansen berÃ¤knas som aktuell period jÃ¤mfÃ¶rt med jÃ¤mfÃ¶relseperiod.",
+    comparisonPeriodPrefix: "Jämförelseperiod",
+    allFiguresStatement: "Alla siffror rapporteras i {currency} om inget annat anges. YoY-variansen beräknas som aktuell period jämfört med jämförelseperiod.",
     analysisTagSuffix: "Analys"
   },
   DA: {
     qbrReport: "QBR-rapport",
-    anyQuestions: "Nogen spÃ¸rgsmÃ¥l?",
+    anyQuestions: "Nogen spørgsmål?",
     thankYouSubtitleTemplate: "TD affiliateprogram - {period} kvartalsgennemgang",
     currentPeriod: "Aktuel periode",
     comparisonPeriodYoy: "Sammenligningsperiode (YoY)",
-    basisYoy: "Grundlag: Ã¥r-til-Ã¥r (YoY)",
+    basisYoy: "Grundlag: år-til-år (YoY)",
     publisherActivityBySegment: "Publisheraktivitet efter segment",
-    keyObservations: "NÃ¸gleobservationer",
+    keyObservations: "Nøgleobservationer",
     reportingPeriodPrefix: "Rapporteringsperiode",
     dataAsOfPrefix: "Data pr.",
     comparisonPeriodPrefix: "Sammenligningsperiode",
@@ -276,56 +340,56 @@ const UI_LABELS_BY_LANGUAGE = {
   },
   FI: {
     qbrReport: "QBR-raportti",
-    anyQuestions: "KysymyksiÃ¤?",
-    thankYouSubtitleTemplate: "TD-kumppanuusohjelma - {period} neljÃ¤nnesvuosikatsaus",
+    anyQuestions: "Kysymyksiä?",
+    thankYouSubtitleTemplate: "TD-kumppanuusohjelma - {period} neljännesvuosikatsaus",
     currentPeriod: "Nykyinen jakso",
     comparisonPeriodYoy: "Vertailujakso (YoY)",
     basisYoy: "Perusta: vuosi vuodelta (YoY)",
-    publisherActivityBySegment: "Julkaisija-aktiivisuus segmenteittÃ¤in",
+    publisherActivityBySegment: "Julkaisija-aktiivisuus segmenteittäin",
     keyObservations: "Keskeiset havainnot",
     reportingPeriodPrefix: "Raportointijakso",
-    dataAsOfPrefix: "Tiedot pÃ¤ivÃ¤ltÃ¤",
+    dataAsOfPrefix: "Tiedot päivältä",
     comparisonPeriodPrefix: "Vertailujakso",
-    allFiguresStatement: "Kaikki luvut raportoidaan valuutassa {currency}, ellei toisin mainita. YoY-vaihtelu lasketaan nykyisen jakson ja vertailujakson vÃ¤lillÃ¤.",
+    allFiguresStatement: "Kaikki luvut raportoidaan valuutassa {currency}, ellei toisin mainita. YoY-vaihtelu lasketaan nykyisen jakson ja vertailujakson välillä.",
     analysisTagSuffix: "Analyysi"
   },
   ES: {
     qbrReport: "Informe QBR",
-    anyQuestions: "Â¿Preguntas?",
-    thankYouSubtitleTemplate: "Programa de afiliaciÃ³n TD - {period} RevisiÃ³n trimestral",
-    currentPeriod: "PerÃ­odo actual",
-    comparisonPeriodYoy: "PerÃ­odo de comparaciÃ³n (YoY)",
+    anyQuestions: "¿Preguntas?",
+    thankYouSubtitleTemplate: "Programa de afiliación TD - {period} Revisión trimestral",
+    currentPeriod: "Período actual",
+    comparisonPeriodYoy: "Período de comparación (YoY)",
     basisYoy: "Base: interanual (YoY)",
     publisherActivityBySegment: "Actividad de publishers por segmento",
     keyObservations: "Observaciones clave",
-    reportingPeriodPrefix: "PerÃ­odo del informe",
+    reportingPeriodPrefix: "Período del informe",
     dataAsOfPrefix: "Datos a fecha de",
-    comparisonPeriodPrefix: "PerÃ­odo de comparaciÃ³n",
-    allFiguresStatement: "Todas las cifras se presentan en {currency}, salvo que se indique lo contrario. La variaciÃ³n YoY se calcula como perÃ­odo actual frente a perÃ­odo de comparaciÃ³n.",
-    analysisTagSuffix: "AnÃ¡lisis"
+    comparisonPeriodPrefix: "Período de comparación",
+    allFiguresStatement: "Todas las cifras se presentan en {currency}, salvo que se indique lo contrario. La variación YoY se calcula como período actual frente a período de comparación.",
+    analysisTagSuffix: "Análisis"
   },
   PL: {
     qbrReport: "Raport QBR",
     anyQuestions: "Pytania?",
-    thankYouSubtitleTemplate: "Program partnerski TD - {period} PrzeglÄ…d kwartalny",
-    currentPeriod: "BieÅ¼Ä…cy okres",
-    comparisonPeriodYoy: "Okres porÃ³wnawczy (r/r)",
+    thankYouSubtitleTemplate: "Program partnerski TD - {period} Przegląd kwartalny",
+    currentPeriod: "Bieżący okres",
+    comparisonPeriodYoy: "Okres porównawczy (r/r)",
     basisYoy: "Podstawa: rok do roku (r/r)",
-    publisherActivityBySegment: "AktywnoÅ›Ä‡ wydawcÃ³w wedÅ‚ug segmentu",
+    publisherActivityBySegment: "Aktywność wydawców według segmentu",
     keyObservations: "Kluczowe obserwacje",
     reportingPeriodPrefix: "Okres raportowania",
-    dataAsOfPrefix: "Dane na dzieÅ„",
-    comparisonPeriodPrefix: "Okres porÃ³wnawczy",
-    allFiguresStatement: "Wszystkie wartoÅ›ci raportowane sÄ… w walucie {currency}, o ile nie wskazano inaczej. Zmiana r/r jest liczona jako bieÅ¼Ä…cy okres wzglÄ™dem okresu porÃ³wnawczego.",
+    dataAsOfPrefix: "Dane na dzień",
+    comparisonPeriodPrefix: "Okres porównawczy",
+    allFiguresStatement: "Wszystkie wartości raportowane są w walucie {currency}, o ile nie wskazano inaczej. Zmiana r/r jest liczona jako bieżący okres względem okresu porównawczego.",
     analysisTagSuffix: "Analiza",
-    segmentSignalUnavailable: "SygnaÅ‚ segmentu jest niedostÄ™pny.",
-    detailedMovementUnavailable: "SzczegÃ³Å‚owy opis zmian nie jest dostÄ™pny w tym wyciÄ…gu.",
-    kpiSignalGeneric: "SygnaÅ‚ KPI",
-    kpiDriverUnavailable: "Brak potwierdzonego czynnika na podstawie dostÄ™pnych danych KPI.",
-    kpiDetailUnavailable: "SzczegÃ³Å‚y nie sÄ… dostÄ™pne w bieÅ¼Ä…cym wyciÄ…gu.",
-    kpiTitleConversionRateImprovement: "Poprawa wspÃ³Å‚czynnika konwersji",
-    kpiTitleSalesVolumePressure: "Presja na wolumen sprzedaÅ¼y",
-    kpiTitleAovGrowthOffset: "Wzrost AOV czÄ™Å›ciowo kompensujÄ…cy spadek wolumenu",
+    segmentSignalUnavailable: "Sygnał segmentu jest niedostępny.",
+    detailedMovementUnavailable: "Szczegółowy opis zmian nie jest dostępny w tym wyciągu.",
+    kpiSignalGeneric: "Sygnał KPI",
+    kpiDriverUnavailable: "Brak potwierdzonego czynnika na podstawie dostępnych danych KPI.",
+    kpiDetailUnavailable: "Szczegóły nie są dostępne w bieżącym wyciągu.",
+    kpiTitleConversionRateImprovement: "Poprawa współczynnika konwersji",
+    kpiTitleSalesVolumePressure: "Presja na wolumen sprzedaży",
+    kpiTitleAovGrowthOffset: "Wzrost AOV częściowo kompensujący spadek wolumenu",
     kpiTitleRisingCpa: "Wzrost CPA",
     kpiTitleRoiTrend: "Trend ROI"
   }
@@ -338,7 +402,7 @@ const AUTO_TRANSLATE_ENABLED = !/^(0|false|off)$/i.test(String(process.env.QBR_A
 
 function cleanText(value, fallback = "") {
   const raw = String(value ?? fallback);
-  const repaired = TEXT_REPLACEMENTS.reduce((text, [pattern, replacement]) => text.replace(pattern, replacement), raw);
+  const repaired = TEXT_REPLACEMENTS.reduce((text, [pattern, replacement]) => text.replace(pattern, replacement), repairMojibake(raw));
   const repairedCurrency = repaired
     .replace(/Ã‚Â£/g, "\u00A3")
     .replace(/Ã¢â€šÂ¬/g, "\u20AC")
@@ -1504,7 +1568,7 @@ function buildPublisherOverviewBullets(input) {
     if (!text || text.length < 30 || text.length > 260) return false;
     if (/\bsite\s*id\b/i.test(text)) return false;
     if (/\bcurrent sales:\b|\bcurrent ov:\b|\bov yoy change:\b|\bsales yoy %:\b/i.test(text)) return false;
-    if (/^(voucher|cashback|other|content|css)\s*[-â€”]/i.test(text)) return false;
+    if (/^(voucher|cashback|other|content|css)\s*[-\u2013\u2014]/i.test(text)) return false;
     if (/\btotal sales:\b|\btotal ov:\b|\bpublishers:\b/i.test(text)) return false;
     if (/^\d{4}-\d{2}-\d{2}\s+to\s+\d{4}-\d{2}-\d{2}/i.test(text)) return false;
     if (/\|\s/.test(text)) return false;
@@ -1679,7 +1743,7 @@ function buildSegmentPerformanceBlocks(input) {
   const clampDetail = (value, maxChars = 420) => {
     const text = cleanInlineText(value || "");
     if (!text || text.length <= maxChars) return text;
-    return `${text.slice(0, maxChars - 1).trimEnd()}â€¦`;
+    return `${text.slice(0, maxChars - 1).trimEnd()}\u2026`;
   };
 
   return rows.slice(0, 5).map((row) => {
@@ -3408,7 +3472,7 @@ function isTableValueNumeric(value) {
   const text = cleanInlineText(value || "");
   if (!text || text === "-" || /^n\/a$/i.test(text)) return false;
   const normalized = text
-    .replace(/[Â£$â‚¬,\s]/g, "")
+    .replace(/[\u00A3$\u20AC,\s]/g, "")
     .replace(/%$/, "")
     .replace(/^\+/, "");
   return /^-?\d+(\.\d+)?$/.test(normalized);
@@ -4287,7 +4351,7 @@ function renderSlide(slide, deck, spec, pageNumber) {
     const clampText = (value, maxChars = 9999) => {
       const text = cleanInlineText(value || "");
       if (!text || text.length <= maxChars) return text;
-      return `${text.slice(0, maxChars - 1).trimEnd()}â€¦`;
+      return `${text.slice(0, maxChars - 1).trimEnd()}\u2026`;
     };
     // Use larger tiles and full-width bottom row so segment analysis does not clip.
     const layout = [

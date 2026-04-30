@@ -1,6 +1,8 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
 
+process.env.QBR_AUTO_TRANSLATE = "0";
+
 const { generatePresentation } = require("../lib/generator");
 
 function titleOf(line) {
@@ -247,4 +249,34 @@ test("explicit AI sales growth signal titles are preserved", async () => {
 
   assert.equal(slide.signals[0].title, "AI Analysis: Voucher Weakness Is Masked by One Publisher");
   assert.equal(slide.signals[0].detail, "The title and body are supplied by upstream analysis.");
+});
+
+test("Polish reporting-period labels render with Unicode characters", async () => {
+  const result = await generatePresentation({
+    ...misleadingHeadingPayload(),
+    languageCode: "PL",
+    languageName: "Polish"
+  });
+
+  const labels = result.deckSpec.metadata.uiLabels;
+  assert.equal(labels.currentPeriod, "Bieżący okres");
+  assert.equal(labels.comparisonPeriodYoy, "Okres porównawczy (r/r)");
+  assert.equal(labels.dataAsOfPrefix, "Dane na dzień");
+  assert.match(labels.allFiguresStatement, /Wszystkie wartości/);
+  assert.match(labels.allFiguresStatement, /bieżący okres względem okresu porównawczego/);
+
+  const visiblePolishLabels = Object.values(labels).join("\n");
+  assert.doesNotMatch(visiblePolishLabels, /(?:Ã|Å|Ä|Â)/);
+});
+
+test("mojibake payload text is repaired before deck generation", async () => {
+  const result = await generatePresentation({
+    ...misleadingHeadingPayload(),
+    client: "BieÅ¼Ä…cy klient",
+    deckTitle: "QBR - BieÅ¼Ä…cy klient"
+  });
+
+  assert.equal(result.normalized.client, "Bieżący klient");
+  assert.equal(result.deckSpec.metadata.client, "Bieżący klient");
+  assert.equal(result.deckSpec.metadata.deckTitle, "QBR - Bieżący klient");
 });
