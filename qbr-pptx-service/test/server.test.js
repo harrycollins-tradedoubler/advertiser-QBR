@@ -5,6 +5,7 @@ const path = require("node:path");
 const test = require("node:test");
 
 const { createServer } = require("../server");
+const { saveOutput } = require("../lib/generator");
 
 function listen(server) {
   return new Promise((resolve, reject) => {
@@ -158,6 +159,27 @@ test("repeated QBR runs with the same requested filename do not overwrite each o
     assert.equal(await secondDownload.text(), "pptx-bytes-2");
   } finally {
     await close(server);
+    await fs.rm(outputDir, { recursive: true, force: true });
+  }
+});
+
+test("saveOutput uses create-only writes and appends a UUID instead of overwriting", async () => {
+  const outputDir = await fs.mkdtemp(path.join(os.tmpdir(), "qbr-pptx-service-"));
+  const baseResult = {
+    normalized: { debug: false },
+    deckSpec: { metadata: { requestId: "test" }, slides: [], theme: { name: "TD" } },
+    fileName: "Collision Report.pptx"
+  };
+
+  try {
+    const first = await saveOutput({ ...baseResult, buffer: Buffer.from("first") }, outputDir);
+    const second = await saveOutput({ ...baseResult, buffer: Buffer.from("second") }, outputDir);
+
+    assert.equal(first.fileName, "collision_report.pptx");
+    assert.match(second.fileName, /^collision_report_[0-9a-f-]+\.pptx$/i);
+    assert.equal(await fs.readFile(path.join(outputDir, first.fileName), "utf8"), "first");
+    assert.equal(await fs.readFile(path.join(outputDir, second.fileName), "utf8"), "second");
+  } finally {
     await fs.rm(outputDir, { recursive: true, force: true });
   }
 });

@@ -2943,7 +2943,7 @@ function buildPublisherProgramDeckSpec(input, theme) {
   }
 
   if (!slides.length) {
-    return buildDeckSpec({ ...input, analysisLevel: "" }, theme);
+    throw new Error("Publisher QBR service could not build publisher template slides.");
   }
 
   return {
@@ -2969,6 +2969,10 @@ function buildPublisherProgramDeckSpec(input, theme) {
 }
 
 function buildDeckSpec(input, theme) {
+  if (cleanInlineText(input.analysisLevel).toLowerCase() === "publisher_program") {
+    return buildPublisherProgramDeckSpec(input, theme);
+  }
+
   const slides = [];
   const headline = buildHeadline(input);
   const executiveCardConfig = [
@@ -3015,6 +3019,7 @@ function buildDeckSpec(input, theme) {
   const segmentPerformanceBlocks = buildSegmentPerformanceBlocks(input);
   const salesGrowthSignals = buildSalesGrowthSignals(input);
   const programBreakdownTable = buildProgramBreakdownTable(input);
+
   slides.push({
     id: "cover",
     kind: "cover",
@@ -4597,40 +4602,11 @@ function safeName(value) {
     .toLowerCase() || "qbr_deck";
 }
 
-function normalizeOutputFileName(value, fallback = "qbr_deck") {
-  const raw = cleanInlineText(value || fallback);
-  const leafName = raw.replace(/\\/g, "/").split("/").pop() || fallback;
-  const withoutExtension = leafName.replace(/\.pptx$/i, "");
-  return `${safeName(withoutExtension)}.pptx`;
-}
-
-async function writeUniqueFile(outputDir, preferredFileName, data, options) {
-  const normalizedFileName = normalizeOutputFileName(preferredFileName);
-  const extension = path.extname(normalizedFileName) || ".pptx";
-  const baseName = normalizedFileName.slice(0, -extension.length);
-
-  for (let attempt = 0; attempt < 5; attempt += 1) {
-    const fileName = attempt === 0
-      ? normalizedFileName
-      : `${baseName}_${crypto.randomUUID()}${extension}`;
-    const filePath = path.join(outputDir, fileName);
-    try {
-      await fs.writeFile(filePath, data, { ...options, flag: "wx" });
-      return { fileName, filePath };
-    } catch (error) {
-      if (error && error.code === "EEXIST") continue;
-      throw error;
-    }
-  }
-
-  const fileName = `${baseName}_${crypto.randomUUID()}${extension}`;
-  const filePath = path.join(outputDir, fileName);
-  await fs.writeFile(filePath, data, { ...options, flag: "wx" });
-  return { fileName, filePath };
-}
-
 async function generatePresentation(payload, options = {}) {
   const normalized = normalizePayload(payload || {});
+  if (cleanInlineText(normalized.analysisLevel).toLowerCase() !== "publisher_program") {
+    throw new Error("Publisher QBR service only accepts publisher_program payloads.");
+  }
   const theme = resolveTheme(normalized.themeName, normalized.themeOverrides);
   const deckSpec = buildDeckSpec(normalized, theme);
   const localizedDeckSpec = await localizeDeckSpec(deckSpec, normalized.languageCode);
@@ -4648,14 +4624,7 @@ async function saveOutput(result, outputDir) {
   let deckSpecFileName = null;
   if (result.normalized.debug) {
     deckSpecFileName = savedPptx.fileName.replace(/\.pptx$/i, ".deck-spec.json");
-    const savedDeckSpec = await writeCreateOnly(
-      fs,
-      outputDir,
-      deckSpecFileName,
-      JSON.stringify(result.deckSpec, null, 2),
-      "utf8"
-    );
-    deckSpecFileName = savedDeckSpec.fileName;
+    await writeCreateOnly(fs, outputDir, deckSpecFileName, JSON.stringify(result.deckSpec, null, 2), "utf8");
   }
 
   return { pptxPath: savedPptx.fullPath, fileName: savedPptx.fileName, deckSpecFileName };

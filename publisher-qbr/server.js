@@ -5,8 +5,8 @@ const path = require("node:path");
 
 const { generatePresentation, saveOutput } = require("./lib/generator");
 
-const PORT = Number(process.env.PORT || 3010);
-const API_KEY = process.env.QBR_PPTX_API_KEY || process.env.API_KEY || "td-qbr-pptx-local-2026-secret";
+const PORT = Number(process.env.PORT || 3020);
+const API_KEY = process.env.PUBLISHER_QBR_API_KEY || process.env.QBR_PPTX_API_KEY || process.env.API_KEY || "td-publisher-qbr-local-2026-secret";
 const OUTPUT_DIR = path.join(__dirname, "outputs");
 const DEFAULT_DOWNLOAD_TTL_SECONDS = 60 * 60;
 
@@ -43,6 +43,14 @@ function positiveInt(value, fallback) {
 
 function tokenSecret(apiKey) {
   return process.env.DOWNLOAD_TOKEN_SECRET || apiKey;
+}
+
+function isPublisherQbrPayload(payload) {
+  const nestedPayload = payload && typeof payload.payload === "object" && payload.payload
+    ? payload.payload
+    : {};
+  const analysisLevel = String(payload?.analysisLevel || nestedPayload.analysisLevel || "").trim().toLowerCase();
+  return analysisLevel === "publisher_program";
 }
 
 function signFileToken(fileName, expiresAt, secret) {
@@ -165,7 +173,7 @@ function createServer(options = {}) {
     }
 
     if (req.method === "GET" && pathname === "/health") {
-      json(res, 200, { ok: true, service: "qbr-pptx-service" });
+      json(res, 200, { ok: true, service: "publisher-qbr-service" });
       return;
     }
 
@@ -183,6 +191,13 @@ function createServer(options = {}) {
 
       try {
         const payload = await readBody(req);
+        if (!isPublisherQbrPayload(payload)) {
+          json(res, 400, {
+            success: false,
+            message: "Publisher QBR service only accepts publisher_program payloads."
+          });
+          return;
+        }
         const result = await config.generatePresentation(payload);
         const saved = await config.saveOutput(result, config.outputDir);
         const savedFileName = saved.fileName || result.fileName;
@@ -211,8 +226,8 @@ function createServer(options = {}) {
 
         json(res, 200, {
           success: true,
-          provider: "qbr-pptx",
-          message: "Editable QBR PowerPoint generated successfully.",
+          provider: "publisher-qbr-pptx",
+          message: "Editable Publisher QBR PowerPoint generated successfully.",
           presentation_id: result.deckSpec.metadata.requestId,
           pptx_url: pptxUrl,
           deck_spec_url: deckSpecUrl,
@@ -239,7 +254,7 @@ if (require.main === module) {
   const server = createServer();
 
   server.listen(PORT, () => {
-    console.log(`QBR PPTX service listening on http://localhost:${PORT}`);
+    console.log(`Publisher QBR service listening on http://localhost:${PORT}`);
   });
 }
 
