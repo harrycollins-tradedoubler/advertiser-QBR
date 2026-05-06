@@ -251,6 +251,22 @@ test("explicit AI sales growth signal titles are preserved", async () => {
   assert.equal(slide.signals[0].detail, "The title and body are supplied by upstream analysis.");
 });
 
+test("advertiser service does not switch to publisher-program template", async () => {
+  const result = await generatePresentation({
+    ...misleadingHeadingPayload(),
+    analysisLevel: "publisher_program"
+  });
+
+  const titles = result.deckSpec.slides.map((slide) => slide.title);
+  assert.ok(titles.includes("Program Performance: Executive Summary"));
+  assert.ok(titles.includes("Publisher Performance Overview"));
+  assert.ok(titles.includes("Brand New Publishers"));
+  assert.ok(!titles.includes("Publisher Performance Summary"));
+  assert.ok(!titles.includes("Program Level Analysis"));
+  assert.ok(!titles.includes("Brand New Programs"));
+  assert.ok(!titles.includes("Movers & Shakers - Commission"));
+});
+
 test("Polish reporting-period labels render with Unicode characters", async () => {
   const result = await generatePresentation({
     ...misleadingHeadingPayload(),

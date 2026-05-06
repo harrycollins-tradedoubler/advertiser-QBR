@@ -2967,10 +2967,6 @@ function buildPublisherProgramDeckSpec(input, theme) {
 }
 
 function buildDeckSpec(input, theme) {
-  if (cleanInlineText(input.analysisLevel).toLowerCase() === "publisher_program") {
-    return buildPublisherProgramDeckSpec(input, theme);
-  }
-
   const slides = [];
   const headline = buildHeadline(input);
   const executiveCardConfig = [
@@ -3017,7 +3013,6 @@ function buildDeckSpec(input, theme) {
   const segmentPerformanceBlocks = buildSegmentPerformanceBlocks(input);
   const salesGrowthSignals = buildSalesGrowthSignals(input);
   const programBreakdownTable = buildProgramBreakdownTable(input);
-
   slides.push({
     id: "cover",
     kind: "cover",
