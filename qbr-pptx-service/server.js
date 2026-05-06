@@ -185,8 +185,9 @@ function createServer(options = {}) {
         const payload = await readBody(req);
         const result = await config.generatePresentation(payload);
         const saved = await config.saveOutput(result, config.outputDir);
+        const outputFileName = saved.fileName || result.fileName;
         const root = baseUrl(req);
-        const pptxUrl = createSignedFileUrl(root, result.fileName, {
+        const pptxUrl = createSignedFileUrl(root, outputFileName, {
           apiKey: config.apiKey,
           secret: config.downloadTokenSecret,
           ttlSeconds: config.downloadTtlSeconds,
@@ -202,7 +203,7 @@ function createServer(options = {}) {
           : null;
 
         if (config.scheduleDeletion) {
-          scheduleOutputDeletion(config.outputDir, result.fileName, config.downloadTtlSeconds);
+          scheduleOutputDeletion(config.outputDir, outputFileName, config.downloadTtlSeconds);
           if (saved.deckSpecFileName) {
             scheduleOutputDeletion(config.outputDir, saved.deckSpecFileName, config.downloadTtlSeconds);
           }
@@ -216,7 +217,7 @@ function createServer(options = {}) {
           pptx_url: pptxUrl,
           deck_spec_url: deckSpecUrl,
           download_expires_at: new Date(config.now() + config.downloadTtlSeconds * 1000).toISOString(),
-          file_name: result.fileName,
+          file_name: outputFileName,
           slide_count: result.deckSpec.slides.length,
           theme: result.deckSpec.theme.name
         });

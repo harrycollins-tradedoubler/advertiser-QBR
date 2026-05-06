@@ -4600,29 +4600,65 @@ function safeName(value) {
     .toLowerCase() || "qbr_deck";
 }
 
+function normalizeOutputFileName(value, fallback = "qbr_deck") {
+  const raw = cleanInlineText(value || fallback);
+  const leafName = raw.replace(/\\/g, "/").split("/").pop() || fallback;
+  const withoutExtension = leafName.replace(/\.pptx$/i, "");
+  return `${safeName(withoutExtension)}.pptx`;
+}
+
+async function writeUniqueFile(outputDir, preferredFileName, data, options) {
+  const normalizedFileName = normalizeOutputFileName(preferredFileName);
+  const extension = path.extname(normalizedFileName) || ".pptx";
+  const baseName = normalizedFileName.slice(0, -extension.length);
+
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const fileName = attempt === 0
+      ? normalizedFileName
+      : `${baseName}_${crypto.randomUUID()}${extension}`;
+    const filePath = path.join(outputDir, fileName);
+    try {
+      await fs.writeFile(filePath, data, { ...options, flag: "wx" });
+      return { fileName, filePath };
+    } catch (error) {
+      if (error && error.code === "EEXIST") continue;
+      throw error;
+    }
+  }
+
+  const fileName = `${baseName}_${crypto.randomUUID()}${extension}`;
+  const filePath = path.join(outputDir, fileName);
+  await fs.writeFile(filePath, data, { ...options, flag: "wx" });
+  return { fileName, filePath };
+}
+
 async function generatePresentation(payload, options = {}) {
   const normalized = normalizePayload(payload || {});
   const theme = resolveTheme(normalized.themeName, normalized.themeOverrides);
   const deckSpec = buildDeckSpec(normalized, theme);
   const localizedDeckSpec = await localizeDeckSpec(deckSpec, normalized.languageCode);
   const buffer = await renderDeck(localizedDeckSpec);
-  const fileName = normalized.outputFileName || `${safeName(localizedDeckSpec.metadata.deckTitle)}_${crypto.randomUUID()}.pptx`;
+  const fileName = normalized.outputFileName
+    ? normalizeOutputFileName(normalized.outputFileName)
+    : `${safeName(localizedDeckSpec.metadata.deckTitle)}_${crypto.randomUUID()}.pptx`;
 
   return { normalized, deckSpec: localizedDeckSpec, buffer, fileName };
 }
 
 async function saveOutput(result, outputDir) {
   await fs.mkdir(outputDir, { recursive: true });
-  const pptxPath = path.join(outputDir, result.fileName);
-  await fs.writeFile(pptxPath, result.buffer);
+  const savedPptx = await writeUniqueFile(outputDir, result.fileName, result.buffer);
 
   let deckSpecFileName = null;
   if (result.normalized.debug) {
-    deckSpecFileName = result.fileName.replace(/\.pptx$/i, ".deck-spec.json");
-    await fs.writeFile(path.join(outputDir, deckSpecFileName), JSON.stringify(result.deckSpec, null, 2), "utf8");
+    deckSpecFileName = savedPptx.fileName.replace(/\.pptx$/i, ".deck-spec.json");
+    await fs.writeFile(path.join(outputDir, deckSpecFileName), JSON.stringify(result.deckSpec, null, 2), {
+      encoding: "utf8",
+      flag: "wx"
+    });
   }
 
-  return { pptxPath, deckSpecFileName };
+  return { pptxPath: savedPptx.filePath, fileName: savedPptx.fileName, deckSpecFileName };
 }
 
 module.exports = {

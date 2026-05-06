@@ -102,3 +102,62 @@ test("api key can still retrieve files for trusted automation", async () => {
     await fs.rm(outputDir, { recursive: true, force: true });
   }
 });
+
+test("repeated QBR runs with the same requested filename do not overwrite each other", async () => {
+  const outputDir = await fs.mkdtemp(path.join(os.tmpdir(), "qbr-pptx-service-"));
+  let runNumber = 0;
+  const server = createServer({
+    apiKey: "test-key",
+    downloadTokenSecret: "download-secret",
+    downloadTtlSeconds: 60,
+    outputDir,
+    scheduleDeletion: false,
+    generatePresentation: async () => {
+      runNumber += 1;
+      return {
+        normalized: { debug: false },
+        deckSpec: {
+          metadata: { requestId: `test-request-${runNumber}` },
+          slides: [{ title: "Test" }],
+          theme: { name: "TD" }
+        },
+        fileName: "../shared/qbr-report.pptx",
+        buffer: Buffer.from(`pptx-bytes-${runNumber}`)
+      };
+    }
+  });
+
+  const root = await listen(server);
+  try {
+    const generate = () => fetch(`${root}/generate`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": "test-key"
+      },
+      body: "{}"
+    });
+
+    const firstResponse = await generate();
+    const secondResponse = await generate();
+    assert.equal(firstResponse.status, 200);
+    assert.equal(secondResponse.status, 200);
+    const first = await firstResponse.json();
+    const second = await secondResponse.json();
+
+    assert.equal(first.file_name, "qbr-report.pptx");
+    assert.match(second.file_name, /^qbr-report_[0-9a-f-]+\.pptx$/);
+    assert.notEqual(first.file_name, second.file_name);
+
+    assert.equal(await fs.readFile(path.join(outputDir, first.file_name), "utf8"), "pptx-bytes-1");
+    assert.equal(await fs.readFile(path.join(outputDir, second.file_name), "utf8"), "pptx-bytes-2");
+
+    const firstDownload = await fetch(first.pptx_url);
+    const secondDownload = await fetch(second.pptx_url);
+    assert.equal(await firstDownload.text(), "pptx-bytes-1");
+    assert.equal(await secondDownload.text(), "pptx-bytes-2");
+  } finally {
+    await close(server);
+    await fs.rm(outputDir, { recursive: true, force: true });
+  }
+});
