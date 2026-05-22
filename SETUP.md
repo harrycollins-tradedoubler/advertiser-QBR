@@ -1,125 +1,155 @@
-# Agentic RAG Masterclass - Setup Guide
+# TD QBR Agent Hub - Setup Guide
 
 ## Prerequisites
 
-Before starting Module 1, you need to set up these external services:
+- Windows PowerShell
+- Python 3.10+
+- Node.js 18+
+- Access to a TD user token with permission to inspect the target organisation
+- Access to the configured n8n QBR webhook
 
-### 1. Supabase (Required)
-Database, authentication, and file storage.
+## Install Dependencies
 
-1. Go to [supabase.com](https://supabase.com) and create a free account
-2. Create a new project (name it something like "agentic-rag-masterclass")
-3. Wait for the project to provision
-4. Get your credentials from Project Settings > API:
-   - **Project URL** (SUPABASE_URL)
-   - **anon/public key** (SUPABASE_ANON_KEY) - use Legacy keys, not Publishable
-   - **service_role secret** (SUPABASE_SERVICE_ROLE_KEY)
+### Backend
 
-### 2. LangSmith (Required)
-Observability for LLM calls - essential for debugging.
+The backend uses a Python virtual environment under `backend/.venv`.
 
-1. Go to [smith.langchain.com](https://smith.langchain.com) and create a free account
-2. Go to Settings > API Keys
-3. Create a new API key (LANGSMITH_API_KEY)
-4. Create a project and note the project name (LANGSMITH_PROJECT)
-
-### 3. OpenAI (Required for Module 1)
-Used for managed RAG demo in Module 1. Optional after Module 2.
-
-1. Go to [platform.openai.com](https://platform.openai.com)
-2. Create an API key (OPENAI_API_KEY)
-3. In the Playground > Storage, create a Vector Store
-4. Note the Vector Store ID (OPENAI_VECTOR_STORE_ID)
-
-### 4. OpenRouter (Optional - Alternative to OpenAI)
-Access multiple models through one API. Useful from Module 2 onwards.
-
-1. Go to [openrouter.ai](https://openrouter.ai)
-2. Create an account and get an API key
-3. Use base URL: `https://openrouter.ai/api/v1`
-
-### 5. LM Studio (Optional - Local Models)
-Run models locally without API costs.
-
-1. Download from [lmstudio.ai](https://lmstudio.ai)
-2. Download models like Qwen3-30B-A3B (mixture of experts)
-3. Start local server (default: `http://localhost:1234/v1`)
-
-### 6. Tavily (Required for Module 7)
-Web search capability for the agent.
-
-1. Go to [tavily.com](https://tavily.com)
-2. Create account and get API key (TAVILY_API_KEY)
-
-### 7. Cohere (Optional for Module 6)
-Cloud reranking service. Alternative: use local reranking models.
-
-1. Go to [cohere.com](https://cohere.com)
-2. Create account and get API key
-
----
-
-## Local Development Setup
-
-### 1. Install Supabase CLI
-```bash
-# Windows (using scoop)
-scoop install supabase
-
-# Or download from: https://supabase.com/docs/guides/cli
+```powershell
+cd backend
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
 ```
 
-### 2. Link Supabase Project
-```bash
-cd agentic-rag-masterclass
-supabase login
-supabase link --project-ref YOUR_PROJECT_ID
+### Frontend
+
+```powershell
+cd frontend
+npm install
 ```
 
-### 3. Python Environment (will be created in Module 1)
-- Python 3.10+ required
-- Virtual environment will be created in `backend/.venv`
+### PPTX Service
 
-### 4. Node.js (will be created in Module 1)
-- Node.js 18+ required
-- Dependencies will be installed in `frontend/node_modules`
+```powershell
+cd qbr-pptx-service
+npm install
+```
 
----
+## Environment Configuration
 
-## Environment Variables Template
-
-Create `backend/.env` after Module 1 builds the backend folder:
+Create or update `backend/.env`:
 
 ```env
-# Supabase
-SUPABASE_URL=https://YOUR_PROJECT.supabase.co
-SUPABASE_ANON_KEY=your_anon_key
-SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
-
-# LangSmith
-LANGSMITH_API_KEY=your_langsmith_key
-LANGSMITH_PROJECT=agentic-rag-masterclass
-
-# OpenAI (Module 1)
-OPENAI_API_KEY=your_openai_key
-OPENAI_VECTOR_STORE_ID=vs_xxxxx
-
-# Tavily (Module 7)
-TAVILY_API_KEY=your_tavily_key
-
-# Text-to-SQL (Module 7)
-SQL_READER_DATABASE_URL=postgresql://readonly_user:password@db.xxx.supabase.co:6543/postgres
+DEBUG=false
+CORS_ORIGINS=["http://localhost:5173","http://localhost:3000"]
+DATABASE_URL=
+NEON_API_URL=
+QBR_AGENT_WEBHOOK_URL=https://coe-n8n.coe-untrust-eu-de.prod.tddrift.net/webhook/qbr-v4-presenton-1e2f9f4d
 ```
 
----
+Optional TD API overrides:
 
-## Getting Started
+```env
+TD_USER_URL=https://connect.tradedoubler.com/usermanagement
+TD_MANAGE_URL=https://connect.tradedoubler.com/advertiser
+TD_IMPERSONATE_URL=https://connect.tradedoubler.com/uaa/admin/impersonate
+```
 
-1. Open this folder in your IDE (Cursor, VS Code, etc.)
-2. Open a terminal and run `claude` to start Claude Code
-3. Run `/onboard` to orient Claude to the project
-4. Enter plan mode (`Shift+Tab`) and say: "Let's kick off planning for Module 1"
-5. Review and save the plan to `agent-plans/`
-6. Clear session, then run `/build agent-plans/plan-01-module-01-app-shell.md`
+Create or update `frontend/.env` if you need to override the default backend URL:
 
-Good luck with your build!
+```env
+VITE_API_URL=http://localhost:8008
+```
+
+For the PPTX service, set an API key only if you do not want to use the local default:
+
+```env
+QBR_PPTX_API_KEY=your-local-secret
+```
+
+## Start Services
+
+Frontend and backend:
+
+```powershell
+.\scripts\start-services.ps1
+```
+
+Manual backend start:
+
+```powershell
+cd backend
+.\.venv\Scripts\Activate.ps1
+.\.venv\Scripts\python.exe -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8008
+```
+
+Manual frontend start:
+
+```powershell
+cd frontend
+npm run dev
+```
+
+PPTX service:
+
+```powershell
+cd qbr-pptx-service
+npm run start
+```
+
+## Local URLs
+
+- Backend health: `http://localhost:8008/health`
+- Frontend: `http://localhost:5173`
+- PPTX service health: `http://localhost:3010/health`
+
+## Smoke Test
+
+1. Start backend and frontend.
+2. Open `http://localhost:5173`.
+3. Select the QBR Agent.
+4. Paste a TD user access token and enter an Organisation ID.
+5. Click Load Programs.
+6. Select one or more programs.
+7. Choose language, currency, and reporting period.
+8. Submit the QBR request.
+9. Confirm the job status progresses to completed or shows a useful error.
+10. Download the PPTX if a report URL is returned.
+
+## Validation Commands
+
+Frontend:
+
+```powershell
+cd frontend
+npm run build
+npm run lint
+```
+
+PPTX service:
+
+```powershell
+cd qbr-pptx-service
+npm test
+```
+
+Backend:
+
+```powershell
+cd backend
+.\.venv\Scripts\python.exe -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8008
+```
+
+Then check:
+
+```powershell
+curl.exe http://localhost:8008/health
+```
+
+## Troubleshooting
+
+- If TD calls fail with proxy-related errors, verify backend code still uses `httpx.AsyncClient(trust_env=False)` for TD requests.
+- If QBR jobs queue but n8n is not reached, confirm `QBR_AGENT_WEBHOOK_URL` in `backend/.env`.
+- If the frontend cannot reach the backend, confirm `VITE_API_URL` is `http://localhost:8008`.
+- If downloads fail, check the QBR job response contains a valid `.pptx` URL.
+- If PPTX generation fails in n8n, confirm the PPTX service is running and accepts `x-api-key`.

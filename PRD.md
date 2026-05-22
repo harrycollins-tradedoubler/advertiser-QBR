@@ -1,181 +1,146 @@
-# Agentic RAG Application - Product Requirements Document
+# TD QBR Agent Hub - Product Requirements
 
 ## Overview
-An agentic RAG (Retrieval Augmented Generation) application with two primary interfaces:
-1. **Chat Interface** - Conversational AI with tool use, sub-agents, and streaming
-2. **Document Ingestion Interface** - Upload and process documents into vector store
 
-## Tech Stack
-- **Frontend**: React + TypeScript + Tailwind CSS + shadcn/ui + Vite
-- **Backend**: Python + FastAPI
-- **Database**: Supabase (PostgreSQL + pgvector + Auth + Storage)
-- **Document Parsing**: Docling
-- **Observability**: LangSmith
+The product is a local agent hub for generating Tradedoubler Quarterly Business Review reports. It combines a frontend request workflow, FastAPI orchestration layer, remote n8n QBR agent workflow, TD API integration, and an editable PowerPoint renderer.
 
-## In Scope
-- Multi-user authentication with data isolation (RLS)
-- Document upload and processing pipeline
-- Vector search with embeddings
-- Hybrid search (semantic + keyword)
-- Reranking capabilities
-- Web search tool
-- Text-to-SQL tool for structured data
-- Sub-agent architecture for document analysis
-- Real-time UI updates
-- Dark mode
+The user goal is to produce reliable, branded, editable QBR decks from TD program data with minimal manual preparation.
 
-## Out of Scope (for this version)
-- Production deployment
-- Code execution sandbox
-- Graph RAG / knowledge graphs
-- Voice interface
+## Users
 
----
+- Internal TD users preparing QBRs for advertisers or organisations
+- Operators testing and improving the QBR n8n workflow
+- Developers maintaining the frontend, backend, and PPTX renderer
 
-## Module 1: App Shell
-**Goal**: Foundation with auth, basic chat, and managed RAG demo
+## Current Scope
 
-### Features
-- Supabase authentication (login/logout)
-- Chat interface with threads
-- Message streaming
-- OpenAI Responses API integration (managed RAG demo)
-- LangSmith tracing setup
-- Basic database schema (users, threads, messages)
+### QBR Agent Frontend
 
-### Acceptance Criteria
-- [ ] User can sign up and log in
-- [ ] User can create chat threads
-- [ ] Messages stream in real-time
-- [ ] Chat history persists across sessions
-- [ ] LangSmith shows traces for all LLM calls
-- [ ] Different users see only their own data
+Users must be able to:
+- Select the active QBR Agent
+- Paste a TD user access token
+- Enter an Organisation ID
+- Load available TD programs for that organisation
+- Select one or more programs to include in the report
+- Choose report language and currency
+- Choose a reporting date range
+- Submit the request and see queued/running/completed/error status
+- Download the generated `.pptx` when available
 
----
+### Backend API
 
-## Module 2: Bring Your Own Retrieval
-**Goal**: Replace managed RAG with custom ingestion and retrieval
+The backend must:
+- Expose active agents through `/api/agents`
+- Accept chat and QBR requests through `/api/chat`
+- Treat messages prefixed with `QBR_REQUEST` as long-running jobs
+- Return immediately with a job ID for QBR requests
+- Store QBR job status in memory for local use
+- Call the configured n8n webhook asynchronously
+- Accept successful JSON, plain-text, or empty n8n responses
+- Extract downloadable PPTX URLs from n8n responses where possible
+- Proxy PPTX downloads so the frontend does not need to fetch remote files directly
 
-### Features
-- Document upload UI (drag & drop)
-- File storage in Supabase buckets
-- Text extraction and chunking
-- Embedding generation (configurable provider)
-- pgvector storage for embeddings
-- Settings UI for LLM/embedding configuration
-- Real-time ingestion status
+### TD API Integration
 
-### Acceptance Criteria
-- [ ] User can upload text/markdown files
-- [ ] Documents are chunked and embedded
-- [ ] Embeddings stored in pgvector
-- [ ] Chat uses custom vector search
-- [ ] Settings allow changing LLM provider
-- [ ] Ingestion shows real-time progress
+The backend must:
+- Accept a TD user access token
+- Fetch organisation users with the supplied Organisation ID
+- Prefer owner/admin-style users for impersonation when available
+- Impersonate the selected TD user
+- Fetch programs using the impersonated access token
+- Cap program fetches at the TD API-supported maximum of 100
+- Return TD tokens to the frontend so QBR jobs can still forward tokens if backend memory is lost
+- Convert TD request failures and malformed responses into clear API errors
+- Avoid inheriting broken machine proxy settings for outbound TD calls
 
----
+### PPTX Renderer
 
-## Module 3: Record Manager
-**Goal**: Prevent duplicate documents and enable incremental updates
+The PPTX service must:
+- Expose `GET /health`, `POST /generate`, and `GET /files/:fileName`
+- Require `x-api-key`
+- Generate editable `.pptx` files using `pptxgenjs`
+- Support the TD-branded QBR deck structure
+- Support program-level breakdown data
+- Support multiple output languages and currencies where implemented
+- Keep generated decks in `qbr-pptx-service/outputs/`
 
-### Features
-- Content hashing for deduplication
-- Skip processing for identical content
-- Delete old chunks when document updated
-- Cascade delete (document -> chunks -> embeddings)
+## Out Of Scope
 
-### Acceptance Criteria
-- [ ] Uploading same file twice shows "unchanged" status
-- [ ] Modified files trigger re-processing
-- [ ] Deleting document removes all related chunks
-- [ ] No orphan chunks in database
+- Production deployment hardening
+- Persistent job storage
+- Persistent chat thread storage
+- Full user authentication for the local hub
+- Reintroducing the original RAG masterclass module roadmap
 
----
+## Functional Requirements
 
-## Module 4: Metadata Extraction & Filtering
-**Goal**: Extract structured metadata to improve retrieval precision
+### QBR Request Construction
 
-### Features
-- LLM-based metadata extraction during ingestion
-- Configurable metadata schema (stored in settings)
-- Metadata fields: title, summary, document_type, topics, language
-- Metadata filtering in vector search
-- Expandable detail panel per document
+The frontend must send:
+- `type: "QBR_REQUEST"`
+- `analysisLevel`
+- `organizationId`
+- `programId`
+- `programName`
+- `publisherProgramMode`
+- `publisherProgramIds`
+- `languageCode`
+- `currencyCode`
+- `startDate`
+- `endDate`
+- `fromDate`
+- `toDate`
+- `td_tokens`
 
-### Acceptance Criteria
-- [ ] Documents show extracted metadata after processing
-- [ ] Admin can configure metadata schema
-- [ ] Search can filter by metadata fields
-- [ ] Metadata propagates to chunks
+Date ranges must be valid and limited to 366 days.
 
----
+### QBR Job Status
 
-## Module 5: Multi-format Support
-**Goal**: Support PDF and other document formats via Docling
+Backend job states:
+- `queued`
+- `completed`
+- `error`
 
-### Features
-- Docling integration for document parsing
-- Support: PDF, DOCX, PPTX, HTML, images
-- Standard pipeline (fast, CPU-based)
-- Optional VLM pipeline for complex layouts
+Completed jobs may include:
+- response text
+- `download_available`
+- `download_url`
+- `file_name`
+- `completed_at`
 
-### Acceptance Criteria
-- [ ] PDF files upload and process correctly
-- [ ] Text extracted preserves structure
-- [ ] Large files don't crash the server
-- [ ] Batch processing with concurrency limits
+Error jobs must include a useful error message where possible.
 
----
+### Report Download
 
-## Module 6: Hybrid Search & Reranking
-**Goal**: Improve retrieval quality with multiple search strategies
+The frontend downloads reports through:
 
-### Features
-- Keyword search (full-text search in Postgres)
-- Semantic search (vector similarity)
-- Hybrid mode (combine both with RRF)
-- Reranking with Cohere or local model
-- Configurable search mode and reranker
+```text
+GET /api/qbr/{job_id}/download
+```
 
-### Acceptance Criteria
-- [ ] Search mode selectable (vector/keyword/hybrid)
-- [ ] Reranking improves result relevance
-- [ ] Settings allow reranker configuration
-- [ ] LangSmith traces show search scores
+The backend must:
+- Reject downloads for missing jobs
+- Reject downloads for incomplete jobs
+- Reject jobs without a downloadable URL
+- Fetch the remote PPTX with `trust_env=False`
+- Return the file with the PowerPoint MIME type and a useful filename
 
----
+## Non-Functional Requirements
 
-## Module 7: Additional Tools
-**Goal**: Expand agent capabilities beyond document search
+- Keep local setup simple and Windows-friendly.
+- Prefer explicit ports and scripts over hidden assumptions.
+- Keep TD tokens out of logs and docs.
+- Keep QBR errors actionable for non-developer operators.
+- Keep the PPTX output editable, not rasterized.
+- Keep docs current with the actual source code.
 
-### Features
-- **Web Search**: Tavily integration for real-time information
-- **Text-to-SQL**: Query structured data in Supabase
-  - Dedicated read-only database user
-  - Database-level security (no destructive queries)
-  - Sales data table for demo
+## Acceptance Criteria
 
-### Acceptance Criteria
-- [ ] Agent can search the web when documents insufficient
-- [ ] Agent can query sales_data table with SQL
-- [ ] SQL injection prevented at database level
-- [ ] Tool calls visible in chat UI
-
----
-
-## Module 8: Sub-Agents
-**Goal**: Delegate full-document analysis to specialized sub-agents
-
-### Features
-- Analyze Document tool
-- Sub-agent loads entire document into context
-- Streaming reasoning visible to user
-- Isolated message context per sub-agent
-- Nested tool calls rendered in UI
-
-### Acceptance Criteria
-- [ ] "Summarize this document" triggers sub-agent
-- [ ] Sub-agent thinking process visible
-- [ ] Main agent context not polluted
-- [ ] Tool call history persists in database
-- [ ] Multiple think tags render correctly
+- A user can load TD programs from a valid access token and Organisation ID.
+- A user can submit a QBR request for one or more selected programs.
+- The backend returns a job ID immediately instead of blocking the frontend.
+- The frontend can poll the job until completed or errored.
+- A generated PPTX can be downloaded from the frontend when n8n returns a PPTX URL.
+- `npm test` passes in `qbr-pptx-service/` after renderer changes.
+- `npm run build` passes in `frontend/` after frontend changes.
+- Backend changes are verified with focused smoke checks or tests.

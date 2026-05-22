@@ -17,8 +17,11 @@ function loadPackage(name) {
 const PptxGenJS = loadPackage("pptxgenjs");
 const TEMPLATE_BLUE_BG_PATH = path.join(__dirname, "..", "assets", "qbr-bg-blue.png");
 const TEMPLATE_LIGHT_BG_PATH = path.join(__dirname, "..", "assets", "qbr-bg-light.png");
+const TD_WHITE_LOGO_PATH = path.join(__dirname, "..", "assets", "td-logo-white.png");
+const FIFTH_ELEMENT_WIREFRAME_CYAN_PATH = path.join(__dirname, "..", "assets", "fifth-element-wireframe-cyan.png");
 const HAS_TEMPLATE_BLUE_BG = fsSync.existsSync(TEMPLATE_BLUE_BG_PATH);
 const HAS_TEMPLATE_LIGHT_BG = fsSync.existsSync(TEMPLATE_LIGHT_BG_PATH);
+const HAS_FIFTH_ELEMENT_WIREFRAME_CYAN = fsSync.existsSync(FIFTH_ELEMENT_WIREFRAME_CYAN_PATH);
 const KPI_ICON_PATHS = {
   sales: path.join(__dirname, "..", "assets", "kpi-icon-sales.png"),
   ordervalue: path.join(__dirname, "..", "assets", "kpi-icon-ordervalue.png"),
@@ -210,6 +213,7 @@ const LANGUAGE_TRANSLATION_TARGET_MAP = {
 const DEFAULT_UI_LABELS = {
   qbrReport: "QBR Report",
   anyQuestions: "Any Questions?",
+  kpiComparisonTemplate: "{current} vs {previous} PY",
   thankYouSubtitleTemplate: "TD Affiliate Program - {period} Quarterly Business Review",
   currentPeriod: "Current Period",
   comparisonPeriodYoy: "Comparison Period (YoY)",
@@ -237,6 +241,7 @@ const UI_LABELS_BY_LANGUAGE = {
   FR: {
     qbrReport: "Rapport QBR",
     anyQuestions: "Des questions ?",
+    kpiComparisonTemplate: "{current} vs {previous} N-1",
     thankYouSubtitleTemplate: "Programme d'affiliation TD - {period} Revue trimestrielle",
     currentPeriod: "Période actuelle",
     comparisonPeriodYoy: "Période de comparaison (YoY)",
@@ -252,6 +257,7 @@ const UI_LABELS_BY_LANGUAGE = {
   NL: {
     qbrReport: "QBR-rapport",
     anyQuestions: "Vragen?",
+    kpiComparisonTemplate: "{current} vs {previous} vorig jaar",
     thankYouSubtitleTemplate: "TD Affiliate Programma - {period} Kwartaalreview",
     currentPeriod: "Huidige periode",
     comparisonPeriodYoy: "Vergelijkingsperiode (YoY)",
@@ -267,6 +273,7 @@ const UI_LABELS_BY_LANGUAGE = {
   DE: {
     qbrReport: "QBR-Bericht",
     anyQuestions: "Fragen?",
+    kpiComparisonTemplate: "{current} ggü. {previous} VJ",
     thankYouSubtitleTemplate: "TD Affiliate-Programm - {period} Quartalsbericht",
     currentPeriod: "Aktueller Zeitraum",
     comparisonPeriodYoy: "Vergleichszeitraum (YoY)",
@@ -282,6 +289,7 @@ const UI_LABELS_BY_LANGUAGE = {
   IT: {
     qbrReport: "Report QBR",
     anyQuestions: "Domande?",
+    kpiComparisonTemplate: "{current} vs {previous} anno prec.",
     thankYouSubtitleTemplate: "Programma di affiliazione TD - {period} Revisione trimestrale",
     currentPeriod: "Periodo corrente",
     comparisonPeriodYoy: "Periodo di confronto (YoY)",
@@ -297,6 +305,7 @@ const UI_LABELS_BY_LANGUAGE = {
   NO: {
     qbrReport: "QBR-rapport",
     anyQuestions: "Spørsmål?",
+    kpiComparisonTemplate: "{current} mot {previous} i fjor",
     thankYouSubtitleTemplate: "TD affiliateprogram - {period} kvartalsgjennomgang",
     currentPeriod: "Gjeldende periode",
     comparisonPeriodYoy: "Sammenligningsperiode (YoY)",
@@ -312,6 +321,7 @@ const UI_LABELS_BY_LANGUAGE = {
   SV: {
     qbrReport: "QBR-rapport",
     anyQuestions: "Några frågor?",
+    kpiComparisonTemplate: "{current} mot {previous} fg. år",
     thankYouSubtitleTemplate: "TD affiliateprogram - {period} kvartalsgenomgång",
     currentPeriod: "Aktuell period",
     comparisonPeriodYoy: "Jämförelseperiod (YoY)",
@@ -327,6 +337,7 @@ const UI_LABELS_BY_LANGUAGE = {
   DA: {
     qbrReport: "QBR-rapport",
     anyQuestions: "Nogen spørgsmål?",
+    kpiComparisonTemplate: "{current} mod {previous} sidste år",
     thankYouSubtitleTemplate: "TD affiliateprogram - {period} kvartalsgennemgang",
     currentPeriod: "Aktuel periode",
     comparisonPeriodYoy: "Sammenligningsperiode (YoY)",
@@ -342,6 +353,7 @@ const UI_LABELS_BY_LANGUAGE = {
   FI: {
     qbrReport: "QBR-raportti",
     anyQuestions: "Kysymyksiä?",
+    kpiComparisonTemplate: "{current} vs {previous} ed. vuosi",
     thankYouSubtitleTemplate: "TD-kumppanuusohjelma - {period} neljännesvuosikatsaus",
     currentPeriod: "Nykyinen jakso",
     comparisonPeriodYoy: "Vertailujakso (YoY)",
@@ -357,6 +369,7 @@ const UI_LABELS_BY_LANGUAGE = {
   ES: {
     qbrReport: "Informe QBR",
     anyQuestions: "¿Preguntas?",
+    kpiComparisonTemplate: "{current} vs {previous} año ant.",
     thankYouSubtitleTemplate: "Programa de afiliación TD - {period} Revisión trimestral",
     currentPeriod: "Período actual",
     comparisonPeriodYoy: "Período de comparación (YoY)",
@@ -372,6 +385,7 @@ const UI_LABELS_BY_LANGUAGE = {
   PL: {
     qbrReport: "Raport QBR",
     anyQuestions: "Pytania?",
+    kpiComparisonTemplate: "{current} vs {previous} r/r",
     thankYouSubtitleTemplate: "Program partnerski TD - {period} Przegląd kwartalny",
     currentPeriod: "Bieżący okres",
     comparisonPeriodYoy: "Okres porównawczy (r/r)",
@@ -1068,16 +1082,24 @@ function trend(metric) {
   return "flat";
 }
 
-function metricCard(metric) {
+function formatKpiComparison(metric, languageCode) {
+  if (!metric || !metric.current) return "";
+  if (!metric.previous) return `${metric.current}`;
+  const labels = uiLabelsForLanguage(languageCode);
+  return cleanInlineText((labels.kpiComparisonTemplate || DEFAULT_UI_LABELS.kpiComparisonTemplate)
+    .replace("{current}", metric.current)
+    .replace("{previous}", metric.previous));
+}
+
+function metricCard(metric, languageCode = "EN") {
   if (!metric || !metric.current) return null;
-  const comparison = metric.previous
-    ? `${metric.current} vs ${metric.previous} PY`
-    : `${metric.current}`;
+  const comparison = formatKpiComparison(metric, languageCode);
   const summary = metric.variance ? `${comparison} - ${metric.variance}` : comparison;
   return {
     label: metric.label,
     value: metric.current,
     previous: metric.previous || "",
+    comparison,
     summary,
     delta: metric.variance,
     trend: trend(metric)
@@ -2638,7 +2660,7 @@ function buildPublisherProgramDeckSpec(input, theme) {
 
   const topCards = executiveCardConfig
     .map((cfg) => {
-      const card = metricCard(input.metricMap[cfg.key]);
+      const card = metricCard(input.metricMap[cfg.key], input.languageCode);
       if (!card) return null;
       const hasIconPath = Boolean(cfg.iconKey && HAS_KPI_ICON[cfg.iconKey]);
       return {
@@ -2980,7 +3002,7 @@ function buildDeckSpec(input, theme) {
   ];
   const topCards = executiveCardConfig
     .map((cfg) => {
-      const card = metricCard(input.metricMap[cfg.key]);
+      const card = metricCard(input.metricMap[cfg.key], input.languageCode);
       if (!card) return null;
       const hasIconPath = Boolean(cfg.iconKey && HAS_KPI_ICON[cfg.iconKey]);
       return {
@@ -3421,6 +3443,27 @@ function addBlueChrome(slide, deck) {
   }
 }
 
+function addFifthElementWireframe(slide, placement) {
+  if (!HAS_FIFTH_ELEMENT_WIREFRAME_CYAN) return;
+  slide.addImage({
+    path: FIFTH_ELEMENT_WIREFRAME_CYAN_PATH,
+    x: placement.x,
+    y: placement.y,
+    w: placement.w,
+    h: placement.h
+  });
+}
+
+function ragColorForValue(value, deck, fallback = deck.theme.colors.ink) {
+  const text = cleanInlineText(value || "");
+  if (!text || text === "-" || /^n\/a$/i.test(text)) return toColor(fallback);
+  const numeric = parseNumber(text);
+  if (!Number.isFinite(numeric)) return toColor(fallback);
+  if (numeric > 0) return toColor(deck.theme.colors.success);
+  if (numeric < 0) return toColor(deck.theme.colors.accentAlt);
+  return toColor(deck.theme.colors.warning);
+}
+
 function addTitle(slide, deck, spec, color, subtitleColor, isBlueSlide = false) {
   const titleText = cleanInlineText(spec.title, "Slide Title");
   const titleRunsData = isBlueSlide ? [{ text: titleText, options: {} }] : titleRuns(titleText);
@@ -3540,11 +3583,9 @@ function addKpis(slide, deck, cards, origin, mode = "light") {
       x = origin.x + col * (cardW + gapX);
       y = origin.y + row * (cardH + gapY);
     }
-    const trendColor = card.trend === "up"
-      ? deck.theme.colors.success
-      : card.trend === "down"
-        ? deck.theme.colors.accentAlt
-        : deck.theme.colors.muted;
+    const trendColor = card.delta
+      ? ragColorForValue(card.delta, deck, deck.theme.colors.muted)
+      : toColor(card.trend === "flat" ? deck.theme.colors.warning : deck.theme.colors.muted);
 
     slide.addShape("rect", {
       x,
@@ -3607,28 +3648,43 @@ function addKpis(slide, deck, cards, origin, mode = "light") {
     const delta = cleanInlineText(card.delta || "");
     const hasDelta = delta && summary.includes(delta);
     const baseText = hasDelta ? summary.slice(0, summary.lastIndexOf(delta)).trimEnd() : summary;
-    const runs = hasDelta
-      ? [
-          { text: baseText ? `${baseText} ` : "", options: { color: toColor(deck.theme.colors.ink) } },
-          { text: delta, options: { color: toColor(trendColor) } }
-        ]
-      : [{ text: summary, options: { color: toColor(deck.theme.colors.ink) } }];
-    slide.addText(runs, {
+    const comparisonText = cleanInlineText(card.comparison || baseText.replace(/\s*-\s*$/, "") || summary);
+    slide.addText(comparisonText, {
       x: x + 0.22,
-      y: y + 0.86,
+      y: y + 0.84,
       w: cardW - 0.35,
-      h: 0.52,
+      h: hasDelta ? 0.28 : 0.52,
       fontFace: deck.theme.fonts.body,
-      fontSize: 10.2,
+      fontSize: 9.8,
+      color: toColor(deck.theme.colors.ink),
       margin: 0,
       breakLine: true
     });
+    if (hasDelta) {
+      slide.addText(delta, {
+        x: x + 0.22,
+        y: y + 1.13,
+        w: cardW - 0.35,
+        h: 0.24,
+        fontFace: deck.theme.fonts.body,
+        fontSize: 10.6,
+        bold: true,
+        color: trendColor,
+        margin: 0
+      });
+    }
   });
 }
 
 function isDeltaColumn(header) {
   const lower = cleanInlineText(header).toLowerCase();
-  return lower.includes("change") || lower.includes("variance") || lower.includes("yoy") || lower.includes("trend");
+  return lower.includes("change")
+    || lower.includes("variance")
+    || lower.includes("yoy")
+    || lower.includes("trend")
+    || lower.includes("delta")
+    || lower.includes("+/-")
+    || /%.*(?:increase|decrease|growth)|(?:increase|decrease|growth).*%/.test(lower);
 }
 
 function isVarianceRow(table, row) {
@@ -3653,22 +3709,19 @@ function metricToneFromVarianceHints(table, column) {
 
 function cellTextColor(table, column, value, deck, row = [], cellIndex = 0) {
   const varianceRow = isVarianceRow(table, row);
-  const labelCell = cleanInlineText(value || "").toLowerCase().includes("variance");
-  const useDeltaColor = isDeltaColumn(column) || (varianceRow && !labelCell);
+  const text = cleanInlineText(value);
+  const labelCell = text.toLowerCase().includes("variance");
+  const signedDeltaValue = /^[+\-]/.test(text) || text.startsWith("â–²") || text.startsWith("â–¼");
+  const useDeltaColor = isDeltaColumn(column) || (varianceRow && !labelCell) || (signedDeltaValue && text.includes("%"));
   if (!useDeltaColor) return toColor(deck.theme.colors.ink);
 
   const hintedTone = metricToneFromVarianceHints(table, column);
   if (hintedTone.startsWith("pos")) return toColor(deck.theme.colors.success);
   if (hintedTone.startsWith("neg")) return toColor(deck.theme.colors.accentAlt);
-  if (hintedTone.startsWith("neu") || hintedTone === "na") return toColor(deck.theme.colors.ink);
+  if (hintedTone.startsWith("neu")) return toColor(deck.theme.colors.warning);
+  if (hintedTone === "na") return toColor(deck.theme.colors.ink);
 
-  const text = cleanInlineText(value);
-  if (text.startsWith("+") || text.startsWith("â–²")) return toColor(deck.theme.colors.success);
-  if (text.startsWith("-") || text.startsWith("â–¼")) return toColor(deck.theme.colors.accentAlt);
-  const numeric = parseNumber(text);
-  if (Number.isFinite(numeric) && numeric > 0) return toColor(deck.theme.colors.success);
-  if (Number.isFinite(numeric) && numeric < 0) return toColor(deck.theme.colors.accentAlt);
-  return toColor(deck.theme.colors.ink);
+  return ragColorForValue(text, deck);
 }
 
 function addTable(slide, deck, table, box, mode = "light") {
@@ -3713,13 +3766,7 @@ function addTable(slide, deck, table, box, mode = "light") {
         : cellTextColor(table, table.columns[cellIndex] || "", value, deck, row, cellIndex);
 
       if (!isSectionRow && varianceRowLocal && !labelCell) {
-        if (valueText.startsWith("+") || valueText.startsWith("â–²") || parseNumber(valueText) > 0) {
-          textColor = toColor(deck.theme.colors.success);
-        } else if (valueText.startsWith("-") || valueText.startsWith("â–¼") || parseNumber(valueText) < 0) {
-          textColor = toColor(deck.theme.colors.accentAlt);
-        } else {
-          textColor = toColor(deck.theme.colors.ink);
-        }
+        textColor = ragColorForValue(valueText, deck);
       }
 
       return {
@@ -3835,6 +3882,7 @@ function renderSlide(slide, deck, spec, pageNumber) {
   if (spec.kind === "cover") {
     addBlueChrome(slide, deck);
     addSlideWatermark(slide, deck, true);
+    addFifthElementWireframe(slide, { x: 8.62, y: 2.52, w: 4.55, h: 4.6 });
     const locale = deck.metadata.locale || "en-GB";
     const periodTag = parsePeriodRange(deck.metadata.reportingPeriod, locale);
     const coverTitle = cleanInlineText(spec.title || `${deck.metadata.client} Quarterly Business Review`);
@@ -3870,65 +3918,52 @@ function renderSlide(slide, deck, spec, pageNumber) {
       breakLine: true,
       margin: 0
     });
-    slide.addShape("roundRect", {
+    const coverMetaLabel = uiLabel(deck, "qbrReport", "QBR Report").toLocaleUpperCase(locale);
+    const coverAnalysisLabel = uiLabel(deck, "analysisTagSuffix", "Analysis");
+    slide.addText(coverMetaLabel, {
       x: 0.68,
-      y: 3.0,
+      y: 3.02,
       w: 1.28,
-      h: 0.36,
-      radius: 0.04,
-      line: { color: toColor(deck.theme.colors.paper), pt: 0 },
-      fill: { color: toColor(deck.theme.colors.paper), transparency: 25 }
-    });
-    slide.addText(uiLabel(deck, "qbrReport", "QBR Report"), {
-      x: 0.83,
-      y: 3.08,
-      w: 1.0,
-      h: 0.2,
+      h: 0.24,
       fontFace: deck.theme.fonts.body,
-      fontSize: 8.5,
-      color: toColor(deck.theme.colors.ink),
-      bold: true,
-      margin: 0
-    });
-    slide.addShape("roundRect", {
-      x: 2.06,
-      y: 3.0,
-      w: 2.65,
-      h: 0.36,
-      radius: 0.04,
-      line: { color: toColor(deck.theme.colors.accent), pt: 0.8 },
-      fill: { color: toColor(deck.theme.colors.accent), transparency: 100 }
-    });
-    slide.addText(`${periodTag} ${uiLabel(deck, "analysisTagSuffix", "Analysis")}`.trim(), {
-      x: 2.18,
-      y: 3.08,
-      w: 3.2,
-      h: 0.2,
-      fontFace: deck.theme.fonts.body,
-      fontSize: 8.5,
-      color: toColor("#80D4FF"),
-      bold: true,
-      margin: 0
-    });
-    slide.addText("td", {
-      x: 0.62,
-      y: 4.22,
-      w: 2.15,
-      h: 1.72,
-      fontFace: deck.theme.fonts.heading,
-      fontSize: 118,
+      fontSize: 10.6,
       color: toColor(deck.theme.colors.paper),
+      bold: true,
       margin: 0
     });
-    slide.addText("tradedoubler", {
-      x: 0.76,
-      y: 6.43,
-      w: 2.5,
+    slide.addShape("line", {
+      x: 2.03,
+      y: 3.02,
+      w: 0,
+      h: 0.28,
+      line: { color: toColor(deck.theme.colors.paper), pt: 0.75, transparency: 45 }
+    });
+    slide.addText([
+      { text: periodTag, options: { color: toColor("#D7E8FF") } },
+      { text: " / ", options: { color: toColor("#D7E8FF") } },
+      { text: coverAnalysisLabel, options: { color: toColor(deck.theme.colors.paper), bold: true } }
+    ], {
+      x: 2.18,
+      y: 3.02,
+      w: 4.5,
       h: 0.24,
       fontFace: deck.theme.fonts.body,
       fontSize: 10.2,
-      color: toColor(deck.theme.colors.paper),
       margin: 0
+    });
+    slide.addShape("line", {
+      x: 0.68,
+      y: 3.39,
+      w: 4.72,
+      h: 0,
+      line: { color: toColor(deck.theme.colors.paper), pt: 0.55, transparency: 68 }
+    });
+    slide.addImage({
+      path: TD_WHITE_LOGO_PATH,
+      x: 0.62,
+      y: 4.22,
+      w: 2.5,
+      h: 2.02
     });
     return;
   }
@@ -3936,6 +3971,7 @@ function renderSlide(slide, deck, spec, pageNumber) {
   if (spec.kind === "thank-you") {
     addBlueChrome(slide, deck);
     addSlideWatermark(slide, deck, true);
+    addFifthElementWireframe(slide, { x: 6.68, y: 0.82, w: 6.05, h: 6.11 });
     slide.addText(spec.title, {
       x: 0.7,
       y: 1.45,
@@ -3949,8 +3985,8 @@ function renderSlide(slide, deck, spec, pageNumber) {
     slide.addShape("roundRect", {
       x: 0.62,
       y: 2.55,
-      w: 12.05,
-      h: 1.12,
+      w: 4.42,
+      h: 1.04,
       radius: 0.06,
       line: { color: toColor(deck.theme.colors.paper), pt: 0.35, transparency: 55 },
       fill: { color: toColor(deck.theme.colors.paper), transparency: 42 }
@@ -3958,11 +3994,13 @@ function renderSlide(slide, deck, spec, pageNumber) {
     slide.addText(uiLabel(deck, "anyQuestions", "Any Questions?"), {
       x: 0.95,
       y: 2.84,
-      w: 10.6,
-      h: 0.35,
+      w: 3.75,
+      h: 0.34,
       fontFace: deck.theme.fonts.heading,
-      fontSize: 17.5,
+      fontSize: 17,
       color: toColor(deck.theme.colors.paper),
+      align: "left",
+      valign: "mid",
       margin: 0
     });
     return;

@@ -1,45 +1,66 @@
-# Agentic RAG Masterclass - Progress Tracker
+# TD QBR Agent Hub - Progress Tracker
 
-## Module Status
-
-| Module | Name | Status |
-|--------|------|--------|
-| 1 | App Shell (Auth + Chat UI + Managed RAG) | not started |
-| 2 | Bring Your Own Retrieval (Ingestion + pgvector) | not started |
-| 3 | Record Manager (Deduplication) | not started |
-| 4 | Metadata Extraction & Filtering | not started |
-| 5 | Multi-format Support (Docling) | not started |
-| 6 | Hybrid Search & Reranking | not started |
-| 7 | Additional Tools (Web Search + Text-to-SQL) | not started |
-| 8 | Sub-Agents (Document Analysis) | not started |
+Last updated: 2026-05-12
 
 ## Current Phase
-Ready to begin Module 1
 
-## Recent Changes
-- Initial project setup
-- Updated QBR n8n webhook configuration to the migrated host (`coe-n8n.coe-untrust-eu-de.prod.tddrift.net`) across backend defaults, env examples, and n8nac host config.
-- Added backend Gamma status proxy endpoint and switched frontend Gamma status polling to call backend API instead of direct browser-to-n8n calls.
-- Fixed root startup script path resolution so startup works from the current repo location.
-- Added root one-click wrappers (`start-services.cmd`, `stop-services.cmd`) for frontend/backend service control.
-- Aligned local one-click startup ports so backend now launches on `http://localhost:8008` to match frontend API defaults.
-- Fixed backend launcher command to use `python -m uvicorn` (avoids broken `uvicorn.exe` path bindings after folder move).
-- Restored the missing standalone `qbr-pptx-service` source files from the prior Codex session log and reinstalled its `pptxgenjs` dependency.
-- Added `programScopeTable` support to the PPTX renderer so org-level program breakdown data is rendered as a dedicated `Program-Level Breakdown` table slide.
-- Refreshed `qbr-pptx-service/sample-payload.json` with example per-program rows and validated end-to-end PPTX generation into `qbr-pptx-service/outputs/`.
-- Restored the lost TD auth flow in the frontend/backend: the QBR form now includes TD access token, Organisation ID, program loading, analysis scope, publisher coverage, language, and currency; backend TD auth/program routes were re-added and QBR jobs again pass `td_tokens` through to n8n.
-- Fixed the service stop script PowerShell variable collision (`$PID`) so local restarts no longer fail while cleaning up the frontend process.
-- Hardened the TD auth router to convert upstream request failures and malformed TD responses into normal API errors instead of raw 500s, and capped TD program fetches at the API-supported max of 100.
-- Improved frontend TD error handling so the QBR form now shows backend `detail` messages for token validation, impersonation, and program loading failures.
-- Disabled environment proxy inheritance for TD API calls after discovering the machine was forcing outbound HTTPS traffic through a dead local proxy (`127.0.0.1:9`), which was causing every TD auth request to fail with `502`.
-- Disabled environment proxy inheritance for n8n webhook calls as well, because QBR jobs could queue locally but fail before reaching the remote webhook for the same proxy reason.
-- Moved the QBR agent webhook target into config/env and updated it to `https://coe-n8n.coe-untrust-eu-de.prod.tddrift.net/webhook/qbr-v4-presenton-1e2f9f4d`.
-- Fixed `/api/chat` so malformed `QBR_REQUEST` payloads return immediately instead of falling through to regular chat webhook calls.
-- Made n8n webhook handling tolerant of successful non-JSON responses, preventing false `QBR job error` states when the webhook returns plain text or an empty body.
-- Added deterministic TD token forwarding to QBR runs: `/api/td/programs` now returns `td_tokens`, the frontend includes them in QBR payloads, and `/api/chat` forwards payload tokens to n8n when in-memory token state is missing.
+The active workstream is the TD QBR Agent Hub: frontend QBR request flow, FastAPI orchestration, TD API integration, n8n QBR webhook execution, and editable PPTX generation.
+
+The old Agentic RAG module tracker is retired as current planning material.
+
+## System Status
+
+| Area | Status | Notes |
+|------|--------|-------|
+| Frontend QBR request UI | in progress | Supports TD token entry, Organisation ID, program loading, multi-program selection, language, currency, date range, submission, polling, and download |
+| Backend QBR orchestration | in progress | Queues in-memory QBR jobs, calls n8n asynchronously, handles non-JSON webhook success, and proxies PPTX downloads |
+| TD auth/program integration | in progress | Fetches users, impersonates eligible user, fetches programs, returns token fallback data, and avoids environment proxy inheritance |
+| n8n QBR webhook | in progress | Configured through `QBR_AGENT_WEBHOOK_URL`; backend default points at the migrated host |
+| PPTX renderer | in progress | Standalone Node service generates editable TD-branded QBR decks with program-level breakdown support |
+| Original RAG modules | retired | Historical context only |
+
+## Recent Completed Work
+
+- Updated QBR n8n webhook configuration to the migrated host: `coe-n8n.coe-untrust-eu-de.prod.tddrift.net`.
+- Moved QBR webhook target into backend config/env as `QBR_AGENT_WEBHOOK_URL`.
+- Fixed root startup script path resolution for the current repo location.
+- Added one-click wrappers for local frontend/backend service control.
+- Aligned backend local port to `http://localhost:8008`.
+- Fixed backend launcher to use `python -m uvicorn`.
+- Restored the standalone `qbr-pptx-service` source files and `pptxgenjs` dependency.
+- Added `programScopeTable` support to the PPTX renderer.
+- Refreshed `qbr-pptx-service/sample-payload.json` with per-program rows.
+- Validated end-to-end PPTX generation into `qbr-pptx-service/outputs/`.
+- Restored TD auth flow in frontend and backend.
+- Re-added backend TD auth/program routes.
+- Updated QBR jobs to pass `td_tokens` through to n8n.
+- Fixed service stop script PowerShell variable collision with `$PID`.
+- Hardened TD auth router error handling for request failures and malformed responses.
+- Capped TD program fetches at the API-supported maximum of 100.
+- Improved frontend TD error handling so backend `detail` messages are visible.
+- Disabled environment proxy inheritance for TD API calls.
+- Disabled environment proxy inheritance for n8n webhook calls.
+- Fixed malformed `QBR_REQUEST` payload handling so invalid payloads do not fall through to normal chat calls.
+- Made n8n webhook handling tolerant of successful plain-text or empty responses.
+- Added deterministic TD token forwarding when backend in-memory token state is missing.
+- Updated project Markdown docs to reflect the current QBR system and imported concise Karpathy-style agent behavior guidelines.
 
 ## Known Issues
-None yet
+
+- QBR jobs and chat threads are stored in memory, so they are lost on backend restart.
+- TD token state is stored in memory; the frontend payload token fallback reduces but does not fully remove restart/session limitations.
+- `frontend/.env.example` still points to `http://localhost:8000`; current local backend default is `http://localhost:8008`.
+- Startup/stop scripts still use the old "Agentic RAG" naming in console messages.
+- The repo contains generated/local artifacts such as virtualenvs, `node_modules`, outputs, and temporary files; avoid committing them unless explicitly requested.
+- Git currently sees old root docs as deleted and replacement docs under `Files/`; do not normalize that layout without an explicit cleanup task.
 
 ## Backlog
-- Items discovered during development that need future attention
+
+- Decide whether docs should live at repo root, under `Files/`, or both.
+- Update frontend env example to `http://localhost:8008`.
+- Rename startup script console messages from Agentic RAG to TD QBR Agent Hub.
+- Add persistent storage for QBR job status and chat threads if multi-session reliability becomes required.
+- Add focused backend tests for TD auth error handling, QBR request parsing, n8n response normalization, and download proxying.
+- Add frontend tests around QBR form validation and job polling.
+- Expand PPTX renderer tests for multi-program and multi-language output.
+- Review which temporary/generated files should be ignored or cleaned before commit.

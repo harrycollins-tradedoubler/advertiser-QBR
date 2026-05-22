@@ -1,77 +1,142 @@
-# Agentic RAG Masterclass - Claude Code Configuration
+# TD QBR Agent Hub - Agent Instructions
 
-## Project Overview
-Building an Agentic RAG application with:
-- **Frontend**: React + TypeScript + Tailwind CSS + shadcn/ui (bundled with Vite)
-- **Backend**: Python + FastAPI + Docling (document parsing)
-- **Database**: Supabase (PostgreSQL + pgvector + file storage + auth)
-- **Observability**: LangSmith for LLM tracing
+## Current Project Reality
 
-## Tech Stack Rules
-- Use raw SDK calls - no frameworks like LangChain or LlamaIndex
-- All users must only see their own data (Row Level Security in Supabase)
-- Support both cloud models (OpenAI, OpenRouter) and local models (LM Studio)
-- Use modern OpenAI Responses API (not legacy Assistants API)
+This repository is now centered on a Tradedoubler QBR workflow, not the original Agentic RAG masterclass plan.
 
-## Development Flow
-1. **Plan** - Use plan mode for each module, save plans to `agent-plans/` folder
-2. **Build** - Execute plans using `/build` command with sub-agents where possible
-3. **Validate** - Run automated tests + manual smoke tests
-4. **Iterate** - Fix bugs, then commit when module is complete
+The active system is:
+- Frontend: React + TypeScript + Vite in `frontend/`
+- Backend: Python + FastAPI in `backend/`
+- QBR automation: backend calls a remote n8n webhook for the QBR agent
+- TD integration: backend validates TD user tokens, impersonates an organisation owner/admin, fetches programs, and forwards TD tokens into QBR jobs
+- PPTX rendering: standalone Node service in `qbr-pptx-service/` generates editable PowerPoint decks with `pptxgenjs`
+- Optional/reference app: `td-app/` contains a separate TD app codebase and is not the primary local service path
 
-## Plan File Convention
-Save all plans to: `agent-plans/plan-{number}-module-{number}-{short-description}.md`
+Do not treat the old RAG module plan as the source of truth. Use this file, `progress.md`, source code, and recent git history before making changes.
 
-Example: `agent-plans/plan-01-module-01-app-shell.md`
+## Primary Local Services
 
-Plans should include:
-- Complexity assessment (low/medium/high)
-- Task breakdown with sequencing
-- Parallel execution opportunities
-- Acceptance criteria
+- Backend API: `http://localhost:8008`
+- Frontend: `http://localhost:5173`
+- PPTX service: `http://localhost:3010`
 
-## Progress Tracking
-Always update `progress.md` after completing tasks. Use statuses:
-- `not started`
-- `in progress`
-- `completed`
+Startup helpers:
+- Start frontend and backend: `scripts/start-services.ps1`
+- Stop frontend and backend: `scripts/stop-services.ps1`
+- Restart frontend and backend: `scripts/restart-services.ps1`
+- Root wrappers may also exist as `start-services.cmd` and `stop-services.cmd`
 
-## Supabase Configuration
-- This is a REMOTE Supabase instance (not local Docker)
-- Supabase CLI is installed for migrations
-- To run migrations: `supabase db push` (after linking project)
-- Always enable RLS on tables containing user data
+The startup scripts currently launch:
+- `backend/.venv/Scripts/python.exe -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8008`
+- `npm run dev` from `frontend/`
 
-## Services Startup
-To start all services, run: `scripts/start-services.ps1`
-To restart: `scripts/restart-services.ps1`
+The PPTX service is started separately from `qbr-pptx-service/` with:
 
-Backend runs on: http://localhost:8000
-Frontend runs on: http://localhost:5173
+```powershell
+npm run start
+```
 
-## Test Credentials
-For testing multi-user isolation:
-- User 1: test@test.com / [set password in Supabase Auth]
-- User 2: test2@test.com / [set password in Supabase Auth]
+## Main Runtime Flow
 
-## Context Management
-- Monitor context window usage (aim to stay under 50%)
-- Clear sessions with `/clear` when approaching limits
-- Use `/onboard` command to quickly bring new agents up to speed
-- Commit frequently to enable easy rollback
+1. User opens the frontend and selects the QBR Agent.
+2. User enters a TD access token and Organisation ID.
+3. Frontend calls `GET /api/td/programs`.
+4. Backend finds an organisation user, impersonates that user, fetches up to 100 TD programs, and returns the programs plus TD token data.
+5. User selects one or more programs, language, currency, and reporting period.
+6. Frontend sends a `QBR_REQUEST` message to `POST /api/chat`.
+7. Backend queues an in-memory QBR job and calls the configured n8n webhook asynchronously.
+8. Backend exposes job status at `GET /api/qbr/{job_id}`.
+9. If n8n returns a PPTX URL, backend proxies downloads through `GET /api/qbr/{job_id}/download`.
 
-## Environment Variables
-Backend `.env` requires:
-- SUPABASE_URL
-- SUPABASE_ANON_KEY
-- SUPABASE_SERVICE_ROLE_KEY
-- OPENAI_API_KEY (for Module 1, optional later)
-- LANGSMITH_API_KEY
-- LANGSMITH_PROJECT
-- OPENAI_VECTOR_STORE_ID (for managed RAG in Module 1)
-- TAVILY_API_KEY (for web search in Module 7)
-- SQL_READER_DATABASE_URL (for text-to-SQL in Module 7)
+Important implementation details:
+- QBR jobs and chat threads are currently in-memory dictionaries in `backend/app/routers/chat.py`.
+- TD tokens are stored in-process in `backend/app/routers/td_auth.py` and are also passed in the QBR payload as a fallback.
+- TD and n8n HTTP clients use `trust_env=False` to avoid broken local proxy inheritance.
+- Successful non-JSON n8n responses are accepted and converted into a normal response object.
 
-## Validation Test Suite
-When building new features, update the test suite in `tests/` folder.
-Run validation with: `python -m pytest tests/`
+## Key Files
+
+- `backend/app/main.py`: FastAPI app setup and router registration
+- `backend/app/config.py`: environment-backed settings
+- `backend/app/routers/agents.py`: active agent registry
+- `backend/app/routers/chat.py`: chat endpoint, QBR job queue, status, and download proxy
+- `backend/app/routers/td_auth.py`: TD token, impersonation, organisation, and program routes
+- `backend/app/services/n8n_client.py`: n8n webhook client
+- `frontend/src/components/QbrRequestForm.tsx`: TD auth and QBR request UI
+- `frontend/src/lib/api.ts`: frontend API client
+- `qbr-pptx-service/server.js`: PPTX service HTTP API
+- `qbr-pptx-service/lib/generator.js`: deck generation and slide logic
+- `qbr-pptx-service/test/`: Node test suite
+- `qbr-pptx-service/sample-payload.json`: local render sample payload
+
+## Environment
+
+Backend `.env` / `.env.example`:
+- `DEBUG`
+- `CORS_ORIGINS`
+- `DATABASE_URL`
+- `NEON_API_URL`
+- `QBR_AGENT_WEBHOOK_URL`
+
+Backend defaults include:
+- `TD_USER_URL=https://connect.tradedoubler.com/usermanagement`
+- `TD_MANAGE_URL=https://connect.tradedoubler.com/advertiser`
+- `TD_IMPERSONATE_URL=https://connect.tradedoubler.com/uaa/admin/impersonate`
+
+Frontend `.env.example` currently shows `VITE_API_URL=http://localhost:8000`; local code defaults to `http://localhost:8008`. Prefer `8008` unless intentionally changing the backend port.
+
+PPTX service:
+- `QBR_PPTX_API_KEY` overrides the local default key
+- Local default key: `td-qbr-pptx-local-2026-secret`
+
+## Validation Defaults
+
+For frontend changes:
+- Run `npm run build` from `frontend/`
+- Run `npm run lint` if the lint setup is relevant to the touched files
+
+For backend changes:
+- Prefer focused Python checks or API smoke tests
+- If tests are added later, run the relevant pytest target
+
+For PPTX service changes:
+- Run `npm test` from `qbr-pptx-service/`
+- For rendering behavior, generate a deck from `sample-payload.json` and inspect the output when layout risk is meaningful
+
+Do not skip available checks unless the user explicitly asks or the repo lacks a practical way to run them.
+
+## Agent Behavior Guidelines
+
+These project rules incorporate the useful parts of the Karpathy-inspired coding guidelines.
+
+Think before coding:
+- State assumptions when the request is ambiguous.
+- Ask only when a reasonable assumption would be risky.
+- Surface tradeoffs when there are multiple plausible implementation paths.
+
+Simplicity first:
+- Implement the smallest useful vertical slice.
+- Do not add speculative features, abstractions, providers, or configuration.
+- Before adding a new production dependency, explain why existing code cannot reasonably do the job.
+
+Surgical changes:
+- Touch only files needed for the request.
+- Match the local style even when another style would be preferred.
+- Do not refactor adjacent code or reformat unrelated files.
+- Remove only dead code created by your own change unless the user asks for cleanup.
+
+Goal-driven execution:
+- Convert feature and bug work into verifiable outcomes.
+- Prefer a focused test or reproduction first when changing behavior.
+- Loop until the relevant checks pass or clearly report why a check could not be run.
+
+## Git And Workspace Safety
+
+- The worktree may already contain user or generated changes. Never revert changes you did not make unless explicitly asked.
+- If root docs appear deleted and replacement files exist under `Files/`, treat that as existing workspace state and do not "fix" it without being asked.
+- Do not commit generated outputs, `node_modules`, virtualenvs, or temporary files unless explicitly requested.
+- Avoid changing webhook URLs, TD API base URLs, credentials, or ports without calling out the reason.
+
+## Deprecated Context
+
+- The original Agentic RAG module roadmap is historical context only.
