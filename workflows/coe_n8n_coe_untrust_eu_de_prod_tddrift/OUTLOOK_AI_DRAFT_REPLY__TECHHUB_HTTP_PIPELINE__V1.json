@@ -1,0 +1,380 @@
+{
+  "id": "CGAUTAlDprHeIeAO",
+  "name": "OUTLOOK_AI_DRAFT_REPLY__TECHHUB_HTTP_PIPELINE__V1",
+  "nodes": [
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyX",
+              "value": 15,
+              "unit": "minutes"
+            }
+          ]
+        },
+        "output": "fields",
+        "fields": [
+          "id",
+          "conversationId",
+          "subject",
+          "body",
+          "from",
+          "toRecipients",
+          "ccRecipients",
+          "receivedDateTime",
+          "isRead"
+        ],
+        "filters": {
+          "custom": "="
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.microsoftOutlookTrigger",
+      "typeVersion": 1,
+      "position": [
+        -1560,
+        260
+      ],
+      "name": "Outlook Trigger",
+      "credentials": {
+        "microsoftOutlookOAuth2Api": {
+          "id": "KHsaTwGxUrLdymsx",
+          "name": "Microsoft Outlook account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const trigger = $('Outlook Trigger').item.json;\nconst body = trigger.body || {};\nconst bodyContent = typeof body.content === 'string' ? body.content : '';\nconst textBody = bodyContent\n  .replace(/<style[\\s\\S]*?<\\/style>/gi, ' ')\n  .replace(/<script[\\s\\S]*?<\\/script>/gi, ' ')\n  .replace(/<[^>]+>/g, ' ')\n  .replace(/&nbsp;/g, ' ')\n  .replace(/&amp;/g, '&')\n  .replace(/&lt;/g, '<')\n  .replace(/&gt;/g, '>')\n  .replace(/\\s+/g, ' ')\n  .trim();\n\nconst from = trigger.from?.emailAddress?.address || '';\nconst to = (trigger.toRecipients || []).map(r => r.emailAddress?.address).filter(Boolean);\nconst cc = (trigger.ccRecipients || []).map(r => r.emailAddress?.address).filter(Boolean);\nconst subject = trigger.subject || '';\nconst NL = String.fromCharCode(10);\n\nreturn [{\n  json: {\n    messageId: trigger.id,\n    conversationId: trigger.conversationId,\n    subject,\n    from,\n    to,\n    cc,\n    receivedDateTime: trigger.receivedDateTime,\n    bodyHtml: bodyContent,\n    bodyText: textBody,\n    customerEmail: [\n      'Subject: ' + subject,\n      'From: ' + from,\n      'To: ' + to.join(', '),\n      cc.length ? 'CC: ' + cc.join(', ') : '',\n      'Received: ' + (trigger.receivedDateTime || ''),\n      '',\n      textBody || bodyContent\n    ].filter(Boolean).join(NL),\n    searchSeed: [subject, textBody].filter(Boolean).join(' ').slice(0, 3000),\n    kbSiteUrl: 'https://tradedoublergroup.sharepoint.com/sites/TechHub',\n    kbFolderHint: 'General/AI/TechHub chat bot docs'\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1320,
+        260
+      ],
+      "name": "Prepare Email Payload"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/responses",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "openAiApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {\n  model: 'gpt-5.5',\n  input: [\n    {\n      role: 'system',\n      content: [{ type: 'input_text', text: 'Extract a concise SharePoint/Microsoft Graph retrieval plan from the inbound customer email. Return JSON only.' }]\n    },\n    {\n      role: 'user',\n      content: [{ type: 'input_text', text: $json.customerEmail }]\n    }\n  ],\n  text: {\n    format: {\n      type: 'json_schema',\n      name: 'retrieval_plan',\n      strict: true,\n      schema: {\n        type: 'object',\n        additionalProperties: false,\n        properties: {\n          graphQueryString: { type: 'string' },\n          category: { type: 'string' },\n          language: { type: 'string' },\n          confidence: { type: 'number' },\n          escalationLikely: { type: 'boolean' }\n        },\n        required: ['graphQueryString', 'category', 'language', 'confidence', 'escalationLikely']\n      }\n    }\n  }\n} }}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        -1080,
+        260
+      ],
+      "name": "OpenAI Extract Retrieval Plan",
+      "credentials": {
+        "openAiApi": {
+          "id": "L4g2aVcKF4eab59w",
+          "name": "OpenAi account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first().json;\nconst hits = item.sharePointHits || [];\nconst NL = String.fromCharCode(10);\nconst confidence = hits.length === 0 ? 0 : Math.min(0.95, 0.35 + hits.length * 0.08 + (hits.some(h => h.inKbFolder) ? 0.2 : 0));\nconst context = hits.length ? hits.map((hit, index) => [\n  'Source ' + (index + 1) + ': ' + hit.title,\n  'Scope: ' + (hit.inKbFolder ? 'TechHub chat bot docs folder' : 'TechHub site fallback'),\n  hit.summary ? 'Snippet: ' + hit.summary : '',\n  hit.path ? 'Path: ' + hit.path : '',\n  hit.webUrl ? 'URL: ' + hit.webUrl : '',\n  hit.lastModifiedTime ? 'Last modified: ' + hit.lastModifiedTime : ''\n].filter(Boolean).join(NL)).join(NL + NL + '---' + NL + NL) : 'No relevant TechHub SharePoint KB snippets were retrieved. The draft must not invent technical or policy details; it should say we will confirm internally.';\n\nreturn [{ json: { ...item, retrievalConfidence: confidence, sharePointContext: context, shouldEscalate: hits.length === 0 || confidence < 0.55 } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        360,
+        260
+      ],
+      "name": "Build SharePoint Context"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/responses",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "openAiApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ (() => {\n  const NL = String.fromCharCode(10);\n  const prompt = [\n    'Retrieved SharePoint knowledge:',\n    $json.sharePointContext || '',\n    '',\n    'Retrieval confidence: ' + $json.retrievalConfidence,\n    'Escalate if uncertain: ' + $json.shouldEscalate,\n    '',\n    'Customer email:',\n    $json.customerEmail || ''\n  ].join(NL);\n  return {\n    model: 'gpt-5.5',\n    input: [\n      {\n        role: 'system',\n        content: [{ type: 'input_text', text: 'You draft professional Outlook email replies for Tradedoubler implementation/support. Use only the retrieved SharePoint knowledge for technical facts. If context is missing or weak, escalate uncertainty instead of guessing. Output only the email body, no subject.' }]\n      },\n      {\n        role: 'user',\n        content: [{ type: 'input_text', text: prompt }]\n      }\n    ]\n  };\n})() }}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        600,
+        260
+      ],
+      "name": "OpenAI Draft Reply",
+      "credentials": {
+        "openAiApi": {
+          "id": "L4g2aVcKF4eab59w",
+          "name": "OpenAi account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "reply",
+        "messageId": "={{ $('Prepare Email Payload').item.json.messageId }}",
+        "send": false,
+        "additionalFields": {
+          "bodyContent": "={{ $json.output_text || (($json.output || []).flatMap(o => o.content || []).map(c => c.text).filter(Boolean).join(String.fromCharCode(10))) || 'I will confirm this internally and come back to you.' }}",
+          "bodyContentType": "html",
+          "from": "harry.collins@tradedoubler.com"
+        }
+      },
+      "type": "n8n-nodes-base.microsoftOutlook",
+      "typeVersion": 1,
+      "position": [
+        840,
+        260
+      ],
+      "name": "Create Outlook Draft",
+      "credentials": {
+        "microsoftOutlookOAuth2Api": {
+          "id": "KHsaTwGxUrLdymsx",
+          "name": "Microsoft Outlook account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://graph.microsoft.com/v1.0/sites/tradedoublergroup.sharepoint.com:/sites/TechHub?$select=id,displayName,webUrl",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": false,
+              "neverError": true
+            }
+          },
+          "timeout": 120000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        -840,
+        260
+      ],
+      "name": "Graph Resolve TechHub Site",
+      "credentials": {
+        "oAuth2Api": {
+          "id": "umUN8sJ4AZEtjx63",
+          "name": "OAuth-Graph (SHAREPOINT)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ 'https://graph.microsoft.com/v1.0/sites/' + $json.id + '/drives?$select=id,name,webUrl,driveType' }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": false,
+              "neverError": true
+            }
+          },
+          "timeout": 120000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        -600,
+        260
+      ],
+      "name": "Graph List TechHub Drives",
+      "credentials": {
+        "oAuth2Api": {
+          "id": "umUN8sJ4AZEtjx63",
+          "name": "OAuth-Graph (SHAREPOINT)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const drives = $input.first().json.value || [];\nconst byName = drives.find(d => String(d.name || '').toLowerCase().includes('dokument'))\n  || drives.find(d => String(d.name || '').toLowerCase().includes('document'))\n  || drives.find(d => String(d.webUrl || '').toLowerCase().includes('delade'))\n  || drives.find(d => d.driveType === 'documentLibrary')\n  || drives[0];\n\nif (!byName || !byName.id) {\n  return [{ json: { error: 'No SharePoint document library drive was returned for TechHub site.', drives } }];\n}\n\nreturn [{\n  json: {\n    driveId: byName.id,\n    driveName: byName.name,\n    driveWebUrl: byName.webUrl,\n    kbFolderPath: 'General/AI/TechHub chat bot docs',\n    folderChildrenUrl: 'https://graph.microsoft.com/v1.0/drives/' + byName.id + '/root:/General/AI/TechHub%20chat%20bot%20docs:/children?$select=id,name,webUrl,file,folder,lastModifiedDateTime,size,parentReference&$top=200'\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -360,
+        260
+      ],
+      "name": "Select TechHub Documents Drive"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $json.folderChildrenUrl }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": false,
+              "neverError": true
+            }
+          },
+          "timeout": 120000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        -120,
+        260
+      ],
+      "name": "Graph List TechHub KB Folder",
+      "credentials": {
+        "oAuth2Api": {
+          "id": "umUN8sJ4AZEtjx63",
+          "name": "OAuth-Graph (SHAREPOINT)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const folder = $input.first().json || {};\nconst prep = $('Prepare Email Payload').item.json;\nconst NL = String.fromCharCode(10);\nlet retrievalPlan = {};\ntry {\n  const planText = $('OpenAI Extract Retrieval Plan').item.json.output_text\n    || (($('OpenAI Extract Retrieval Plan').item.json.output || []).flatMap(o => o.content || []).map(c => c.text).filter(Boolean).join(NL));\n  retrievalPlan = JSON.parse(planText || '{}');\n} catch (error) {\n  retrievalPlan = { graphQueryString: prep.searchSeed, category: 'unknown', confidence: 0.2 };\n}\n\nconst files = (folder.value || []).filter(item => item.file);\nconst rawNeedle = [retrievalPlan.graphQueryString, prep.subject, prep.bodyText].filter(Boolean).join(' ').toLowerCase();\nconst stop = new Set(['the','and','for','with','from','that','this','you','your','are','can','how','what','why','when','where','please','about','into','onto','our','their','tradedoubler']);\nconst terms = rawNeedle.split(/[^a-z0-9]+/).filter(t => t.length > 2 && !stop.has(t)).slice(0, 40);\n\nconst scored = files.map(file => {\n  const haystack = [file.name, file.webUrl, file.parentReference?.path].filter(Boolean).join(' ').toLowerCase();\n  const score = terms.reduce((sum, term) => sum + (haystack.includes(term) ? 1 : 0), 0);\n  return {\n    id: file.id,\n    name: file.name,\n    title: file.name,\n    webUrl: file.webUrl || '',\n    path: file.parentReference?.path || '',\n    filetype: file.name && file.name.includes('.') ? file.name.split('.').pop() : '',\n    lastModifiedTime: file.lastModifiedDateTime || '',\n    size: file.size || 0,\n    score,\n    inKbFolder: true,\n    summary: score > 0\n      ? 'Matched known TechHub KB file by filename/path terms: ' + terms.filter(t => haystack.includes(t)).slice(0, 8).join(', ')\n      : 'Known TechHub KB file from the configured SharePoint folder.'\n  };\n}).sort((a, b) => b.score - a.score || a.name.localeCompare(b.name));\n\nconst selected = scored.filter(f => f.score > 0).slice(0, 8);\nconst fallback = scored.slice(0, 8);\nconst sharePointHits = selected.length ? selected : fallback;\n\nreturn [{\n  json: {\n    ...prep,\n    retrievalPlan,\n    retrievalMethod: 'known_folder_browse',\n    sharePointHits,\n    graphRawResultCount: files.length,\n    matchedResultCount: selected.length\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        120,
+        260
+      ],
+      "name": "Normalize SharePoint Folder Hits"
+    }
+  ],
+  "connections": {
+    "Outlook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Prepare Email Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Email Payload": {
+      "main": [
+        [
+          {
+            "node": "OpenAI Extract Retrieval Plan",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Extract Retrieval Plan": {
+      "main": [
+        [
+          {
+            "node": "Graph Resolve TechHub Site",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Graph Resolve TechHub Site": {
+      "main": [
+        [
+          {
+            "node": "Graph List TechHub Drives",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Graph List TechHub Drives": {
+      "main": [
+        [
+          {
+            "node": "Select TechHub Documents Drive",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Select TechHub Documents Drive": {
+      "main": [
+        [
+          {
+            "node": "Graph List TechHub KB Folder",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Graph List TechHub KB Folder": {
+      "main": [
+        [
+          {
+            "node": "Normalize SharePoint Folder Hits",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize SharePoint Folder Hits": {
+      "main": [
+        [
+          {
+            "node": "Build SharePoint Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build SharePoint Context": {
+      "main": [
+        [
+          {
+            "node": "OpenAI Draft Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Draft Reply": {
+      "main": [
+        [
+          {
+            "node": "Create Outlook Draft",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {},
+  "tags": [],
+  "active": false
+}

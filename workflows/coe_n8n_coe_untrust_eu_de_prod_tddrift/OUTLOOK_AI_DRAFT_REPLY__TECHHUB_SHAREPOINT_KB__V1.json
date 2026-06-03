@@ -1,0 +1,184 @@
+{
+  "id": "r7WwyCPmHHY2Q84l",
+  "name": "OUTLOOK_AI_DRAFT_REPLY__TECHHUB_SHAREPOINT_KB__V1",
+  "nodes": [
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-5.5",
+          "mode": "list",
+          "cachedResultName": "gpt-5.5"
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        -1536,
+        1136
+      ],
+      "name": "OpenAI Chat Model1",
+      "credentials": {
+        "openAiApi": {
+          "id": "L4g2aVcKF4eab59w",
+          "name": "OpenAi account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "reply",
+        "messageId": "={{ $('Microsoft Outlook Trigger1').item.json.id }}",
+        "send": false,
+        "additionalFields": {
+          "bodyContent": "={{ $json.output }}",
+          "bodyContentType": "html",
+          "from": "harry.collins@tradedoubler.com"
+        }
+      },
+      "type": "n8n-nodes-base.microsoftOutlook",
+      "typeVersion": 1,
+      "position": [
+        -912,
+        784
+      ],
+      "name": "Create Outlook Draft Reply1",
+      "credentials": {
+        "microsoftOutlookOAuth2Api": {
+          "id": "KHsaTwGxUrLdymsx",
+          "name": "Microsoft Outlook account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Subject: {{ $('Microsoft Outlook Trigger1').item.json.subject }}\n\nFrom: {{ $('Microsoft Outlook Trigger1').item.json.from.emailAddress.address }}\n\nTo: {{ ($('Microsoft Outlook Trigger1').item.json.toRecipients || []).map(r => r.emailAddress.address).join(', ') }}\n\nCC: {{ ($('Microsoft Outlook Trigger1').item.json.ccRecipients || []).map(r => r.emailAddress.address).join(', ') }}\n\nReceived: {{ $('Microsoft Outlook Trigger1').item.json.receivedDateTime }}\n\nConversation ID: {{ $('Microsoft Outlook Trigger1').item.json.conversationId }}\n\nEmail Body:\n{{ $('Microsoft Outlook Trigger1').item.json.body.content }}\n\n",
+        "options": {
+          "systemMessage": "You draft client-facing implementation and onboarding email replies for Stanislaw Serebriakow at Tradedoubler.\n\nYour job is to create a strong draft reply for Stanislaw to review in Outlook.\n\nA SharePoint knowledge-base search tool is connected. It searches the TechHub SharePoint folder live through Microsoft Graph.\n\nRules:\n- Output the email body only. Do not include a subject line.\n- Sound human, calm, competent, and specific.\n- Write as Stanislaw from Tradedoubler.\n- Use the SharePoint KB search tool before answering any technical, onboarding, tracking, product feed, GTM, S2S, validation, or implementation question.\n- Base technical answers strictly on retrieved SharePoint knowledge.\n- Never invent product behaviour, integrations, timelines, setup steps, policy information, or configuration details.\n- If the SharePoint results do not contain the required answer, say you will confirm internally and come back rather than guessing.\n- If the client is blocked, acknowledge the blocker, state exactly what is needed to unblock it, and suggest the fastest next action.\n- Match the sender's tone and length. Short email in, short email out.\n- Prefer bullet points only when they genuinely make implementation steps clearer.\n- Keep the reply suitable for a business email from a Tradedoubler implementation/contact owner.\n\nWhen useful, include:\n- prerequisites\n- what Tradedoubler needs from the client\n- expected outcome of each step\n- realistic next actions\n- a polite close\n\nDo not mention that you are an AI system."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3,
+      "position": [
+        -1296,
+        784
+      ],
+      "name": "AI Agent1"
+    },
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyX",
+              "value": 15,
+              "unit": "minutes"
+            }
+          ]
+        },
+        "output": "fields",
+        "fields": [
+          "id",
+          "conversationId",
+          "subject",
+          "body",
+          "from",
+          "toRecipients",
+          "ccRecipients",
+          "receivedDateTime",
+          "isRead"
+        ],
+        "filters": {
+          "custom": "="
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.microsoftOutlookTrigger",
+      "typeVersion": 1,
+      "position": [
+        -1680,
+        784
+      ],
+      "name": "Microsoft Outlook Trigger1",
+      "credentials": {
+        "microsoftOutlookOAuth2Api": {
+          "id": "KHsaTwGxUrLdymsx",
+          "name": "Microsoft Outlook account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "name": "SharePoint_KB_Search_Graph",
+        "description": "Search the TechHub SharePoint KB using Microsoft Graph. Input should be concise search terms from the customer email. Use this before answering implementation, tracking, S2S, GTM, product feed, validation, cookie, consent, or troubleshooting questions. Base technical answers strictly on returned results.",
+        "source": "database",
+        "workflowId": "HDIzPnh6cGjMFXGi",
+        "responsePropertyName": "response",
+        "fields": {
+          "values": []
+        },
+        "specifyInputSchema": false
+      },
+      "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+      "typeVersion": 1.1,
+      "position": [
+        -1024,
+        1136
+      ],
+      "name": "SharePoint_KB_Search_Graph"
+    }
+  ],
+  "connections": {
+    "OpenAI Chat Model1": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent1",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Microsoft Outlook Trigger1": {
+      "main": [
+        [
+          {
+            "node": "AI Agent1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent1": {
+      "main": [
+        [
+          {
+            "node": "Create Outlook Draft Reply1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SharePoint_KB_Search_Graph": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent1",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "errorWorkflow": ""
+  },
+  "tags": [],
+  "active": false
+}

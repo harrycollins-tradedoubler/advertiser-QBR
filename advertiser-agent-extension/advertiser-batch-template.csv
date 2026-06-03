@@ -1,0 +1,3 @@
+clientUsername,programIds,programNames,startDate,endDate,currencyCode,languageCode
+andre.hasselborg@ginatricot.com,"397657;397658","Gina Tricot SE;Gina Tricot NO",2026-04-01,2026-04-30,SEK,EN
+example.client@example.com,"123456","Example Program",2026-04-01,2026-04-30,EUR,EN

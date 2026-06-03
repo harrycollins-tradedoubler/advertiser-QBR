@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Advertiser Agent</title>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <main class="page-shell">
+      <section class="app-card">
+        <header class="app-header">
+          <div>
+            <p class="eyebrow">Developer Extension</p>
+            <h1>Advertiser Agent</h1>
+          </div>
+          <button class="button button-primary" id="submitRequest" type="button">Submit Request</button>
+        </header>
+
+        <div class="content-grid">
+          <form id="advertiserForm" class="form-stack">
+            <section class="panel">
+              <div class="panel-heading">
+                <h2>Extension API Endpoint</h2>
+                <p>Requests are sent through the extension service worker.</p>
+              </div>
+              <div class="inline-row">
+                <label class="field field-grow" for="apiBaseUrl">
+                  <span>API Base URL</span>
+                  <input id="apiBaseUrl" name="apiBaseUrl" type="text" autocomplete="off" spellcheck="false">
+                </label>
+                <button class="button button-secondary" id="testApi" type="button">Test API</button>
+              </div>
+            </section>
+
+            <section class="panel">
+              <div class="panel-heading">
+                <h2>1. Authenticate / Impersonate</h2>
+                <p>Enter the client username. The backend calls TD impersonation and keeps the token server-side.</p>
+              </div>
+
+              <div class="form-grid">
+                <label class="field field-wide" for="clientUsername">
+                  <span>Client Username</span>
+                  <input id="clientUsername" name="clientUsername" type="text" autocomplete="username" placeholder="client.user@example.com" required>
+                </label>
+
+                <label class="field field-wide" for="accessToken">
+                  <span>Backend User Token Override</span>
+                  <input id="accessToken" name="accessToken" type="password" autocomplete="off" placeholder="Optional fallback if backend OAuth is not configured">
+                </label>
+              </div>
+
+              <div class="action-row">
+                <button class="button button-secondary" id="impersonateClient" type="button">Impersonate Client</button>
+                <button class="button button-secondary" id="loadPrograms" type="button">Load Programs</button>
+                <button class="button button-ghost" id="clearSession" type="button">Clear Session Fields</button>
+                <span class="inline-status" id="programStatus">No programs loaded.</span>
+              </div>
+            </section>
+
+            <section class="panel">
+              <div class="panel-heading">
+                <h2>2. Advertiser Scope</h2>
+                <p>Choose the advertiser program coverage for the request.</p>
+              </div>
+
+              <div class="field">
+                <span>Advertiser Programs</span>
+                <div class="program-toolbar">
+                  <span id="programSelectionCount">No programs selected</span>
+                  <div>
+                    <button class="mini-button" id="selectAllPrograms" type="button" disabled>Select all</button>
+                    <button class="mini-button" id="clearPrograms" type="button" disabled>Clear</button>
+                  </div>
+                </div>
+                <div class="program-list" id="programList">
+                  <p>Load programs first to choose report coverage.</p>
+                </div>
+              </div>
+            </section>
+
+            <section class="panel">
+              <div class="panel-heading">
+                <h2>3. Output</h2>
+                <p>Select localization and output settings.</p>
+              </div>
+
+              <div class="form-grid">
+                <label class="field" for="languageCode">
+                  <span>Language</span>
+                  <select id="languageCode" name="languageCode">
+                    <option value="EN">English</option>
+                    <option value="FR">French</option>
+                    <option value="NL">Dutch</option>
+                    <option value="DE">German</option>
+                    <option value="IT">Italian</option>
+                    <option value="NO">Norwegian</option>
+                    <option value="SV">Swedish</option>
+                    <option value="DA">Danish</option>
+                    <option value="FI">Finnish</option>
+                    <option value="ES">Spanish</option>
+                    <option value="PL">Polish</option>
+                  </select>
+                </label>
+
+                <label class="field" for="currencyCode">
+                  <span>Currency</span>
+                  <select id="currencyCode" name="currencyCode">
+                    <option value="EUR">EUR</option>
+                    <option value="GBP">GBP</option>
+                    <option value="USD">USD</option>
+                    <option value="AUD">AUD</option>
+                    <option value="SEK">SEK</option>
+                    <option value="NOK">NOK</option>
+                    <option value="DKK">DKK</option>
+                    <option value="PLN">PLN</option>
+                  </select>
+                </label>
+              </div>
+            </section>
+
+            <section class="panel">
+              <div class="panel-heading">
+                <h2>4. Reporting Period</h2>
+                <p>Pick the date range that the backend workflow should analyze.</p>
+              </div>
+
+              <div class="form-grid form-grid-three">
+                <label class="field" for="dateFrom">
+                  <span>Start Date</span>
+                  <input id="dateFrom" name="dateFrom" type="date" required>
+                </label>
+
+                <label class="field" for="dateTo">
+                  <span>End Date</span>
+                  <input id="dateTo" name="dateTo" type="date" required>
+                </label>
+
+                <div class="range-preview" id="rangePreview">Select a period to preview.</div>
+              </div>
+            </section>
+
+            <section class="panel">
+              <div class="panel-heading">
+                <h2>5. Batch Automation</h2>
+                <p>Upload a CSV or XLSX file and run advertiser requests server-side without filling the single-request form.</p>
+              </div>
+
+              <div class="inline-row">
+                <label class="field field-grow" for="batchFile">
+                  <span>Batch File</span>
+                  <input id="batchFile" name="batchFile" type="file" accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet">
+                </label>
+                <a class="button button-ghost" href="advertiser-batch-template.csv" download>Download CSV template</a>
+                <button class="button button-secondary" id="runBatch" type="button" formnovalidate disabled>Run Batch</button>
+              </div>
+
+              <div class="batch-preview" id="batchPreview">Upload a file with clientUsername, programIds, startDate, endDate, currencyCode, and languageCode.</div>
+            </section>
+
+          </form>
+
+          <aside class="side-stack">
+            <section class="panel summary-panel">
+              <div class="panel-heading">
+                <h2>Live Summary</h2>
+                <p>Selected advertiser and request details.</p>
+              </div>
+              <dl class="summary-list" id="summaryList"></dl>
+            </section>
+
+            <section class="panel status-panel">
+              <div class="panel-heading">
+                <h2>Request Status</h2>
+                <p>API test, submission, and polling output.</p>
+              </div>
+              <pre id="statusOutput">Ready.</pre>
+              <div class="link-slot" id="resultLink"></div>
+            </section>
+          </aside>
+        </div>
+      </section>
+    </main>
+
+    <script src="app.js"></script>
+  </body>
+</html>

@@ -125,6 +125,8 @@ const TABLE_KEY_MAP = {
   newemergingtop: "newEmergingPublishers",
   stoppedactivitytop: "stoppedActivity",
   newpublisherprospects: "newPublisherProspects",
+  toppublisherperformancetable: "topPublisherPerformance",
+  toppublisherperformance: "topPublisherPerformance",
   publisherperformancesummarytable: "publisherPerformanceSummary",
   kpisummarytable: "kpiSummary",
   programlevelbreakdown: "programLevelBreakdown",
@@ -428,6 +430,86 @@ function cleanText(value, fallback = "") {
 
 function cleanInlineText(value, fallback = "") {
   return cleanText(value, fallback).replace(/\s+/g, " ").trim();
+}
+
+const MARKET_SUFFIX_CODES = new Set([
+  "AT", "AU", "BE", "CA", "CH", "DE", "DK", "ES", "EU", "FI", "FR", "IE", "IT",
+  "NL", "NO", "PL", "PT", "SE", "UK", "US"
+]);
+
+function stripProgramMarketSuffix(value) {
+  let text = cleanInlineText(value || "");
+  if (!text) return "";
+
+  text = text
+    .replace(/\s*(?:\+\s*\d+\s+more\b[\s.]*)+$/i, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  const bracketMatch = text.match(/^(.*?)(?:\s*[\[(]([A-Za-z]{2,3})[\])])$/);
+  if (bracketMatch && MARKET_SUFFIX_CODES.has(bracketMatch[2].toUpperCase())) {
+    text = cleanInlineText(bracketMatch[1] || "");
+  }
+
+  const suffixMatch = text.match(/^(.*?)(?:\s+|\s*-\s*)([A-Za-z]{2,3})$/);
+  if (suffixMatch && MARKET_SUFFIX_CODES.has(suffixMatch[2].toUpperCase())) {
+    text = cleanInlineText(suffixMatch[1] || "");
+  }
+
+  return text.replace(/[\s.+-]+$/g, "").trim();
+}
+
+function readProgramNameCandidates(programScopeTable) {
+  if (!programScopeTable) return [];
+
+  if (Array.isArray(programScopeTable)) {
+    return programScopeTable
+      .map((row) => {
+        if (!row || typeof row !== "object" || Array.isArray(row)) return "";
+        return cleanInlineText(
+          row.Program
+          || row["Program Name"]
+          || row.ProgramName
+          || row.Name
+          || ""
+        );
+      })
+      .filter(Boolean);
+  }
+
+  if (Array.isArray(programScopeTable.rows) && Array.isArray(programScopeTable.columns)) {
+    const idx = Object.fromEntries(programScopeTable.columns.map((column, index) => [cleanInlineText(column).toLowerCase(), index]));
+    const aliases = ["program", "program name", "programname", "name"];
+    return programScopeTable.rows
+      .map((row) => {
+        if (!Array.isArray(row)) return "";
+        for (const alias of aliases) {
+          const colIndex = idx[alias];
+          if (colIndex === undefined) continue;
+          const value = cleanInlineText(row[colIndex] || "");
+          if (value) return value;
+        }
+        return "";
+      })
+      .filter(Boolean);
+  }
+
+  return [];
+}
+
+function normalizeDisplayClientName(client, programScopeTable) {
+  const candidates = [
+    cleanInlineText(client || ""),
+    ...readProgramNameCandidates(programScopeTable)
+  ]
+    .map((value) => stripProgramMarketSuffix(value))
+    .filter(Boolean);
+
+  if (!candidates.length) return cleanInlineText(client || "Client");
+
+  const unique = Array.from(new Set(candidates.map((value) => value.toLowerCase())));
+  if (unique.length === 1) return candidates[0];
+  return candidates[0];
 }
 
 function normalizeLanguageCode(value) {
@@ -952,9 +1034,64 @@ function resolveTheme(themeName, overrides) {
   };
 }
 
+function parsePayloadEnvelope(value) {
+  if (typeof value !== "string") return value;
+  const trimmed = value.trim();
+  if (!trimmed || !/^[\[{]/.test(trimmed)) return value;
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    return value;
+  }
+}
+
+function payloadCandidateScore(candidate) {
+  if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) return 0;
+  let score = 0;
+  if (candidate.programYoYTable) score += 50;
+  if (candidate.programScopeTable || candidate.programLevelBreakdown || candidate.programBreakdownTable) score += 40;
+  if (candidate.programOutput) score += 20;
+  if (candidate.publisherTables) score += 20;
+  if (candidate.client || candidate.clientName || candidate.programName || candidate.deckTitle) score += 10;
+  if (candidate.reportingPeriod || candidate.comparisonPeriod) score += 5;
+  return score;
+}
+
+function unwrapPayloadEnvelope(input, seen = new Set()) {
+  const parsed = parsePayloadEnvelope(input);
+
+  if (Array.isArray(parsed)) {
+    const candidates = parsed
+      .map((item) => unwrapPayloadEnvelope(item, seen))
+      .filter((item) => item && typeof item === "object" && !Array.isArray(item));
+    return candidates
+      .sort((a, b) => payloadCandidateScore(b) - payloadCandidateScore(a))[0] || {};
+  }
+
+  if (!parsed || typeof parsed !== "object") return {};
+  if (seen.has(parsed)) return parsed;
+  seen.add(parsed);
+
+  const nestedCandidates = ["json", "body", "data", "payload"]
+    .map((key) => parsed[key])
+    .filter((value) => value !== undefined && value !== null)
+    .map((value) => unwrapPayloadEnvelope(value, seen))
+    .filter((value) => value && typeof value === "object" && !Array.isArray(value));
+
+  const bestNested = nestedCandidates
+    .sort((a, b) => payloadCandidateScore(b) - payloadCandidateScore(a))[0];
+
+  if (!bestNested || payloadCandidateScore(parsed) >= payloadCandidateScore(bestNested)) {
+    return parsed;
+  }
+
+  return { ...parsed, ...bestNested };
+}
+
 function normalizePayload(payload) {
+  payload = unwrapPayloadEnvelope(payload || {});
   const nestedPayload = payload && typeof payload.payload === "object" && payload.payload
-    ? payload.payload
+    ? unwrapPayloadEnvelope(payload.payload)
     : {};
   const analysisLevel = cleanInlineText(payload.analysisLevel || nestedPayload.analysisLevel || "");
   const targetSlides = normalizePositiveInt(
@@ -971,28 +1108,34 @@ function normalizePayload(payload) {
     ? normalizedSlideBlueprint.slice(0, targetSlides)
     : normalizedSlideBlueprint;
   const slideTableBindings = normalizeSlideTableBindings(payload.slideTableBindings || nestedPayload.slideTableBindings || {});
-  const client = cleanInlineText(payload.client || payload.clientName || "Client");
-  const deckTitle = cleanInlineText(payload.deckTitle || `QBR - ${client}`);
-  const reportingPeriod = cleanInlineText(payload.reportingPeriod || "Reporting period not provided");
-  const comparisonPeriod = cleanInlineText(payload.comparisonPeriod || "Comparison period not provided");
-  const qbrFocus = cleanInlineText(payload.qbrFocus || "General performance review");
-  const qbrFocusDetail = cleanInlineText(payload.qbrFocusDetail || "");
-  const languageCode = normalizeLanguageCode(payload.languageCode || "EN");
-  const languageName = cleanInlineText(payload.languageName || "English");
+  const client = cleanInlineText(payload.client || payload.clientName || nestedPayload.client || nestedPayload.clientName || "Client");
+  const deckTitle = cleanInlineText(payload.deckTitle || nestedPayload.deckTitle || `QBR - ${client}`);
+  const reportingPeriod = cleanInlineText(payload.reportingPeriod || nestedPayload.reportingPeriod || "Reporting period not provided");
+  const comparisonPeriod = cleanInlineText(payload.comparisonPeriod || nestedPayload.comparisonPeriod || "Comparison period not provided");
+  const qbrFocus = cleanInlineText(payload.qbrFocus || nestedPayload.qbrFocus || "General performance review");
+  const qbrFocusDetail = cleanInlineText(payload.qbrFocusDetail || nestedPayload.qbrFocusDetail || "");
+  const languageCode = normalizeLanguageCode(payload.languageCode || nestedPayload.languageCode || "EN");
+  const languageName = cleanInlineText(payload.languageName || nestedPayload.languageName || "English");
   const locale = localeForLanguageCode(languageCode);
-  const currencyCode = cleanInlineText(payload.currencyCode || "EUR").toUpperCase();
-  const programOutput = cleanText(payload.programOutput || "");
-  const publisherAnalysis = cleanText(payload.publisherAnalysis || "");
+  const currencyCode = cleanInlineText(payload.currencyCode || nestedPayload.currencyCode || "EUR").toUpperCase();
+  const programOutput = cleanText(payload.programOutput || nestedPayload.programOutput || "");
+  const publisherAnalysis = cleanText(payload.publisherAnalysis || nestedPayload.publisherAnalysis || "");
   const executiveSummaryText = cleanInlineText(
-    payload.executiveSummaryText || payload.programExecutiveSummaryText || ""
+    payload.executiveSummaryText || payload.programExecutiveSummaryText
+    || nestedPayload.executiveSummaryText || nestedPayload.programExecutiveSummaryText || ""
   );
   const publisherOverviewObservations = normalizeStringList(
     payload.publisherOverviewObservations || payload.publisherKeyObservations || payload.keyObservations
+    || nestedPayload.publisherOverviewObservations || nestedPayload.publisherKeyObservations || nestedPayload.keyObservations
   );
   const salesGrowthSignals = normalizeSignalItems(
     payload.salesGrowthSignals || payload.salesGrowthSignalBullets || payload.salesGrowthAnalysis
+    || nestedPayload.salesGrowthSignals || nestedPayload.salesGrowthSignalBullets || nestedPayload.salesGrowthAnalysis
   );
-  const rawProgramScopeTable = payload.programScopeTable || nestedPayload.programScopeTable || payload.programLevelBreakdown || payload.programBreakdownTable;
+  const rawProgramYoYTable = payload.programYoYTable || nestedPayload.programYoYTable;
+  const rawProgramScopeTable = payload.programScopeTable || nestedPayload.programScopeTable
+    || payload.programLevelBreakdown || nestedPayload.programLevelBreakdown
+    || payload.programBreakdownTable || nestedPayload.programBreakdownTable;
   const scopeRowsForIds = Array.isArray(rawProgramScopeTable)
     ? rawProgramScopeTable
     : rawProgramScopeTable && typeof rawProgramScopeTable === "object" && Array.isArray(rawProgramScopeTable.rows)
@@ -1028,18 +1171,35 @@ function normalizePayload(payload) {
   const analysisProgramIds = explicitAnalysisProgramIds.length
     ? Array.from(new Set([...explicitAnalysisProgramIds, ...scopeDerivedProgramIds]))
     : (scopeDerivedProgramIds.length ? scopeDerivedProgramIds : fallbackProgramIds);
+  const rankingContext = { currencyCode, locale };
+  const publisherOrderValueRanking = normalizeOrderValueRanking(
+    payload.publisherOrderValueRanking
+      || nestedPayload.publisherOrderValueRanking
+      || payload.publisherTables?.publisherOrderValueRanking
+      || nestedPayload.publisherTables?.publisherOrderValueRanking,
+    rankingContext
+  );
+  const brandNewPublisherRanking = normalizeOrderValueRanking(
+    payload.brandNewPublisherRanking
+      || nestedPayload.brandNewPublisherRanking
+      || payload.publisherTables?.brandNewPublisherRanking
+      || nestedPayload.publisherTables?.brandNewPublisherRanking,
+    rankingContext
+  );
   const tables = normalizeTables(payload.publisherTables || nestedPayload.publisherTables || {});
-  const { metrics, metricMap } = normalizeMetrics(payload.programYoYTable || []);
+  const { metrics, metricMap } = normalizeMetrics(rawProgramYoYTable || []);
   const programScopeTable = (
     Array.isArray(rawProgramScopeTable)
     || (rawProgramScopeTable && typeof rawProgramScopeTable === "object" && Array.isArray(rawProgramScopeTable.rows))
   )
     ? rawProgramScopeTable
     : normalizeProgramScopeTable(rawProgramScopeTable);
+  const displayClient = normalizeDisplayClientName(client, programScopeTable);
 
   return {
     requestId: cleanInlineText(payload.requestId || `qbr-${Date.now()}`),
     client,
+    displayClient,
     deckTitle,
     themeName: cleanInlineText(payload.themeName || "TD"),
     themeOverrides: payload.themeOverrides,
@@ -1068,6 +1228,8 @@ function normalizePayload(payload) {
     analysisProgramIds,
     programOutput,
     publisherAnalysis,
+    publisherOrderValueRanking,
+    brandNewPublisherRanking,
     metrics,
     metricMap,
     tables,
@@ -1236,7 +1398,7 @@ function buildExecutiveSummaryText(input) {
   const aov = m.aov || {};
   const ov = m.ordervalue || {};
 
-  const programLabel = cleanInlineText(input.client || "Program");
+  const programLabel = cleanInlineText(input.displayClient || input.client || "Program");
   const periodLabel = parsePeriodRange(input.reportingPeriod, input.locale);
   const openingLine = isMultiProgramScope
     ? `Across ${selectedProgramCount} selected programs, performance was mixed in ${periodLabel}.`
@@ -1246,9 +1408,13 @@ function buildExecutiveSummaryText(input) {
           : `${programLabel} Affiliate Program`;
         return `The ${affiliateLabel} delivered mixed results in ${periodLabel}.`;
       })();
+  const movementPhrase = (label, metric) => {
+    const verb = movementVerb(metric);
+    return `${label} ${verb} ${metric.variance || "N/A"}`;
+  };
 
   return cleanInlineText(
-    `${openingLine} While AOV grew ${aov.variance || "N/A"} to ${aov.current || "-"} and conversion rate improved ${conv.variance || "N/A"}, total sales declined ${sales.variance || "N/A"} YoY driven by a ${clicks.variance || "N/A"} reduction in click volume. Total order value ${movementVerb(ov)} ${ov.variance || "N/A"} to ${ov.current || "-"}. Full KPI breakdown follows on the next slides.`
+    `${openingLine} ${movementPhrase("AOV", aov)} to ${aov.current || "-"} and ${movementPhrase("conversion rate", conv)}. Total sales ${movementVerb(sales)} ${sales.variance || "N/A"} YoY while click volume ${movementVerb(clicks)} ${clicks.variance || "N/A"}. Total order value ${movementVerb(ov)} ${ov.variance || "N/A"} to ${ov.current || "-"}. Full KPI breakdown follows on the next slides.`
   );
 }
 
@@ -1345,7 +1511,11 @@ function buildProgramBreakdownTable(input) {
         if ((!programId || cleanInlineText(programId) === "-") && selectedProgramIdSingle) {
           programId = selectedProgramIdSingle;
         }
-        const market = firstObjectValue(row, ["Market", "Country", "Region"]);
+        const programName = firstObjectValue(row, ["Program", "Program Name", "ProgramName", "Name"]);
+        const marketSource = firstObjectValue(row, ["Market", "Country", "Region"]);
+        const market = cleanInlineText(programName) && cleanInlineText(programName) !== "-"
+          ? programName
+          : marketSource;
         const clicks = firstObjectValue(row, ["Clicks", "Current Clicks"]);
         const impressions = firstObjectValue(row, ["Impressions"]);
         const sales = firstObjectValue(row, ["Sales", "Current Sales"]);
@@ -1392,7 +1562,11 @@ function buildProgramBreakdownTable(input) {
         if ((!programId || cleanInlineText(programId) === "-") && selectedProgramIdSingle) {
           programId = selectedProgramIdSingle;
         }
-        const market = firstRowCell(row, idx, ["market", "country", "region"]);
+        const programName = firstRowCell(row, idx, ["program", "program name", "programname", "name"]);
+        const marketSource = firstRowCell(row, idx, ["market", "country", "region"]);
+        const market = cleanInlineText(programName) && cleanInlineText(programName) !== "-"
+          ? programName
+          : marketSource;
         const clicks = firstRowCell(row, idx, ["clicks", "current clicks"]);
         const impressions = firstRowCell(row, idx, ["impressions"]);
         const sales = firstRowCell(row, idx, ["sales", "current sales"]);
@@ -1444,6 +1618,56 @@ function buildProgramBreakdownTable(input) {
     title: "Program-Level Breakdown",
     columns: targetColumns,
     rows: [["-", "-", "-", "-", "-", "-", "-", "-", "-"]],
+    dense: false
+  };
+}
+
+function buildTopPublisherPerformanceTable(input) {
+  const targetColumns = [
+    "Publisher",
+    "Site ID",
+    "Clicks",
+    "Sales",
+    "Conversion Rate",
+    "AOV",
+    "Total Order Value",
+    "YoY Change"
+  ];
+
+  const table = [
+    input.tables.topPublisherPerformance,
+    input.tables.topCurrentPerformers,
+    input.tables.top10ByOV
+  ].find((candidate) => Array.isArray(candidate?.rows) && candidate.rows.length);
+  const rows = Array.isArray(table?.rows) ? table.rows : [];
+  const firstValue = (row, aliases) => {
+    if (!row || typeof row !== "object") return "-";
+    const keys = Object.keys(row);
+    const byLower = Object.fromEntries(keys.map((key) => [key.toLowerCase(), key]));
+    for (const alias of aliases) {
+      const key = byLower[String(alias).toLowerCase()];
+      if (!key) continue;
+      const value = row[key];
+      if (value !== undefined && value !== null && String(value).trim() !== "") return value;
+    }
+    return "-";
+  };
+
+  const mappedRows = rows.slice(0, 10).map((row) => [
+    firstValue(row, ["Publisher", "publisher"]),
+    firstValue(row, ["Site ID", "siteId", "SiteID"]),
+    firstValue(row, ["Clicks", "Current Clicks"]),
+    firstValue(row, ["Sales", "Current Sales"]),
+    firstValue(row, ["Conversion Rate", "Conv Rate"]),
+    firstValue(row, ["AOV"]),
+    firstValue(row, ["Total Order Value", "Current OV", "Order Value"]),
+    firstValue(row, ["YoY Change", "OV YoY %"])
+  ]).filter((row) => row.some((cell) => cleanInlineText(cell) && cleanInlineText(cell) !== "-"));
+
+  return {
+    title: "Top Publisher Performance",
+    columns: targetColumns,
+    rows: mappedRows.length ? mappedRows : [["-", "-", "-", "-", "-", "-", "-", "-"]],
     dense: false
   };
 }
@@ -1701,14 +1925,6 @@ function buildSegmentPerformanceBlocks(input) {
       .replace(/\s+/g, " ")
       .trim();
 
-  const iconBySegment = {
-    voucher: "[V]",
-    cashback: "[C]",
-    other: "[O]",
-    content: "[T]",
-    css: "[CSS]"
-  };
-
   const aiNarrativeCandidates = (input.publisherSections || [])
     .filter((section) =>
       /category snapshot|segment snapshot|publisher segment performance|confirmed changes|implications/i
@@ -1737,10 +1953,13 @@ function buildSegmentPerformanceBlocks(input) {
     ovDelta: cleanInlineText(row["OV YoY Change"] || ""),
     ovPct: cleanInlineText(row["OV YoY %"] || "")
   }));
-  const currentRows = (input.tables.topCurrentPerformers?.rows || []).map((row) => ({
+  const currentPerformanceSource = input.tables.topPublisherPerformance?.rows?.length
+    ? input.tables.topPublisherPerformance
+    : input.tables.topCurrentPerformers;
+  const currentRows = (currentPerformanceSource?.rows || []).map((row) => ({
     segment: cleanInlineText(row.Segment || ""),
     publisher: cleanPublisherLabel(row.Publisher || ""),
-    ov: cleanInlineText(row["Order Value"] || row["Current OV"] || ""),
+    ov: cleanInlineText(row["Total Order Value"] || row["Order Value"] || row["Current OV"] || ""),
     sales: cleanInlineText(row["Current Sales"] || "")
   }));
 
@@ -1769,32 +1988,37 @@ function buildSegmentPerformanceBlocks(input) {
     return `${text.slice(0, maxChars - 1).trimEnd()}\u2026`;
   };
 
-  return rows.slice(0, 5).map((row) => {
-    const icon = iconBySegment[row.segment.toLowerCase()] || "\u25AA";
+  const denseMode = rows.length > 5;
+
+  return rows.map((row) => {
     const growthForSegment = growthRows.find((item) => item.segment.toLowerCase() === row.segment.toLowerCase());
     const declineForSegment = declineRows.find((item) => item.segment.toLowerCase() === row.segment.toLowerCase());
     const topCurrentInSegment = currentRows
       .filter((item) => item.segment.toLowerCase() === row.segment.toLowerCase())
+      .sort((a, b) => (parseNumber(b.ov) || 0) - (parseNumber(a.ov) || 0))
       .slice(0, 2);
     const movementParts = [];
     if (growthForSegment) {
-      movementParts.push(`${growthForSegment.publisher} is the dominant growth driver, delivering ${growthForSegment.ovDelta} OV YoY (${growthForSegment.ovPct}).`);
+      movementParts.push(`Growth: ${growthForSegment.publisher} ${growthForSegment.ovDelta} OV YoY (${growthForSegment.ovPct}).`);
     }
     if (declineForSegment) {
-      movementParts.push(`${declineForSegment.publisher} is the primary drag, with ${declineForSegment.ovDelta} OV YoY (${declineForSegment.ovPct}).`);
+      movementParts.push(`Drag: ${declineForSegment.publisher} ${declineForSegment.ovDelta} OV YoY (${declineForSegment.ovPct}).`);
     }
     if (topCurrentInSegment.length) {
       const contributorLine = topCurrentInSegment
         .map((item) => `${item.publisher}${item.ov ? ` (${item.ov})` : ""}`)
         .join(" and ");
-      movementParts.push(`Leading current contributors include ${contributorLine}.`);
+      movementParts.push(`Leaders: ${contributorLine}.`);
     }
     const movementLine = movementParts.join(" ");
-    const defaultDetail = `${row.totalOv} total OV | ${row.publishers} active publishers | Sales: ${row.totalSales} (${row.salesYoy} YoY).${movementLine ? ` ${movementLine}` : ""}`;
+    const publisherPart = row.publishers && row.publishers !== "N/A"
+      ? ` | ${row.publishers} publishers`
+      : "";
+    const defaultDetail = `${row.totalOv} total OV${publisherPart} | Sales: ${row.totalSales} (${row.salesYoy} YoY).${movementLine ? ` ${movementLine}` : ""}`;
     const aiDetail = aiNarrativeCandidates.find((line) =>
       new RegExp(`\\b${row.segment.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i").test(line)
     );
-    let detail = aiDetail && aiDetail.length > defaultDetail.length * 0.6
+    let detail = aiDetail && !movementLine && aiDetail.length > defaultDetail.length * 0.6
       ? `${defaultDetail} ${aiDetail}`
       : defaultDetail;
     detail = detail
@@ -1802,8 +2026,14 @@ function buildSegmentPerformanceBlocks(input) {
       .replace(/\s*-\s*I\s+/gi, " ")
       .replace(/\s+/g, " ")
       .trim();
-    detail = clampDetail(detail, 420);
-    return `${icon} ${row.segment} - ${row.ovYoy} OV YoY\n${detail}`;
+    if (denseMode) {
+      const denseParts = [`${row.totalOv} total OV`, `Sales: ${row.totalSales}`];
+      if (row.publishers && row.publishers !== "N/A") denseParts.push(`${row.publishers} publishers`);
+      if (topCurrentInSegment[0]?.publisher) denseParts.push(`Leader: ${topCurrentInSegment[0].publisher}`);
+      detail = denseParts.join(" | ");
+    }
+    detail = clampDetail(detail, denseMode ? 120 : 240);
+    return `${row.segment} - ${row.ovYoy} OV YoY\n${detail}`;
   });
 }
 
@@ -2109,6 +2339,132 @@ function buildDirectionalMoversTable(table, title, columns, upCount = 5, downCou
     colW: [3.5, 1.8, 2.1, 2.1, 1.5],
     rows: outputRows
   };
+}
+
+function formatCompactMoney(value, currencyCode, locale = "en-GB") {
+  if (value === null || value === undefined || Number.isNaN(Number(value))) return "-";
+  const symbol = getCurrencySymbol(currencyCode);
+  const n = Number(value);
+  const sign = n < 0 ? "-" : "";
+  const abs = Math.abs(n);
+  const compact = (divisor, suffix) => {
+    const scaled = abs / divisor;
+    const decimals = scaled >= 10 ? 1 : 2;
+    return `${Number(scaled.toFixed(decimals)).toLocaleString(locale || "en-GB")}${suffix}`;
+  };
+  if (abs >= 1_000_000) return `${sign}${symbol}${compact(1_000_000, "m")}`;
+  if (abs >= 1_000) return `${sign}${symbol}${compact(1_000, "k")}`;
+  return `${sign}${symbol}${Math.round(abs).toLocaleString(locale || "en-GB")}`;
+}
+
+function formatFullMoney(value, currencyCode, locale = "en-GB") {
+  if (value === null || value === undefined || Number.isNaN(Number(value))) return "-";
+  const symbol = getCurrencySymbol(currencyCode);
+  const n = Number(value);
+  const sign = n < 0 ? "-" : "";
+  const abs = Math.abs(n);
+  return `${sign}${symbol}${Math.round(abs).toLocaleString(locale || "en-GB")}`;
+}
+
+function buildOrderValueRankingFromTables(input, sourceTables, options = {}) {
+  const labelFormatter = typeof options.labelFormatter === "function"
+    ? options.labelFormatter
+    : (value) => formatCompactMoney(value, input.currencyCode, input.locale || "en-GB");
+  const limit = Number.isFinite(Number(options.limit)) ? Number(options.limit) : 10;
+  const rowsByPublisher = new Map();
+  sourceTables.filter((table) => table && Array.isArray(table.rows)).forEach((table) => {
+    table.rows.forEach((row) => {
+      const publisher = compactLabel(readTableCell(row, ["Publisher", "Program Name", "Program", "Name"]), 34);
+      if (!publisher || publisher === "-") return;
+      const siteId = readTableCell(row, ["Site ID", "SiteID", "Site Id", "Program ID", "ProgramId", "ProgramID"]);
+      const segment = readTableCell(row, ["Segment", "Category", "Publisher Segment"]);
+      const rawOrderValue = readTableCell(row, ["Order Value", "Current OV", "Current Order Value", "Total Order Value", "Total OV"]);
+      const orderValue = parseNumber(rawOrderValue);
+      if (!Number.isFinite(orderValue)) return;
+
+      const key = `${publisher.toLowerCase()}|${siteId.toLowerCase()}`;
+      const candidate = {
+        publisher,
+        siteId,
+        segment,
+        value: orderValue,
+        label: labelFormatter(orderValue)
+      };
+      const existing = rowsByPublisher.get(key);
+      if (!existing || candidate.value > existing.value) rowsByPublisher.set(key, candidate);
+    });
+  });
+
+  const ranked = Array.from(rowsByPublisher.values())
+    .filter((row) => row.publisher && Number.isFinite(row.value))
+    .sort((a, b) => b.value - a.value || a.publisher.localeCompare(b.publisher));
+
+  const top = ranked.slice(0, limit);
+  let bottom;
+  if (options.distinctBottomFromTop) {
+    const topKeys = new Set(top.map((row) => `${row.publisher.toLowerCase()}|${(row.siteId || "").toLowerCase()}`));
+    bottom = ranked
+      .filter((row) => !topKeys.has(`${row.publisher.toLowerCase()}|${(row.siteId || "").toLowerCase()}`))
+      .sort((a, b) => a.value - b.value || a.publisher.localeCompare(b.publisher))
+      .slice(0, limit);
+    if (options.hideBottomWhenEmpty && !bottom.length) bottom = [];
+  } else {
+    bottom = ranked.slice().sort((a, b) => a.value - b.value || a.publisher.localeCompare(b.publisher)).slice(0, limit);
+  }
+
+  return {
+    top,
+    bottom,
+    sourceCount: ranked.length
+  };
+}
+
+function normalizeOrderValueRanking(input, context) {
+  if (!input || typeof input !== "object" || Array.isArray(input)) return null;
+
+  const normalizeRankingRows = (rows) => {
+    if (!Array.isArray(rows)) return [];
+    return rows
+      .map((row) => {
+        if (!row || typeof row !== "object" || Array.isArray(row)) return null;
+        const publisher = compactLabel(readTableCell(row, ["publisher", "Publisher", "name", "Name"]), 34);
+        if (!publisher || publisher === "-") return null;
+        const rawValue = row.value ?? readTableCell(row, ["value", "Order Value", "Current OV", "Current Order Value", "Total Order Value", "Total OV"]);
+        const value = typeof rawValue === "number" ? rawValue : parseNumber(rawValue);
+        if (!Number.isFinite(value)) return null;
+        return {
+          publisher,
+          siteId: cleanInlineText(row.siteId ?? readTableCell(row, ["Site ID", "SiteID", "Site Id"]), ""),
+          segment: cleanInlineText(row.segment ?? readTableCell(row, ["Segment", "Category", "Publisher Segment"]), ""),
+          value,
+          label: cleanInlineText(row.label || "", "") || formatCompactMoney(value, context.currencyCode, context.locale || "en-GB")
+        };
+      })
+      .filter(Boolean);
+  };
+
+  const top = normalizeRankingRows(input.top);
+  const bottom = normalizeRankingRows(input.bottom);
+  if (!top.length && !bottom.length) return null;
+
+  return {
+    top,
+    bottom,
+    sourceCount: Number.isFinite(Number(input.sourceCount)) ? Number(input.sourceCount) : Math.max(top.length, bottom.length)
+  };
+}
+
+function buildPublisherOrderValueRanking(input) {
+  if (input.publisherOrderValueRanking) return input.publisherOrderValueRanking;
+  return buildOrderValueRankingFromTables(input, [
+    input.tables.publisherPerformanceSummary,
+    input.tables.topCurrentPerformers,
+    input.tables.topGrowthPublishers,
+    input.tables.topDecliningPublishers,
+    input.tables.brandNewPublishers,
+    input.tables.brandNewPrograms,
+    input.tables.moversOrderValue
+  ]);
 }
 
 function buildActionBullets(input) {
@@ -2744,13 +3100,13 @@ function buildPublisherProgramDeckSpec(input, theme) {
       slides.push({
         id: "cover",
         kind: "cover",
-        title: `${input.client} Affiliate Program Quarterly Business Review`,
+        title: `${input.displayClient} Affiliate Program Quarterly Business Review`,
         subtitle: "",
         headline,
         summary: input.qbrFocusDetail
           ? `${input.qbrFocus}. ${input.qbrFocusDetail}`
-          : `A comprehensive year-over-year analysis of the ${input.client} affiliate program's performance, publisher dynamics, and strategic priorities to drive growth and optimise outcomes.`,
-        bullets: [`Client: ${input.client}`, `Reporting currency: ${input.currencyCode}`, `Language: ${input.languageName}`],
+          : `A comprehensive year-over-year analysis of the ${input.displayClient} affiliate program's performance, publisher dynamics, and strategic priorities to drive growth and optimise outcomes.`,
+        bullets: [`Client: ${input.displayClient}`, `Reporting currency: ${input.currencyCode}`, `Language: ${input.languageName}`],
         kpis: [],
         tables: []
       });
@@ -2954,7 +3310,7 @@ function buildPublisherProgramDeckSpec(input, theme) {
       slides.push({
         id: "thank-you",
         kind: "thank-you",
-        title: `${input.client} - Thank you.`,
+        title: `${input.displayClient} - Thank you.`,
         subtitle: "",
         bullets: [],
         kpis: [],
@@ -2971,7 +3327,7 @@ function buildPublisherProgramDeckSpec(input, theme) {
   return {
     metadata: {
       requestId: input.requestId,
-      client: input.client,
+      client: input.displayClient,
       deckTitle: input.deckTitle,
       reportingPeriod: input.reportingPeriod,
       comparisonPeriod: input.comparisonPeriod,
@@ -3032,21 +3388,28 @@ function buildDeckSpec(input, theme) {
   const moversOrderValue = input.tables.moversOrderValue;
   const moversClicks = input.tables.moversClicks;
   const brandNew = input.tables.brandNewPublishers;
+  const publisherOrderValueRanking = buildPublisherOrderValueRanking(input);
+  const brandNewOrderValueRanking = input.brandNewPublisherRanking || buildOrderValueRankingFromTables(input, [brandNew], {
+    labelFormatter: (value) => formatFullMoney(value, input.currencyCode, input.locale || "en-GB"),
+    distinctBottomFromTop: true,
+    hideBottomWhenEmpty: true
+  });
   const kpiAnalysisBullets = buildKpiAnalysisBullets(input);
   const publisherOverviewBullets = buildPublisherOverviewBullets(input);
   const segmentPerformanceBlocks = buildSegmentPerformanceBlocks(input);
   const salesGrowthSignals = buildSalesGrowthSignals(input);
   const programBreakdownTable = buildProgramBreakdownTable(input);
+  const topPublisherPerformanceTable = buildTopPublisherPerformanceTable(input);
   slides.push({
     id: "cover",
     kind: "cover",
-    title: `${input.client} Affiliate Program Quarterly Business Review`,
+    title: `${input.displayClient} Affiliate Program Quarterly Business Review`,
     subtitle: "",
     headline,
     summary: input.qbrFocusDetail
       ? `${input.qbrFocus}. ${input.qbrFocusDetail}`
-      : `A comprehensive year-over-year analysis of the ${input.client} affiliate program's performance, publisher dynamics, and strategic priorities to drive growth and optimise outcomes.`,
-    bullets: [`Client: ${input.client}`, `Reporting currency: ${input.currencyCode}`, `Language: ${input.languageName}`],
+      : `A comprehensive year-over-year analysis of the ${input.displayClient} affiliate program's performance, publisher dynamics, and strategic priorities to drive growth and optimise outcomes.`,
+    bullets: [`Client: ${input.displayClient}`, `Reporting currency: ${input.currencyCode}`, `Language: ${input.languageName}`],
     kpis: [],
     tables: []
   });
@@ -3122,7 +3485,10 @@ function buildDeckSpec(input, theme) {
     kind: "publisher-overview",
     title: "Publisher Performance Overview",
     subtitle: "High-level summary of publisher activity, segmentation and YoY movement.",
-    bullets: publisherOverviewBullets.slice(0, 4),
+    bullets: segmentPerformanceBlocks,
+    analysisTitle: "Segment Breakdown",
+    analysisMaxBullets: segmentPerformanceBlocks.length,
+    summaryTable: buildPublisherOverviewSummaryTable(segmentTable),
     kpis: [],
     tables: segmentTable
       ? [
@@ -3139,11 +3505,27 @@ function buildDeckSpec(input, theme) {
   });
 
   slides.push({
-    id: "segment-performance",
-    kind: "segment-performance-blue",
-    title: "Publisher Segment Performance",
-    subtitle: "",
-    bullets: segmentPerformanceBlocks,
+    id: "top-publisher-performance",
+    kind: "program-breakdown",
+    title: "Top Publisher Performance: Volume & Conversion",
+    subtitle: "Top 10 publishers by current-period order value.",
+    bullets: [],
+    kpis: [],
+    tables: [topPublisherPerformanceTable]
+  });
+
+  slides.push({
+    id: "publisher-order-value-rankings",
+    kind: "publisher-ov-ranking-bars",
+    title: "Movers and Shakers: Publisher Performance",
+    subtitle: `YoY order value movement ranking - ${input.reportingPeriod} vs ${input.comparisonPeriod}.`,
+    bullets: [],
+    ranking: publisherOrderValueRanking,
+    panelTitles: {
+      top: "Top 10 YoY OV growth publishers",
+      bottom: "Top 10 YoY OV decline publishers"
+    },
+    footerNote: "Ranked by year-over-year order value change. Blue bars show largest positive OV movement; red bars show largest negative OV movement.",
     kpis: [],
     tables: []
   });
@@ -3207,30 +3589,21 @@ function buildDeckSpec(input, theme) {
 
   slides.push({
     id: "brand-new-publishers",
-    kind: "publisher-table",
+    kind: "publisher-ov-ranking-bars",
     title: "Brand New Publishers",
-    subtitle: "Publishers activated for the first time in the current period.",
+    subtitle: `Current-period order value ranking for newly activated publishers - ${input.reportingPeriod}.`,
     bullets: [],
-    kpis: [],
-    tables: [
-      tableOrPlaceholder(brandNew, "Brand New Publishers", [
-        "Publisher",
-        "Segment",
-        "Current Sales",
-        "Current OV",
-        "CPA"
-      ])
-    ],
-    callout: "Brand-new publishers are not included in YoY comparisons until a prior-year baseline exists."
-  });
-
-  slides.push({
-    id: "sales-growth-signals",
-    kind: "sales-growth-signals-blue",
-    title: "Sales Growth Signals",
-    subtitle: "",
-    bullets: [],
-    signals: salesGrowthSignals,
+    ranking: brandNewOrderValueRanking,
+    panelTitles: {
+      top: "Highest order value new publishers",
+      bottom: "Lower order value new publishers"
+    },
+    panelColors: {
+      top: "#2F6FF2",
+      bottom: "#7C97C8"
+    },
+    hideEmptyBottomPanel: true,
+    footerNote: "Order value shown is current-period revenue from newly activated publishers. Values are not YoY changes.",
     kpis: [],
     tables: []
   });
@@ -3256,7 +3629,7 @@ function buildDeckSpec(input, theme) {
   slides.push({
     id: "thank-you",
     kind: "thank-you",
-    title: `${input.client} - Thank you.`,
+    title: `${input.displayClient} - Thank you.`,
     subtitle: "",
     bullets: [],
     kpis: [],
@@ -3290,7 +3663,7 @@ function buildDeckSpec(input, theme) {
   return {
     metadata: {
       requestId: input.requestId,
-      client: input.client,
+      client: input.displayClient,
       deckTitle: input.deckTitle,
       reportingPeriod: input.reportingPeriod,
       comparisonPeriod: input.comparisonPeriod,
@@ -3322,6 +3695,7 @@ function titleRuns(title) {
   const phrases = [
     "Growth Publishers",
     "Decline Publishers",
+    "Publisher Performance",
     "Current Performers",
     "Segment Performance",
     "Strategic Recommendations",
@@ -3878,6 +4252,451 @@ function addTable(slide, deck, table, box, mode = "light") {
   return { containerH, tableH: effectiveTableH };
 }
 
+function addPublisherOrderValueBars(slide, deck, spec) {
+  const ranking = spec.ranking || {};
+  const topRows = Array.isArray(ranking.top) ? ranking.top : [];
+  const bottomRows = Array.isArray(ranking.bottom) ? ranking.bottom : [];
+  const panelTitles = spec.panelTitles || {};
+  const panelColors = spec.panelColors || {};
+  const topColor = toColor(panelColors.top || deck.theme.colors.accent);
+  const bottomColor = toColor(panelColors.bottom || deck.theme.colors.accentAlt);
+  const singlePanel = Boolean(spec.hideEmptyBottomPanel) && !bottomRows.length;
+  const muted = toColor(deck.theme.colors.muted);
+  const axis = toColor("#D8DCE5");
+  const track = toColor("#E7EBF3");
+
+  slide.addText(spec.footerNote || "Ranked by current-period order value. Best and worst lists are calculated from available publisher-level rows in the QBR extract.", {
+    x: 0.7,
+    y: 6.92,
+    w: 11.9,
+    h: 0.22,
+    fontFace: deck.theme.fonts.body,
+    fontSize: 8.7,
+    color: muted,
+    margin: 0
+  });
+
+  const drawPanel = (title, rows, x, y, w, color) => {
+    slide.addText(title, {
+      x,
+      y,
+      w,
+      h: 0.25,
+      fontFace: deck.theme.fonts.heading,
+      fontSize: 13.5,
+      bold: true,
+      color: toColor(deck.theme.colors.ink),
+      margin: 0
+    });
+    slide.addShape("line", {
+      x,
+      y: y + 0.36,
+      w,
+      h: 0,
+      line: { color: axis, pt: 0.7 }
+    });
+
+    if (!rows.length) {
+      slide.addText("No publisher order value data available.", {
+        x,
+        y: y + 0.68,
+        w,
+        h: 0.34,
+        fontFace: deck.theme.fonts.body,
+        fontSize: 10,
+        color: muted,
+        margin: 0
+      });
+      return;
+    }
+
+    const maxValue = Math.max(...rows.map((row) => Math.abs(Number(row.value) || 0)), 1);
+    const labelW = 1.78;
+    const barX = x + labelW + 0.16;
+    const barW = w - labelW - 1.1;
+    const valueX = barX + barW + 0.14;
+    const rowStep = 0.405;
+    rows.slice(0, 10).forEach((row, index) => {
+      const rowY = y + 0.62 + index * rowStep;
+      const barLength = Math.max(0.06, (Math.abs(Number(row.value) || 0) / maxValue) * barW);
+      slide.addText(`${index + 1}. ${compactLabel(row.publisher, 24)}`, {
+        x,
+        y: rowY - 0.005,
+        w: labelW,
+        h: 0.19,
+        fontFace: deck.theme.fonts.body,
+        fontSize: 7.9,
+        color: toColor(deck.theme.colors.ink),
+        margin: 0
+      });
+      slide.addShape("rect", {
+        x: barX,
+        y: rowY + 0.025,
+        w: barW,
+        h: 0.13,
+        line: { color: track, pt: 0 },
+        fill: { color: track }
+      });
+      slide.addShape("rect", {
+        x: barX,
+        y: rowY + 0.025,
+        w: Number(barLength.toFixed(3)),
+        h: 0.13,
+        line: { color, pt: 0 },
+        fill: { color }
+      });
+      slide.addText(row.label || "-", {
+        x: valueX,
+        y: rowY - 0.005,
+        w: 0.88,
+        h: 0.19,
+        fontFace: deck.theme.fonts.body,
+        fontSize: 7.8,
+        color: toColor(deck.theme.colors.ink),
+        align: "right",
+        margin: 0
+      });
+    });
+  };
+
+  if (singlePanel) {
+    drawPanel(panelTitles.top || "Top 10 YoY OV growth publishers", topRows, 0.72, 1.95, 11.92, topColor);
+    return;
+  }
+
+  drawPanel(panelTitles.top || "Top 10 YoY OV growth publishers", topRows, 0.72, 1.95, 5.72, topColor);
+  slide.addShape("line", {
+    x: 6.67,
+    y: 1.93,
+    w: 0,
+    h: 4.58,
+    line: { color: axis, pt: 0.7, transparency: 12 }
+  });
+  drawPanel(panelTitles.bottom || "Top 10 YoY OV decline publishers", bottomRows, 6.92, 1.95, 5.72, bottomColor);
+}
+
+function segmentSnapshotRows(table) {
+  const rows = Array.isArray(table?.rows) ? table.rows : [];
+  const columns = Array.isArray(table?.columns) ? table.columns : [];
+  const cell = (row, aliases) => {
+    if (Array.isArray(row)) {
+      const normalizedAliases = aliases.map((alias) => cleanInlineText(alias).toLowerCase());
+      const index = columns.findIndex((column) => normalizedAliases.includes(cleanInlineText(column).toLowerCase()));
+      return index >= 0 ? cleanInlineText(row[index] || "") : "";
+    }
+    return readTableCell(row, aliases);
+  };
+
+  return rows
+    .map((row) => {
+      const segment = cleanInlineText(cell(row, ["Segment", "Category", "Publisher Segment"]) || "Segment");
+      const totalOv = cleanInlineText(cell(row, ["Total OV", "Order Value", "Sales Order Value", "Total Order Value"]) || "-");
+      const value = parseNumber(totalOv);
+      const sales = cleanInlineText(cell(row, ["Total Sales", "Sales"]) || "-");
+      const salesValue = parseNumber(sales);
+      return {
+        segment,
+        totalOv,
+        value: Number.isFinite(value) ? value : 0,
+        ovYoy: cleanInlineText(cell(row, ["OV YoY %", "YoY Change", "Order Value YoY %"]) || "N/A"),
+        sales,
+        salesValue: Number.isFinite(salesValue) ? salesValue : 0,
+        salesYoy: cleanInlineText(cell(row, ["Sales YoY %"]) || ""),
+        publishers: cleanInlineText(cell(row, ["Publishers", "Publisher Count"]) || "")
+      };
+    })
+    .filter((row) => row.segment && row.segment !== "-")
+    .filter((row) => row.value > 0 || row.salesValue > 0);
+}
+
+function segmentTreemapRows(table, deck) {
+  const mapped = segmentSnapshotRows(table)
+    .filter((row) => row.segment && row.segment !== "-" && row.value > 0)
+    .map((row) => ({
+      segment: row.segment,
+      value: row.value,
+      yoy: row.ovYoy,
+      sales: row.sales
+    }))
+    .sort((a, b) => b.value - a.value);
+
+  if (mapped.length <= 8) return mapped;
+
+  const top = mapped.slice(0, 7);
+  const rest = mapped.slice(7);
+  const otherValue = rest.reduce((sum, row) => sum + row.value, 0);
+  if (otherValue <= 0) return top;
+
+  return [
+    ...top,
+    {
+      segment: "Other segments",
+      value: otherValue,
+      yoy: "Mixed",
+      sales: ""
+    }
+  ];
+}
+
+function splitTreemapItems(items, box) {
+  if (!items.length) return [];
+  if (items.length === 1) return [{ ...items[0], ...box }];
+
+  const total = items.reduce((sum, item) => sum + item.value, 0);
+  const half = total / 2;
+  let running = 0;
+  let splitIndex = 1;
+  for (let i = 0; i < items.length - 1; i += 1) {
+    const next = running + items[i].value;
+    if (Math.abs(half - next) <= Math.abs(half - running) || i === 0) {
+      running = next;
+      splitIndex = i + 1;
+    } else {
+      break;
+    }
+  }
+
+  const first = items.slice(0, splitIndex);
+  const second = items.slice(splitIndex);
+  const firstTotal = first.reduce((sum, item) => sum + item.value, 0);
+  const ratio = total > 0 ? firstTotal / total : 0.5;
+
+  if (box.w >= box.h) {
+    const firstW = box.w * ratio;
+    return [
+      ...splitTreemapItems(first, { x: box.x, y: box.y, w: firstW, h: box.h }),
+      ...splitTreemapItems(second, { x: box.x + firstW, y: box.y, w: box.w - firstW, h: box.h })
+    ];
+  }
+
+  const firstH = box.h * ratio;
+  return [
+    ...splitTreemapItems(first, { x: box.x, y: box.y, w: box.w, h: firstH }),
+    ...splitTreemapItems(second, { x: box.x, y: box.y + firstH, w: box.w, h: box.h - firstH })
+  ];
+}
+
+function addSegmentTreemap(slide, deck, table, box) {
+  const rows = segmentTreemapRows(table, deck);
+  const ink = toColor(deck.theme.colors.ink);
+  const muted = toColor(deck.theme.colors.muted);
+  const border = toColor("#FFFFFF");
+  const total = rows.reduce((sum, row) => sum + row.value, 0);
+  const colors = ["#74C8DC", "#069FC5", "#2BA68D", "#F2D35C", "#43C0A6", "#81DCCB", "#9AA3A4", "#2F6FF2"];
+
+  slide.addText("Share of Total by Segment", {
+    x: box.x,
+    y: box.y,
+    w: box.w,
+    h: 0.28,
+    fontFace: deck.theme.fonts.body,
+    fontSize: 12.5,
+    color: ink,
+    margin: 0
+  });
+
+  const chartBox = { x: box.x, y: box.y + 0.43, w: box.w, h: box.h - 0.43 };
+  slide.addShape("rect", {
+    ...chartBox,
+    line: { color: toColor("#D6DCE8"), pt: 0.8 },
+    fill: { color: toColor("#F7F9FC"), transparency: 100 }
+  });
+
+  if (!rows.length || total <= 0) {
+    slide.addText("No segment order value data available.", {
+      x: chartBox.x + 0.2,
+      y: chartBox.y + 0.24,
+      w: chartBox.w - 0.4,
+      h: 0.3,
+      fontFace: deck.theme.fonts.body,
+      fontSize: 10,
+      color: muted,
+      margin: 0
+    });
+    return;
+  }
+
+  const tiles = splitTreemapItems(rows, chartBox);
+  tiles.forEach((tile, index) => {
+    const gap = 0.012;
+    const x = tile.x + gap;
+    const y = tile.y + gap;
+    const w = Math.max(0.02, tile.w - gap * 2);
+    const h = Math.max(0.02, tile.h - gap * 2);
+    const share = total > 0 ? (tile.value / total) * 100 : 0;
+    const canShowName = w >= 0.76 && h >= 0.34;
+    const canShowYoy = w >= 1.05 && h >= 0.7;
+    const fontSize = w < 1.2 || h < 0.62 ? 7.2 : 8.9;
+    const label = cleanInlineText(tile.segment);
+    const titleFontSize = label.length > 22 ? Math.max(6.2, fontSize - 0.9) : fontSize;
+    const titleHeight = canShowYoy
+      ? Math.min(0.36, Math.max(0.24, h * 0.42))
+      : Math.min(0.5, Math.max(0.24, h - 0.18));
+    const fill = colors[index % colors.length];
+
+    slide.addShape("rect", {
+      x,
+      y,
+      w,
+      h,
+      line: { color: border, pt: 1.2 },
+      fill: { color: toColor(fill) }
+    });
+
+    if (canShowName) {
+      slide.addText(label, {
+        x: x + 0.08,
+        y: y + 0.08,
+        w: Math.max(0.1, w - 0.16),
+        h: titleHeight,
+        fontFace: deck.theme.fonts.heading,
+        fontSize: titleFontSize,
+        bold: true,
+        color: toColor("#FFFFFF"),
+        margin: 0,
+        fit: "shrink"
+      });
+    }
+
+    if (canShowYoy) {
+      slide.addText(`${tile.yoy} OV YoY`, {
+        x: x + 0.08,
+        y: y + 0.33,
+        w: Math.max(0.1, w - 0.16),
+        h: 0.18,
+        fontFace: deck.theme.fonts.body,
+        fontSize: Math.max(6.8, fontSize - 1.3),
+        color: toColor("#FFFFFF"),
+        margin: 0,
+        fit: "shrink"
+      });
+    }
+
+    slide.addText(`${Math.round(share)}%`, {
+      x: x + 0.08,
+      y: y + h - 0.29,
+      w: Math.max(0.25, w - 0.16),
+      h: 0.22,
+      fontFace: deck.theme.fonts.heading,
+      fontSize: Math.max(8, fontSize + 0.8),
+      bold: true,
+      color: toColor("#FFFFFF"),
+      margin: 0,
+      fit: "shrink"
+    });
+  });
+}
+
+function buildPublisherOverviewSummaryTable(table) {
+  const rows = segmentSnapshotRows(table);
+  if (!rows.length) {
+    return {
+      title: "Segment Breakdown",
+      columns: ["Segment", "YoY Growth", "Total OV", "Sales"],
+      rows: [["-", "-", "-", "-"]],
+      colW: [2.9, 1.15, 1.4, 0.95]
+    };
+  }
+
+  return {
+    title: "Segment Breakdown",
+    columns: ["Segment", "YoY Growth", "Total OV", "Sales"],
+    rows: rows.map((row) => [row.segment, row.ovYoy || "-", row.totalOv || "-", row.sales || "-"]),
+    colW: [2.9, 1.15, 1.4, 0.95]
+  };
+}
+
+function addPublisherOverviewSummaryTable(slide, deck, table, box) {
+  const title = cleanInlineText(table?.title || "Segment Breakdown");
+  const columns = Array.isArray(table?.columns) ? table.columns : [];
+  const rows = Array.isArray(table?.rows) ? table.rows : [];
+  const widths = Array.isArray(table?.colW) && table.colW.length === columns.length
+    ? table.colW
+    : columns.map(() => 1);
+  const widthTotal = widths.reduce((sum, width) => sum + Number(width || 0), 0) || columns.length || 1;
+  const colWidths = widths.map((width) => (Number(width || 0) / widthTotal) * box.w);
+  const rowCount = Math.max(1, rows.length);
+  const headerY = box.y + 0.42;
+  const headerH = 0.28;
+  const availableH = Math.max(1.2, box.h - 0.68);
+  const rowH = Math.min(0.39, Math.max(0.24, availableH / rowCount));
+  const lineColor = toColor("#C7CFDB");
+  const strongLine = toColor("#A8B4C7");
+  const ink = toColor(deck.theme.colors.ink);
+
+  slide.addText(title, {
+    x: box.x,
+    y: box.y,
+    w: box.w,
+    h: 0.28,
+    fontFace: deck.theme.fonts.heading,
+    fontSize: 14.4,
+    color: ink,
+    margin: 0
+  });
+  slide.addShape("line", {
+    x: box.x,
+    y: headerY - 0.06,
+    w: box.w,
+    h: 0,
+    line: { color: strongLine, pt: 0.55 }
+  });
+
+  let cursorX = box.x;
+  columns.forEach((column, index) => {
+    const width = colWidths[index] || 0.8;
+    slide.addText(column, {
+      x: cursorX + 0.04,
+      y: headerY,
+      w: Math.max(0.2, width - 0.08),
+      h: headerH,
+      fontFace: deck.theme.fonts.body,
+      fontSize: 10.2,
+      bold: true,
+      color: ink,
+      align: index === 0 ? "left" : "right",
+      margin: 0
+    });
+    cursorX += width;
+  });
+
+  slide.addShape("line", {
+    x: box.x,
+    y: headerY + headerH + 0.02,
+    w: box.w,
+    h: 0,
+    line: { color: strongLine, pt: 0.65 }
+  });
+
+  rows.forEach((row, rowIndex) => {
+    const rowY = headerY + headerH + 0.1 + rowIndex * rowH;
+    let rowX = box.x;
+    row.forEach((value, cellIndex) => {
+      const width = colWidths[cellIndex] || 0.8;
+      slide.addText(cleanInlineText(value || "-"), {
+        x: rowX + 0.04,
+        y: rowY,
+        w: Math.max(0.2, width - 0.08),
+        h: rowH - 0.03,
+        fontFace: deck.theme.fonts.body,
+        fontSize: 9.8,
+        color: ink,
+        align: cellIndex === 0 ? "left" : "right",
+        margin: 0,
+        fit: "shrink"
+      });
+      rowX += width;
+    });
+    slide.addShape("line", {
+      x: box.x,
+      y: rowY + rowH - 0.02,
+      w: box.w,
+      h: 0,
+      line: { color: lineColor, pt: 0.45 }
+    });
+  });
+}
+
 function renderSlide(slide, deck, spec, pageNumber) {
   if (spec.kind === "cover") {
     addBlueChrome(slide, deck);
@@ -4012,6 +4831,11 @@ function renderSlide(slide, deck, spec, pageNumber) {
   } else {
     addLightChrome(slide, deck);
     addTitle(slide, deck, spec, deck.theme.colors.ink, deck.theme.colors.accent, false);
+  }
+
+  if (spec.kind === "publisher-ov-ranking-bars") {
+    addPublisherOrderValueBars(slide, deck, spec);
+    return;
   }
 
   if (spec.kind === "reporting-period") {
@@ -4321,60 +5145,15 @@ function renderSlide(slide, deck, spec, pageNumber) {
   }
 
   if (spec.kind === "publisher-overview") {
-    let overviewTableMetrics = null;
-    slide.addText(uiLabel(deck, "publisherActivityBySegment", "Publisher Activity by Segment"), {
-      x: 0.35,
-      y: 2.04,
-      w: 5.6,
-      h: 0.32,
-      fontFace: deck.theme.fonts.body,
-      fontSize: 12.5,
-      color: toColor(deck.theme.colors.ink),
-      margin: 0
-    });
     if (spec.tables && spec.tables[0]) {
-      overviewTableMetrics = addTable(slide, deck, spec.tables[0], { x: 0.35, y: 2.38, w: 5.55, h: 4.32 });
+      addSegmentTreemap(slide, deck, spec.tables[0], { x: 0.35, y: 2.04, w: 5.55, h: 4.72 });
     }
-    const points = (spec.bullets || []).slice(0, 4);
-    slide.addText(uiLabel(deck, "keyObservations", "Key Observations"), {
-      x: 6.25,
-      y: 2.04,
-      w: 5.6,
-      h: 0.35,
-      fontFace: deck.theme.fonts.heading,
-      fontSize: 15,
-      color: toColor(deck.theme.colors.ink),
-      margin: 0
-    });
-    const notes = points.length ? points : ["Driver not confirmed from available data."];
-    const observationRuns = [];
-    notes.forEach((item, index) => {
-      observationRuns.push({ text: `\u2022 ${item}`, options: { breakLine: true } });
-      if (index < notes.length - 1) {
-        observationRuns.push({ text: " ", options: { breakLine: true } });
-      }
-    });
-    slide.addText(observationRuns, {
-      x: 6.26,
-      y: 2.56,
-      w: 5.22,
-      h: 4.74,
-      fontFace: deck.theme.fonts.body,
-      fontSize: 11.4,
-      color: toColor(deck.theme.colors.ink),
-      breakLine: true,
-      margin: 0.02,
-      valign: "top"
-    });
-    if (overviewTableMetrics && overviewTableMetrics.containerH < 4.32) {
-      slide.addShape("line", {
-        x: 0.35,
-        y: 2.38 + overviewTableMetrics.containerH + 0.1,
-        w: 5.55,
-        h: 0,
-        line: { color: toColor("#E6EAF2"), pt: 0.6 }
-      });
-    }
+    addPublisherOverviewSummaryTable(
+      slide,
+      deck,
+      spec.summaryTable || buildPublisherOverviewSummaryTable(spec.tables?.[0]),
+      { x: 5.95, y: 1.9, w: 6.2, h: 5.0 }
+    );
     return;
   }
 

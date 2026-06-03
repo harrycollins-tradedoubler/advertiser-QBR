@@ -1,0 +1,94 @@
+{
+  "id": "L1N46BZNVN-17BJZGbPM8",
+  "name": "Outlook Agent",
+  "nodes": [
+    {
+      "parameters": {
+        "operation": "reply",
+        "messageId": "={{ $('Microsoft Outlook Trigger1').item.json.id }}",
+        "send": false,
+        "additionalFields": {
+          "bodyContent": "={{ $json.output }}",
+          "bodyContentType": "html",
+          "from": "harry.collins@tradedoubler.com"
+        }
+      },
+      "type": "n8n-nodes-base.microsoftOutlook",
+      "typeVersion": 1,
+      "position": [
+        -160,
+        224
+      ],
+      "name": "Create Outlook Draft Reply1",
+      "credentials": {
+        "microsoftOutlookOAuth2Api": {
+          "id": "KHsaTwGxUrLdymsx",
+          "name": "Microsoft Outlook account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Subject: {{ $('Microsoft Outlook Trigger1').item.json.subject }}\n\nFrom: {{ $('Microsoft Outlook Trigger1').item.json.from.emailAddress.address }}\n\nTo: {{ ($('Microsoft Outlook Trigger1').item.json.toRecipients || []).map(r => r.emailAddress.address).join(', ') }}\n\nCC: {{ ($('Microsoft Outlook Trigger1').item.json.ccRecipients || []).map(r => r.emailAddress.address).join(', ') }}\n\nReceived: {{ $('Microsoft Outlook Trigger1').item.json.receivedDateTime }}\n\nConversation ID: {{ $('Microsoft Outlook Trigger1').item.json.conversationId }}\n\nEmail Body:\n{{ $('Microsoft Outlook Trigger1').item.json.body.content }}\n\n",
+        "options": {
+          "systemMessage": "You draft client-facing implementation and onboarding email replies for Stanislaw Serebriakow at Tradedoubler.\n\nYour job is to create a strong draft reply for Stanislaw to review in Outlook.\n\nRules:\n- Output the email body only. Do not include a subject line.\n- Sound human, calm, competent, and specific.\n- Write as Stanislaw from Tradedoubler.\n- Keep replies practical and structured around next steps, requirements, blockers, timelines, owners, or technical guidance.\n- If the email is about onboarding, explain the implementation steps clearly and in the right order.\n- If the email is technical and a knowledge-base tool is connected, use it before answering.\n- Never invent product behaviour, integrations, timelines, or configuration details.\n- If something is unclear or cannot be confirmed from the message or the knowledge base, say you will confirm internally and come back rather than guessing.\n- If the client is blocked, acknowledge the blocker, state exactly what is needed to unblock it, and suggest the fastest next action.\n- Match the sender's tone and length. Short email in, short email out.\n- Prefer bullet points only when they genuinely make implementation steps clearer.\n- Keep the reply suitable for a business email from a Tradedoubler implementation/contact owner.\n\nWhen useful, include:\n- prerequisites\n- what Tradedoubler needs from the client\n- expected outcome of each step\n- realistic next actions\n- a polite close\n\nDo not mention that you are an AI system."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3,
+      "position": [
+        -416,
+        16
+      ],
+      "name": "AI Agent1"
+    },
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyX",
+              "value": 15,
+              "unit": "minutes"
+            }
+          ]
+        },
+        "output": "fields",
+        "fields": [
+          "conversationId",
+          "subject",
+          "body",
+          "from",
+          "toRecipients",
+          "ccRecipients",
+          "receivedDateTime",
+          "isRead"
+        ],
+        "filters": {
+          "custom": "="
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.microsoftOutlookTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "name": "Microsoft Outlook Trigger1",
+      "credentials": {
+        "microsoftOutlookOAuth2Api": {
+          "id": "KHsaTwGxUrLdymsx",
+          "name": "Microsoft Outlook account 2"
+        }
+      }
+    }
+  ],
+  "connections": {},
+  "settings": {
+    "binaryMode": "separate"
+  },
+  "tags": [],
+  "active": false
+}

@@ -1,4 +1,5 @@
 from typing import Any
+from urllib.parse import urlencode
 
 import httpx
 from fastapi import APIRouter, HTTPException, Request
@@ -54,6 +55,79 @@ async def _get_json(url: str, headers: dict[str, str]) -> dict[str, Any]:
         raise HTTPException(status_code=502, detail="TD response was not valid JSON") from exc
 
 
+async def _post_form_json(url: str, headers: dict[str, str], data: dict[str, str]) -> dict[str, Any]:
+    try:
+        async with httpx.AsyncClient(trust_env=False) as client:
+            response = await client.post(url, headers=headers, data=data, timeout=30)
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=502, detail=f"TD OAuth request failed: {exc}") from exc
+
+    if response.status_code >= 400:
+        raise HTTPException(status_code=response.status_code, detail=_error_detail(response))
+
+    try:
+        return response.json()
+    except ValueError as exc:
+        raise HTTPException(status_code=502, detail="TD OAuth response was not valid JSON") from exc
+
+
+def _authorization_header(value: str) -> dict[str, str]:
+    auth_value = value.strip()
+    if not auth_value:
+        return {}
+    if auth_value.lower().startswith("basic "):
+        return {"Authorization": auth_value}
+    return {"Authorization": f"Basic {auth_value}"}
+
+
+async def _ensure_user_access_token() -> str:
+    global user_access_token
+    if user_access_token:
+        return user_access_token
+
+    if not settings.td_oauth_url:
+        raise HTTPException(
+            status_code=400,
+            detail="No TD user access token available. Configure backend OAuth credentials or send a Bearer token once.",
+        )
+    if not settings.td_oauth_username or not settings.td_oauth_password:
+        raise HTTPException(status_code=500, detail="TD OAuth username/password are not configured")
+
+    headers = {
+        "Content-Type": "application/x-www-form-urlencoded",
+        **_authorization_header(settings.td_oauth_basic_auth),
+    }
+    data = {
+        "grant_type": "password",
+        "username": settings.td_oauth_username,
+        "password": settings.td_oauth_password,
+    }
+    response = await _post_form_json(settings.td_oauth_url, headers, data)
+    access_token = response.get("access_token")
+    if not access_token:
+        raise HTTPException(status_code=500, detail="Access token not found in TD OAuth response")
+
+    user_access_token = str(access_token)
+    return user_access_token
+
+
+async def _impersonate_username(username: str) -> dict[str, str]:
+    user_token = await _ensure_user_access_token()
+    impersonate_url = f"{_td_impersonate_base()}?{urlencode({'username': username})}"
+    data = await _get_json(impersonate_url, {"Authorization": f"Bearer {user_token}"})
+
+    access_token = data.get("access_token")
+    if not access_token:
+        raise HTTPException(status_code=500, detail="Access token not found in impersonation response")
+
+    global impersonate_access_token
+    impersonate_access_token = str(access_token)
+    return {
+        "user_access_token": user_token,
+        "impersonate_access_token": impersonate_access_token,
+    }
+
+
 def get_current_td_tokens() -> dict[str, str] | None:
     if not user_access_token or not impersonate_access_token:
         return None
@@ -100,17 +174,35 @@ async def impersonate_user(payload: dict[str, Any]) -> dict[str, Any]:
     if not user_access_token:
         raise HTTPException(status_code=400, detail="No user access token available")
 
-    url = f"{_td_impersonate_base()}?username={username}"
-    headers = {"Authorization": f"Bearer {user_access_token}"}
-    data = await _get_json(url, headers)
-
-    access_token = data.get("access_token")
-    if not access_token:
-        raise HTTPException(status_code=500, detail="Access token not found in response")
-
-    global impersonate_access_token
-    impersonate_access_token = access_token
+    await _impersonate_username(str(username))
     return {"status": "ok"}
+
+
+@router.post("/td/advertiser-impersonate")
+async def advertiser_impersonate(request: Request, payload: dict[str, Any]) -> dict[str, Any]:
+    username = (
+        (payload or {}).get("username")
+        or (payload or {}).get("clientUsername")
+        or (payload or {}).get("impersonateUsername")
+    )
+    username = str(username or "").strip()
+    if not username:
+        raise HTTPException(status_code=400, detail="client username is required")
+
+    auth_header = request.headers.get("authorization") or ""
+    if auth_header.lower().startswith("bearer "):
+        token = auth_header.split(" ", 1)[1].strip()
+        if token:
+            global user_access_token
+            user_access_token = token
+
+    await _impersonate_username(username)
+    return {
+        "status": "ok",
+        "username": username,
+        "impersonated": True,
+        "tokenStoredServerSide": True,
+    }
 
 
 @router.get("/td/organisation")
@@ -215,6 +307,38 @@ async def get_programs(request: Request, organizationId: str | None = None, limi
         programs_data["td_tokens"] = tokens
         return programs_data
     return {"items": programs_data if isinstance(programs_data, list) else [], "td_tokens": tokens}
+
+
+@router.get("/td/advertiser-programs")
+async def get_advertiser_programs(limit: int = 100) -> dict[str, Any]:
+    if not impersonate_access_token:
+        raise HTTPException(status_code=400, detail="No advertiser impersonation token available")
+
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {impersonate_access_token}",
+    }
+    candidate_urls = [
+        f"{_td_manage_base()}/programs/",
+        f"{_td_manage_base()}/programs",
+    ]
+
+    last_not_found: HTTPException | None = None
+    for url in candidate_urls:
+        try:
+            programs_data = await _get_json(url, headers)
+            break
+        except HTTPException as exc:
+            if exc.status_code != 404:
+                raise
+            last_not_found = exc
+    else:
+        detail = getattr(last_not_found, "detail", "TD advertiser programs endpoint was not found")
+        raise HTTPException(status_code=404, detail=detail)
+
+    if isinstance(programs_data, dict):
+        return programs_data
+    return {"items": programs_data if isinstance(programs_data, list) else []}
 
 
 @router.post("/td/clear-tokens")

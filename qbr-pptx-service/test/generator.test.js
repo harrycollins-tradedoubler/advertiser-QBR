@@ -294,21 +294,13 @@ test("messy KPI highlight table rows do not override validated generated heading
   assert.doesNotMatch(slide.bullets.join("\n"), /Rising CPA/i);
 });
 
-test("fallback sales growth signal headings do not contradict the data", async () => {
+test("advertiser deck omits the standalone sales growth signals slide", async () => {
   const result = await generatePresentation(misleadingHeadingPayload());
   const slide = slideByTitle(result.deckSpec, "Sales Growth Signals");
-  assert.ok(slide, "expected sales growth signals slide");
-
-  const titles = slide.signals.map((signal) => signal.title);
-  assert.match(titles[0], /Voucher Segment Declined/i);
-  assert.equal(titles[4], "Publisher-Level Click Declines Within Overall Click Growth");
-  assert.ok(!titles.includes("Voucher Segment: Highest YoY Sales Growth"));
-  assert.ok(!titles.includes("Click Volume Decline Concentrated in Two Publishers"));
-  assert.doesNotMatch(slide.signals[4].detail, /total click loss/i);
-  assert.match(slide.signals[4].detail, /despite overall click growth/i);
+  assert.equal(slide, undefined);
 });
 
-test("explicit AI sales growth signal titles are preserved", async () => {
+test("advertiser deck omits the standalone sales growth signals slide even with explicit signals", async () => {
   const result = await generatePresentation({
     ...misleadingHeadingPayload(),
     salesGrowthSignals: [
@@ -320,8 +312,7 @@ test("explicit AI sales growth signal titles are preserved", async () => {
   });
   const slide = slideByTitle(result.deckSpec, "Sales Growth Signals");
 
-  assert.equal(slide.signals[0].title, "AI Analysis: Voucher Weakness Is Masked by One Publisher");
-  assert.equal(slide.signals[0].detail, "The title and body are supplied by upstream analysis.");
+  assert.equal(slide, undefined);
 });
 
 test("advertiser service does not switch to publisher-program template", async () => {
@@ -334,10 +325,632 @@ test("advertiser service does not switch to publisher-program template", async (
   assert.ok(titles.includes("Program Performance: Executive Summary"));
   assert.ok(titles.includes("Publisher Performance Overview"));
   assert.ok(titles.includes("Brand New Publishers"));
+  assert.ok(!titles.includes("Sales Growth Signals"));
+  assert.ok(!titles.includes("Publisher Segment Performance"));
   assert.ok(!titles.includes("Publisher Performance Summary"));
   assert.ok(!titles.includes("Program Level Analysis"));
   assert.ok(!titles.includes("Brand New Programs"));
   assert.ok(!titles.includes("Movers & Shakers - Commission"));
+});
+
+test("cover title and client copy use the base program name for multi-program requests", async () => {
+  const result = await generatePresentation({
+    ...misleadingHeadingPayload(),
+    client: "HP store BE +7 more + 7 More..",
+    analysisProgramIds: ["111", "222"],
+    programScopeTable: [
+      {
+        Program: "HP store BE",
+        "Program ID": "111",
+        "Current OV": "GBP 120,000",
+        "OV YoY %": "+12.0%",
+        "Current Sales": "450",
+        "Sales YoY %": "+10.0%"
+      },
+      {
+        Program: "HP store UK",
+        "Program ID": "222",
+        "Current OV": "GBP 95,000",
+        "OV YoY %": "-4.0%",
+        "Current Sales": "300",
+        "Sales YoY %": "-3.0%"
+      }
+    ]
+  });
+
+  const coverSlide = result.deckSpec.slides[0];
+  const thankYouSlide = result.deckSpec.slides[result.deckSpec.slides.length - 1];
+
+  assert.equal(coverSlide.title, "HP store Affiliate Program Quarterly Business Review");
+  assert.match(coverSlide.summary, /HP store affiliate program/i);
+  assert.equal(coverSlide.bullets[0], "Client: HP store");
+  assert.equal(thankYouSlide.title, "HP store - Thank you.");
+  assert.doesNotMatch(coverSlide.title, /\+7 more|HP store BE|HP store UK/i);
+  assert.doesNotMatch(coverSlide.bullets[0], /\+7 more|HP store BE|HP store UK/i);
+});
+
+test("program breakdown uses the program name when the Market column is missing", async () => {
+  const result = await generatePresentation({
+    ...misleadingHeadingPayload(),
+    programScopeTable: [
+      {
+        Program: "HP store BE",
+        "Program ID": "12345",
+        Clicks: "10,000",
+        Impressions: "100,000",
+        Sales: "500",
+        "Conversion Rate": "5.00%",
+        AOV: "GBP 42.00",
+        "Total Order Value": "GBP 21,000",
+        "YoY Change": "-12.0%"
+      }
+    ]
+  });
+
+  const programBreakdownSlide = result.deckSpec.slides.find((slide) => slide.id === "kpi-cost-roi");
+
+  assert.ok(programBreakdownSlide);
+  assert.equal(programBreakdownSlide.tables[0].columns[1], "Market");
+  assert.equal(programBreakdownSlide.tables[0].rows[0][0], "12345");
+  assert.equal(programBreakdownSlide.tables[0].rows[0][1], "HP store BE");
+});
+
+test("program breakdown populates the Market column with the program name", async () => {
+  const result = await generatePresentation({
+    ...misleadingHeadingPayload(),
+    programScopeTable: [
+      {
+        Program: "HP Store",
+        Market: "UK",
+        "Program ID": "98765",
+        Clicks: "20,000",
+        Impressions: "150,000",
+        Sales: "900",
+        "Conversion Rate": "4.50%",
+        AOV: "GBP 55.00",
+        "Total Order Value": "GBP 49,500",
+        "YoY Change": "+8.0%"
+      }
+    ]
+  });
+
+  const programBreakdownSlide = result.deckSpec.slides.find((slide) => slide.id === "kpi-cost-roi");
+
+  assert.ok(programBreakdownSlide);
+  assert.equal(programBreakdownSlide.tables[0].rows[0][1], "HP Store");
+});
+
+test("program KPI tables survive n8n-style request wrappers", async () => {
+  const payload = {
+    ...misleadingHeadingPayload(),
+    client: "HP Store + 7 more + 7 more",
+    programScopeTable: [
+      {
+        "Program ID": "21701",
+        Market: "-",
+        Clicks: "587,706",
+        Impressions: "125",
+        Sales: "10,292",
+        "Conversion Rate": "1.75%",
+        AOV: "GBP 346.37",
+        "Total Order Value": "GBP 3,564,791",
+        "YoY Change": "-9.4%"
+      }
+    ]
+  };
+
+  const result = await generatePresentation([{ json: payload }]);
+  const kpiSlide = result.deckSpec.slides.find((slide) => slide.id === "kpi-volume-conversion");
+  const programBreakdownSlide = result.deckSpec.slides.find((slide) => slide.id === "kpi-cost-roi");
+
+  assert.ok(result.normalized.metrics.length > 0);
+  assert.equal(result.normalized.metrics[0].current, "1,087,015");
+  assert.equal(kpiSlide.tables[0].rows[0][0], "Clicks");
+  assert.equal(kpiSlide.tables[0].rows[0][1], "1,087,015");
+  assert.equal(programBreakdownSlide.tables[0].rows[0][0], "21701");
+  assert.equal(programBreakdownSlide.tables[0].rows[0][2], "587,706");
+});
+
+test("advertiser QBR moves segment analysis onto publisher overview and removes segment slide", async () => {
+  const result = await generatePresentation({
+    ...misleadingHeadingPayload(),
+    publisherTables: {
+      ...misleadingHeadingPayload().publisherTables,
+      segmentSummary: [
+        {
+          Segment: "Cashback & Loyalty sites",
+          "Total Sales": "1,098",
+          "Sales YoY %": "+12.0%",
+          "Total OV": "€70,938.76",
+          "OV YoY %": "+9.0%"
+        },
+        {
+          Segment: "CSS",
+          "Total Sales": "3,299",
+          "Sales YoY %": "+15.0%",
+          "Total OV": "€164,888.68",
+          "OV YoY %": "+11.0%"
+        }
+      ],
+      top10ByOV: [
+        {
+          Publisher: "CSS Partner",
+          Segment: "CSS",
+          "Order Value": "€164,888.68"
+        }
+      ]
+    }
+  });
+
+  const titles = result.deckSpec.slides.map((slide) => slide.title);
+  const overviewSlide = slideByTitle(result.deckSpec, "Publisher Performance Overview");
+
+  assert.ok(overviewSlide);
+  assert.equal(overviewSlide.kind, "publisher-overview");
+  assert.equal(overviewSlide.analysisTitle, "Segment Breakdown");
+  assert.equal(titles[6], "Publisher Performance Overview");
+  assert.equal(titles[7], "Top Publisher Performance: Volume & Conversion");
+  assert.equal(titles[8], "Movers and Shakers: Publisher Performance");
+  assert.ok(!titles.includes("Publisher Segment Performance"));
+  assert.ok(overviewSlide.bullets.some((bullet) => /^CSS - \+11\.0% OV YoY/.test(bullet) || /^Cashback & Loyalty sites - \+12\.0% OV YoY/.test(bullet)));
+  assert.ok(overviewSlide.bullets.every((bullet) => !/^\[[^\]]+\]\s/.test(bullet)));
+  assert.match(overviewSlide.bullets.join(" "), /CSS/i);
+  assert.match(overviewSlide.bullets.join(" "), /€164,888\.68 total OV/i);
+});
+
+test("segment breakdown prefers top publisher performance rows over the older top-by-OV table", async () => {
+  const result = await generatePresentation({
+    ...misleadingHeadingPayload(),
+    publisherTables: {
+      ...misleadingHeadingPayload().publisherTables,
+      segmentSummary: [
+        {
+          Segment: "Cashback",
+          "Total Sales": "1,800",
+          "Sales YoY %": "+8.0%",
+          "Total OV": "GBP 320,000",
+          "OV YoY %": "+6.0%",
+          Publishers: "6"
+        },
+        {
+          Segment: "CSS",
+          "Total Sales": "900",
+          "Sales YoY %": "+12.0%",
+          "Total OV": "GBP 210,000",
+          "OV YoY %": "+10.0%",
+          Publishers: "4"
+        }
+      ],
+      top10ByOV: [
+        {
+          Publisher: "Old Cashback Leader",
+          Segment: "Cashback",
+          "Order Value": "GBP 320,000",
+          "Current Sales": "1,800"
+        },
+        {
+          Publisher: "Old CSS Leader",
+          Segment: "CSS",
+          "Order Value": "GBP 210,000",
+          "Current Sales": "900"
+        }
+      ],
+      topPublisherPerformance: [
+        {
+          Publisher: "New Cashback Leader",
+          Segment: "Cashback",
+          "Total Order Value": "GBP 320,000",
+          Sales: "1,800"
+        },
+        {
+          Publisher: "New CSS Leader",
+          Segment: "CSS",
+          "Total Order Value": "GBP 210,000",
+          Sales: "900"
+        }
+      ]
+    }
+  });
+
+  const overviewSlide = slideByTitle(result.deckSpec, "Publisher Performance Overview");
+  const bulletText = overviewSlide.bullets.join("\n");
+
+  assert.match(bulletText, /New Cashback Leader/);
+  assert.match(bulletText, /New CSS Leader/);
+  assert.doesNotMatch(bulletText, /Old Cashback Leader/);
+  assert.doesNotMatch(bulletText, /Old CSS Leader/);
+});
+
+test("publisher overview renders a segment treemap with a structured breakdown table", async () => {
+  const result = await generatePresentation({
+    ...misleadingHeadingPayload(),
+    publisherTables: {
+      ...misleadingHeadingPayload().publisherTables,
+      segmentSummary: [
+        {
+          Segment: "Cashback & Loyalty sites",
+          "Total Sales": "1,098",
+          "Sales YoY %": "+12.0%",
+          "Total OV": "â‚¬70,938.76",
+          "OV YoY %": "+9.0%"
+        },
+        {
+          Segment: "CSS",
+          "Total Sales": "3,299",
+          "Sales YoY %": "+15.0%",
+          "Total OV": "â‚¬164,888.68",
+          "OV YoY %": "+11.0%"
+        }
+      ]
+    }
+  });
+  const zip = await openPptx(result.buffer);
+  const slideXml = await zip.file("ppt/slides/slide7.xml").async("string");
+  const overviewSlide = slideByTitle(result.deckSpec, "Publisher Performance Overview");
+
+  assert.equal(overviewSlide.summaryTable.columns.join("|"), "Segment|YoY Growth|Total OV|Sales");
+  assert.match(slideXml, /Share of Total by Segment/);
+  assert.match(slideXml, /Segment Breakdown/);
+  assert.match(slideXml, /YoY Growth/);
+  assert.match(slideXml, /Total OV/);
+  assert.match(slideXml, /Sales/);
+  assert.match(slideXml, /<a:t>70%<\/a:t>/);
+  assert.match(slideXml, /<a:srgbClr val="74C8DC"/i);
+  assert.doesNotMatch(slideXml, /Key Insights/);
+});
+
+test("publisher overview keeps full segment labels and lists all categories in the structured table", async () => {
+  const result = await generatePresentation({
+    ...misleadingHeadingPayload(),
+    publisherTables: {
+      ...misleadingHeadingPayload().publisherTables,
+      segmentSummary: [
+        {
+          Segment: "Cashback & Loyalty sites",
+          "Total Sales": "1,098",
+          "Sales YoY %": "+12.0%",
+          "Total OV": "GBP 70,939",
+          "OV YoY %": "+9.0%",
+          Publishers: "12"
+        },
+        {
+          Segment: "Discount & Voucher Code Sites",
+          "Total Sales": "850",
+          "Sales YoY %": "-6.7%",
+          "Total OV": "GBP 58,352",
+          "OV YoY %": "-6.7%",
+          Publishers: "9"
+        },
+        {
+          Segment: "CSS",
+          "Total Sales": "3,213",
+          "Sales YoY %": "+10.7%",
+          "Total OV": "GBP 792,138",
+          "OV YoY %": "+29.6%",
+          Publishers: "5"
+        },
+        {
+          Segment: "Closed User Groups",
+          "Total Sales": "2,401",
+          "Sales YoY %": "-18.0%",
+          "Total OV": "GBP 683,220",
+          "OV YoY %": "-29.2%",
+          Publishers: "7"
+        },
+        {
+          Segment: "Subnetworks",
+          "Total Sales": "1,412",
+          "Sales YoY %": "+4.1%",
+          "Total OV": "GBP 522,440",
+          "OV YoY %": "+12.0%",
+          Publishers: "6"
+        },
+        {
+          Segment: "Display Advertising",
+          "Total Sales": "1,095",
+          "Sales YoY %": "-11.5%",
+          "Total OV": "GBP 519,228",
+          "OV YoY %": "-14.2%",
+          Publishers: "4"
+        },
+        {
+          Segment: "Content",
+          "Total Sales": "1,089",
+          "Sales YoY %": "-40.0%",
+          "Total OV": "GBP 588,352",
+          "OV YoY %": "-19.7%",
+          Publishers: "8"
+        }
+      ]
+    }
+  });
+
+  const overviewSlide = slideByTitle(result.deckSpec, "Publisher Performance Overview");
+  const zip = await openPptx(result.buffer);
+  const slideXml = await zip.file("ppt/slides/slide7.xml").async("string");
+  const tableRows = overviewSlide.summaryTable.rows.map((row) => row.join(" | ")).join("\n");
+
+  assert.ok(overviewSlide);
+  assert.equal(overviewSlide.summaryTable.rows.length, 7);
+  assert.match(tableRows, /Subnetworks \| \+12\.0% \| GBP 522,440 \| 1,412/);
+  assert.match(tableRows, /Display Advertising \| -14\.2% \| GBP 519,228 \| 1,095/);
+  assert.match(slideXml, /Cashback &amp; Loyalty sites/);
+  assert.match(slideXml, /Discount &amp; Voucher Code Sites/);
+  assert.doesNotMatch(slideXml, /Key Insights/);
+});
+
+test("publisher overview omits zero-value categories from the segment breakdown table", async () => {
+  const result = await generatePresentation({
+    ...misleadingHeadingPayload(),
+    publisherTables: {
+      ...misleadingHeadingPayload().publisherTables,
+      segmentSummary: [
+        {
+          Segment: "Cashback & Loyalty sites",
+          "Total Sales": "1,098",
+          "Sales YoY %": "+12.0%",
+          "Total OV": "GBP 70,939",
+          "OV YoY %": "+9.0%"
+        },
+        {
+          Segment: "Paid search",
+          "Total Sales": "0",
+          "Sales YoY %": "N/A",
+          "Total OV": "GBP 0",
+          "OV YoY %": "N/A"
+        },
+        {
+          Segment: "Email Marketing",
+          "Total Sales": "0",
+          "Sales YoY %": "N/A",
+          "Total OV": "£0",
+          "OV YoY %": "N/A"
+        }
+      ]
+    }
+  });
+
+  const overviewSlide = slideByTitle(result.deckSpec, "Publisher Performance Overview");
+  const zip = await openPptx(result.buffer);
+  const slideXml = await zip.file("ppt/slides/slide7.xml").async("string");
+  const tableRows = overviewSlide.summaryTable.rows.map((row) => row.join(" | ")).join("\n");
+
+  assert.equal(overviewSlide.summaryTable.rows.length, 1);
+  assert.match(tableRows, /Cashback & Loyalty sites \| \+9\.0% \| GBP 70,939 \| 1,098/);
+  assert.doesNotMatch(tableRows, /Paid search/i);
+  assert.doesNotMatch(tableRows, /Email Marketing/i);
+  assert.doesNotMatch(slideXml, /Paid search/i);
+  assert.doesNotMatch(slideXml, /Email Marketing/i);
+});
+
+test("advertiser QBR inserts top publisher performance table before publisher movers chart", async () => {
+  const publisherRows = Array.from({ length: 12 }, (_, index) => {
+    const rank = index + 1;
+    return {
+      Publisher: `Publisher ${rank}`,
+      "Site ID": `site-${rank}`,
+      Segment: rank % 2 ? "Voucher" : "Content",
+      "Order Value": `â‚¬${rank * 1000000}`,
+      "Current Sales": String(rank * 10)
+    };
+  });
+
+  const result = await generatePresentation({
+    ...misleadingHeadingPayload(),
+    publisherTables: {
+      segmentSummary: [
+        {
+          Segment: "Voucher",
+          "Total Sales": "120",
+          "Sales YoY %": "+10.0%",
+          "Total OV": "â‚¬78,000,000",
+          "OV YoY %": "+10.0%",
+          Publishers: "12"
+        }
+      ],
+      top10ByOV: publisherRows,
+      topPublisherPerformance: [
+        {
+          Publisher: "Publisher 12",
+          "Site ID": "site-12",
+          Clicks: "12,000",
+          Impressions: "120,000",
+          Sales: "120",
+          "Conversion Rate": "1.00%",
+          AOV: "Ã¢â€šÂ¬100.00",
+          "Total Order Value": "Ã¢â€šÂ¬12,000,000",
+          "YoY Change": "+20.0%"
+        }
+      ]
+    }
+  });
+
+  const titles = result.deckSpec.slides.map((slide) => slide.title);
+  const topPublisherSlide = result.deckSpec.slides[7];
+  const rankingSlide = result.deckSpec.slides[8];
+
+  assert.equal(titles[6], "Publisher Performance Overview");
+  assert.equal(topPublisherSlide.kind, "program-breakdown");
+  assert.equal(topPublisherSlide.title, "Top Publisher Performance: Volume & Conversion");
+  assert.equal(topPublisherSlide.tables[0].columns[0], "Publisher");
+  assert.ok(!topPublisherSlide.tables[0].columns.includes("Impressions"));
+  assert.equal(topPublisherSlide.tables[0].rows[0][0], "Publisher 12");
+  assert.equal(topPublisherSlide.tables[0].rows[0][7], "+20.0%");
+  assert.equal(rankingSlide.kind, "publisher-ov-ranking-bars");
+  assert.equal(rankingSlide.title, "Movers and Shakers: Publisher Performance");
+  assert.equal(rankingSlide.ranking.top.length, 10);
+  assert.equal(rankingSlide.ranking.bottom.length, 10);
+  assert.equal(rankingSlide.ranking.top[0].publisher, "Publisher 12");
+  assert.equal(rankingSlide.ranking.bottom[0].publisher, "Publisher 1");
+});
+
+test("advertiser QBR falls back to top10ByOV for top publisher performance table", async () => {
+  const result = await generatePresentation({
+    ...misleadingHeadingPayload(),
+    publisherTables: {
+      segmentSummary: [
+        {
+          Segment: "Voucher",
+          "Total Sales": "120",
+          "Sales YoY %": "+10.0%",
+          "Total OV": "Ã¢â€šÂ¬78,000,000",
+          "OV YoY %": "+10.0%",
+          Publishers: "12"
+        }
+      ],
+      top10ByOV: [
+        {
+          Publisher: "Fallback Publisher",
+          "Site ID": "site-fallback",
+          Clicks: "12,000",
+          Impressions: "120,000",
+          "Current Sales": "120",
+          "Conversion Rate": "1.00%",
+          AOV: "ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬100.00",
+          "Order Value": "ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬12,000,000",
+          "OV YoY %": "+20.0%"
+        }
+      ]
+    }
+  });
+
+  const topPublisherSlide = result.deckSpec.slides[7];
+
+  assert.equal(topPublisherSlide.title, "Top Publisher Performance: Volume & Conversion");
+  assert.ok(!topPublisherSlide.tables[0].columns.includes("Impressions"));
+  assert.equal(topPublisherSlide.tables[0].rows[0][0], "Fallback Publisher");
+  assert.equal(topPublisherSlide.tables[0].rows[0][1], "site-fallback");
+  assert.equal(topPublisherSlide.tables[0].rows[0][7], "+20.0%");
+});
+
+test("advertiser QBR uses explicit publisher best and worst order-value rankings when supplied", async () => {
+  const result = await generatePresentation({
+    ...misleadingHeadingPayload(),
+    publisherTables: {
+      ...misleadingHeadingPayload().publisherTables,
+      top10ByOV: [
+        { Publisher: "Fallback Top", "Order Value": "€999" }
+      ]
+    },
+    publisherOrderValueRanking: {
+      top: [
+        { publisher: "Explicit Best", siteId: "best-1", value: 500000, label: "€500k" }
+      ],
+      bottom: [
+        { publisher: "Explicit Decline", siteId: "decline-1", value: -100000, label: "-€100k" }
+      ],
+      sourceCount: 22
+    }
+  });
+
+  const rankingSlide = result.deckSpec.slides.find((slide) => slide.id === "publisher-order-value-rankings");
+
+  assert.ok(rankingSlide);
+  assert.equal(rankingSlide.ranking.top[0].publisher, "Explicit Best");
+  assert.equal(rankingSlide.ranking.bottom[0].publisher, "Explicit Decline");
+  assert.equal(rankingSlide.ranking.bottom[0].label, "-€100k");
+  assert.equal(rankingSlide.ranking.sourceCount, 22);
+  assert.equal(rankingSlide.panelTitles.top, "Top 10 YoY OV growth publishers");
+  assert.equal(rankingSlide.panelTitles.bottom, "Top 10 YoY OV decline publishers");
+  assert.match(rankingSlide.subtitle, /YoY order value movement/i);
+});
+
+test("advertiser Brand New Publishers slide uses order-value bar chart and removes table", async () => {
+  const brandNewRows = Array.from({ length: 12 }, (_, index) => {
+    const rank = index + 1;
+    return {
+      Publisher: `New Publisher ${rank}`,
+      "Site ID": `new-${rank}`,
+      Segment: rank % 2 ? "Cashback" : "Content",
+      "Current OV": `â‚¬${rank * 750}`,
+      "Current Sales": String(rank)
+    };
+  });
+
+  const result = await generatePresentation({
+    ...misleadingHeadingPayload(),
+    currencyCode: "GBP",
+    publisherTables: {
+      ...misleadingHeadingPayload().publisherTables,
+      brandNewTop: brandNewRows
+    }
+  });
+
+  const brandNewSlide = result.deckSpec.slides.find((slide) => slide.id === "brand-new-publishers");
+
+  assert.ok(brandNewSlide);
+  assert.equal(brandNewSlide.title, "Brand New Publishers");
+  assert.equal(brandNewSlide.kind, "publisher-ov-ranking-bars");
+  assert.deepEqual(brandNewSlide.tables, []);
+  assert.equal(brandNewSlide.ranking.top.length, 10);
+  assert.equal(brandNewSlide.ranking.bottom.length, 2);
+  assert.equal(brandNewSlide.ranking.top[0].publisher, "New Publisher 12");
+  assert.equal(brandNewSlide.ranking.bottom[0].publisher, "New Publisher 1");
+  assert.equal(brandNewSlide.ranking.top[0].label, "£9,000");
+  assert.equal(brandNewSlide.panelTitles.top, "Highest order value new publishers");
+  assert.equal(brandNewSlide.panelTitles.bottom, "Lower order value new publishers");
+  assert.equal(brandNewSlide.hideEmptyBottomPanel, true);
+  assert.ok(!brandNewSlide.ranking.top.some((row) => brandNewSlide.ranking.bottom.some((bottom) => bottom.publisher === row.publisher)));
+});
+
+test("advertiser Brand New Publishers slide uses explicit top and lowest new-publisher rankings when supplied", async () => {
+  const result = await generatePresentation({
+    ...misleadingHeadingPayload(),
+    publisherTables: {
+      ...misleadingHeadingPayload().publisherTables,
+      brandNewTop: [
+        { Publisher: "Fallback New", "Current OV": "€999" }
+      ]
+    },
+    brandNewPublisherRanking: {
+      top: [
+        { publisher: "Best New", siteId: "new-best", value: 7000, label: "€7k" }
+      ],
+      bottom: [
+        { publisher: "Lowest New", siteId: "new-low", value: 25, label: "€25" }
+      ],
+      sourceCount: 14
+    }
+  });
+
+  const brandNewSlide = result.deckSpec.slides.find((slide) => slide.id === "brand-new-publishers");
+
+  assert.ok(brandNewSlide);
+  assert.equal(brandNewSlide.ranking.top[0].publisher, "Best New");
+  assert.equal(brandNewSlide.ranking.bottom[0].publisher, "Lowest New");
+  assert.equal(brandNewSlide.ranking.sourceCount, 14);
+});
+
+test("advertiser Brand New Publishers uses a single panel when there is no distinct lower cohort", async () => {
+  const brandNewRows = Array.from({ length: 10 }, (_, index) => {
+    const rank = index + 1;
+    return {
+      Publisher: `Only Publisher ${rank}`,
+      "Site ID": `only-${rank}`,
+      "Current OV": `GBP ${rank * 1000}`
+    };
+  });
+
+  const result = await generatePresentation({
+    ...misleadingHeadingPayload(),
+    currencyCode: "GBP",
+    publisherTables: {
+      ...misleadingHeadingPayload().publisherTables,
+      brandNewTop: brandNewRows
+    }
+  });
+
+  const brandNewSlide = result.deckSpec.slides.find((slide) => slide.id === "brand-new-publishers");
+  const brandNewSlideNumber = result.deckSpec.slides.findIndex((slide) => slide.id === "brand-new-publishers") + 1;
+  const zip = await openPptx(result.buffer);
+  const slideXml = await zip.file(`ppt/slides/slide${brandNewSlideNumber}.xml`).async("string");
+
+  assert.ok(brandNewSlide);
+  assert.equal(brandNewSlide.ranking.top.length, 10);
+  assert.equal(brandNewSlide.ranking.bottom.length, 0);
+  assert.match(slideXml, /Highest order value new publishers/);
+  assert.doesNotMatch(slideXml, /Lower order value new publishers/);
+  assert.match(slideXml, /£10,000|Â£10,000/);
 });
 
 test("cover slide renders the TD logo as the white image asset", async () => {

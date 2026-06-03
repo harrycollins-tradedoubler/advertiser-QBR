@@ -1,10 +1,13 @@
 Set-Location $PSScriptRoot
 
-$existing = Get-NetTCPConnection -LocalPort 3010 -State Listen -ErrorAction SilentlyContinue |
+$port = 3011
+
+$existing = Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue |
   Select-Object -ExpandProperty OwningProcess -Unique
 
 foreach ($procId in $existing) {
   Stop-Process -Id $procId -Force -ErrorAction SilentlyContinue
 }
 
+$env:PORT = "$port"
 node .\server.js

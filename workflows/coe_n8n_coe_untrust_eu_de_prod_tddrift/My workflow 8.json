@@ -1,0 +1,117 @@
+{
+  "id": "XTl_syHwik0i3YFxQTa9b",
+  "name": "My workflow 8",
+  "nodes": [
+    {
+      "parameters": {
+        "operation": "reply",
+        "messageId": "={{ $('Microsoft Outlook Trigger1').item.json.id }}",
+        "send": false,
+        "additionalFields": {
+          "bodyContent": "={{ $json.output }}",
+          "bodyContentType": "html",
+          "from": "harry.collins@tradedoubler.com"
+        }
+      },
+      "type": "n8n-nodes-base.microsoftOutlook",
+      "typeVersion": 1,
+      "position": [
+        1616,
+        96
+      ],
+      "name": "Create Outlook Draft Reply1",
+      "credentials": {
+        "microsoftOutlookOAuth2Api": {
+          "id": "KHsaTwGxUrLdymsx",
+          "name": "Microsoft Outlook account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyX",
+              "value": 15,
+              "unit": "minutes"
+            }
+          ]
+        },
+        "output": "fields",
+        "fields": [
+          "conversationId",
+          "subject",
+          "body",
+          "from",
+          "toRecipients",
+          "ccRecipients",
+          "receivedDateTime",
+          "isRead"
+        ],
+        "filters": {
+          "custom": "="
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.microsoftOutlookTrigger",
+      "typeVersion": 1,
+      "position": [
+        864,
+        96
+      ],
+      "name": "Microsoft Outlook Trigger1",
+      "credentials": {
+        "microsoftOutlookOAuth2Api": {
+          "id": "KHsaTwGxUrLdymsx",
+          "name": "Microsoft Outlook account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=",
+        "options": {
+          "systemMessage": ""
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3,
+      "position": [
+        1216,
+        96
+      ],
+      "name": "AI Agent"
+    }
+  ],
+  "connections": {
+    "Microsoft Outlook Trigger1": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Create Outlook Draft Reply1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "binaryMode": "separate"
+  },
+  "tags": [],
+  "active": false
+}

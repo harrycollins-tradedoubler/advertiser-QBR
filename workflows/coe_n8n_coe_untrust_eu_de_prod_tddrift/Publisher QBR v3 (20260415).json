@@ -1,0 +1,537 @@
+{
+  "id": "aE9OYTjlF8yQpdmH",
+  "name": "Publisher QBR v3 (20260415)",
+  "nodes": [
+    {
+      "parameters": {
+        "jsCode": "// Publisher Program QBR data pack (advertiser-style structure)\nconst NODE_PAYLOAD = 'yoy data extraction1';\nconst NODE_CURRENT = 'Collect Publisher Current';\nconst NODE_PREVIOUS = 'Collect Publisher Previous';\nconst NODE_CURRENT_DIGITAL_WALLETS = 'Collect Publisher Digital Wallets Current';\nconst NODE_PREVIOUS_DIGITAL_WALLETS = 'Collect Publisher Digital Wallets Previous';\n\nconst LOCALE = 'en-GB';\nconst DISPLAY_TOP_LIMIT = 12;\nconst MOVER_LIMIT = 10;\nconst BRAND_NEW_LIMIT = 3;\nconst SIGNAL_LIMIT = 10;\nconst RISK_LIMIT = 10;\nconst SUPPORTED_CURRENCIES = new Set(['GBP', 'EUR', 'USD', 'AUD', 'SEK', 'NOK', 'DKK', 'ISK', 'PLN']);\n\nfunction safeNum(v) {\n  if (v === null || v === undefined || v === '') return 0;\n  if (typeof v === 'number') return Number.isFinite(v) ? v : 0;\n\n  let s = String(v).trim().replace(/[^\\d,.-]/g, '').replace(/\\s+/g, '');\n  if (!s) return 0;\n\n  const lastComma = s.lastIndexOf(',');\n  const lastDot = s.lastIndexOf('.');\n\n  if (lastComma > -1 && lastDot > -1) {\n    if (lastComma > lastDot) {\n      s = s.replace(/\\./g, '');\n      const i = s.lastIndexOf(',');\n      s = s.slice(0, i).replace(/,/g, '') + '.' + s.slice(i + 1);\n    } else {\n      s = s.replace(/,/g, '');\n    }\n  } else if (lastComma > -1) {\n    const decDigits = s.length - lastComma - 1;\n    if (decDigits >= 1 && decDigits <= 2) {\n      s = s.slice(0, lastComma).replace(/,/g, '') + '.' + s.slice(lastComma + 1);\n    } else {\n      s = s.replace(/,/g, '');\n    }\n  } else if (lastDot > -1) {\n    const decDigits = s.length - lastDot - 1;\n    if (!(decDigits >= 1 && decDigits <= 2)) s = s.replace(/\\./g, '');\n  }\n\n  const n = Number(s);\n  return Number.isFinite(n) ? n : 0;\n}\n\nfunction normalizeCurrencyCode(code) {\n  const c = String(code || '').trim().toUpperCase();\n  return SUPPORTED_CURRENCIES.has(c) ? c : '';\n}\n\nfunction getCurrencySymbol(code) {\n  switch (String(code || '').toUpperCase()) {\n    case 'GBP': return '\\u00A3';\n    case 'EUR': return '\\u20AC';\n    case 'USD': return '$';\n    case 'AUD': return 'A$';\n    case 'PLN': return 'z\\u0142';\n    case 'SEK':\n    case 'NOK':\n    case 'DKK':\n    case 'ISK': return 'kr';\n    default: return '';\n  }\n}\n\nfunction fmtInt(v) {\n  return Math.round(safeNum(v)).toLocaleString(LOCALE);\n}\n\nfunction fmtMoney0(v, symbol) {\n  const n = Math.round(safeNum(v));\n  const sign = n < 0 ? '-' : '';\n  return sign + symbol + Math.abs(n).toLocaleString(LOCALE);\n}\n\nfunction fmtMoney2(v, symbol) {\n  const n = safeNum(v);\n  const sign = n < 0 ? '-' : '';\n  return sign + symbol + Math.abs(n).toLocaleString(LOCALE, {\n    minimumFractionDigits: 2,\n    maximumFractionDigits: 2,\n  });\n}\n\nfunction fmtPct(v) {\n  if (v === null || v === undefined || Number.isNaN(v)) return 'N/A';\n  const n = Number(v);\n  const sign = n > 0 ? '+' : '';\n  return sign + n.toFixed(1) + '%';\n}\n\nfunction varianceTone(v) {\n  if (v === null || v === undefined || Number.isNaN(v)) return 'na';\n  const n = Number(v);\n  if (n > 0) return 'positive';\n  if (n < 0) return 'negative';\n  return 'neutral';\n}\n\nfunction varianceColorHex(v) {\n  const tone = varianceTone(v);\n  if (tone === 'positive') return '#1a7f37';\n  if (tone === 'negative') return '#d93025';\n  return '#fbbc04';\n}\n\nfunction fmtVarianceCell(v) {\n  const base = fmtPct(v);\n  const tone = varianceTone(v);\n  if (tone === 'positive') return '▲ ' + base;\n  if (tone === 'negative') return '▼ ' + base;\n  return base;\n}\n\nfunction fmtAbsPct(v) {\n  if (v === null || v === undefined || Number.isNaN(v)) return 'N/A';\n  return Number(v).toFixed(1) + '%';\n}\n\nfunction yoyPct(current, previous) {\n  if (!previous) return null;\n  return ((current - previous) / previous) * 100;\n}\n\nfunction getRows(nodeJson) {\n  if (!nodeJson || typeof nodeJson !== 'object') return [];\n  if (Array.isArray(nodeJson.allItems)) return nodeJson.allItems;\n  if (Array.isArray(nodeJson.items)) return nodeJson.items;\n  if (Array.isArray(nodeJson.data)) return nodeJson.data;\n  if (Array.isArray(nodeJson.rows)) return nodeJson.rows;\n  return [];\n}\n\nfunction pickProgramId(item) {\n  const candidates = [\n    item.programId,\n    item.program && item.program.id,\n    item.campaignId,\n    item.offerId,\n    item.advertiserProgramId,\n    item.programID,\n    item.id,\n  ];\n  for (const c of candidates) {\n    const value = String(c || '').trim();\n    if (value) return value;\n  }\n  return '';\n}\n\nfunction pickSourceId(item) {\n  const candidates = [\n    item.sourceId,\n    item.sourceID,\n    item.source && item.source.id,\n    item.siteId,\n    item.siteID,\n    item.publisherSiteId,\n    item.affiliateSiteId,\n  ];\n  for (const c of candidates) {\n    const value = String(c || '').trim();\n    if (value) return value;\n  }\n  return '';\n}\n\nfunction pickProgramName(item, fallbackId) {\n  const candidates = [\n    item.programName,\n    item.program && item.program.name,\n    item.campaignName,\n    item.offerName,\n    item.programDisplayName,\n    item.name,\n  ];\n  for (const c of candidates) {\n    const value = String(c || '').trim();\n    if (value) return value;\n  }\n  return fallbackId ? ('Program ' + fallbackId) : 'Unknown Program';\n}\n\nfunction findNumericByKeys(obj, keys) {\n  if (!obj || typeof obj !== 'object') return 0;\n  let best = 0;\n  const byLower = Object.fromEntries(Object.keys(obj).map((k) => [k.toLowerCase(), k]));\n  for (const key of keys) {\n    const rawKey = byLower[String(key).toLowerCase()];\n    if (!rawKey) continue;\n    best = Math.max(best, safeNum(obj[rawKey]));\n  }\n  return best;\n}\n\nfunction collectCommissionLikeNumbers(node, out, depth = 0) {\n  if (depth > 4 || node === null || node === undefined) return;\n  if (typeof node === 'number' || typeof node === 'string') {\n    const n = safeNum(node);\n    if (n > 0) out.push(n);\n    return;\n  }\n  if (Array.isArray(node)) {\n    for (const child of node) collectCommissionLikeNumbers(child, out, depth + 1);\n    return;\n  }\n  if (typeof node !== 'object') return;\n\n  for (const [key, value] of Object.entries(node)) {\n    const k = String(key || '').toLowerCase();\n    if (k.includes('rate') || k.includes('ratio') || k.includes('percent') || k.includes('pct')) continue;\n    const looksCommissionLike = k.includes('commission') || k.includes('earning') || k.includes('payout') || k.includes('remuneration') || k.includes('reward');\n    if (looksCommissionLike) {\n      const n = safeNum(value);\n      if (n > 0) out.push(n);\n    }\n    if (value && typeof value === 'object') collectCommissionLikeNumbers(value, out, depth + 1);\n  }\n}\n\nfunction pickDigitalWalletAmount(item) {\n  const amountObj = (item.amount && typeof item.amount === 'object')\n    ? item.amount\n    : ((item.value && typeof item.value === 'object') ? item.value : {});\n  return Math.max(\n    safeNum(item.digitalWallet),\n    safeNum(item.digitalWallets),\n    safeNum(item.digitalWalletAmount),\n    safeNum(item.digitalWalletCommission),\n    safeNum(item.digitalWalletEarnings),\n    safeNum(item.wallet),\n    safeNum(item.walletAmount),\n    safeNum(item.walletCommission),\n    safeNum(item.walletEarnings),\n    safeNum(item.amount),\n    safeNum(item.amountValue),\n    safeNum(item.commissionAmount),\n    safeNum(item.publisherAmount),\n    safeNum(item.paymentAmount),\n    safeNum(item.payableAmount),\n    safeNum(item.netAmount),\n    safeNum(amountObj.amount),\n    safeNum(amountObj.value),\n    findNumericByKeys(item, [\n      'digitalWallet',\n      'digitalWallets',\n      'digital_wallet',\n      'digital_wallets',\n      'digitalWalletAmount',\n      'digitalWalletCommission',\n      'digitalWalletEarnings',\n      'walletAmount',\n      'walletCommission',\n      'walletEarnings',\n      'amount',\n      'amountValue',\n      'commissionAmount',\n      'publisherAmount',\n      'paymentAmount',\n      'payableAmount',\n      'netAmount',\n    ])\n  );\n}\n\nfunction buildProgramKey(item) {\n  const programId = pickProgramId(item);\n  if (programId) return 'program:' + programId;\n  const programName = pickProgramName(item, '').toLowerCase();\n  if (programName) return 'name:' + programName;\n  const sourceId = pickSourceId(item);\n  if (sourceId) return 'source:' + sourceId;\n  return '';\n}\n\nfunction mergeDigitalWalletRows(metricRows, walletRows) {\n  const walletByKey = new Map();\n\n  for (const wallet of walletRows || []) {\n    if (!wallet || typeof wallet !== 'object') continue;\n    const key = buildProgramKey(wallet);\n    if (!key) continue;\n    const digitalWalletAmount = pickDigitalWalletAmount(wallet);\n    if (digitalWalletAmount <= 0) continue;\n    const programId = pickProgramId(wallet);\n    const existing = walletByKey.get(key) || {\n      programId: programId || '-',\n      programName: pickProgramName(wallet, programId),\n      sourceId: pickSourceId(wallet),\n      digitalWalletAmount: 0,\n    };\n    existing.digitalWalletAmount += digitalWalletAmount;\n    walletByKey.set(key, existing);\n  }\n\n  const merged = (metricRows || []).map((row) => {\n    const key = buildProgramKey(row || {});\n    const wallet = key ? walletByKey.get(key) : null;\n    if (!wallet) return row;\n    walletByKey.delete(key);\n    return {\n      ...row,\n      digitalWalletAmount: Math.max(safeNum(row.digitalWalletAmount), wallet.digitalWalletAmount),\n      digitalWallet: Math.max(safeNum(row.digitalWallet), wallet.digitalWalletAmount),\n      walletAmount: Math.max(safeNum(row.walletAmount), wallet.digitalWalletAmount),\n    };\n  });\n\n  for (const wallet of walletByKey.values()) {\n    merged.push({\n      programId: wallet.programId,\n      programName: wallet.programName,\n      sourceId: wallet.sourceId,\n      clicks: 0,\n      sales: 0,\n      orderValue: 0,\n      publisherCommission: 0,\n      totalCommission: wallet.digitalWalletAmount,\n      digitalWalletAmount: wallet.digitalWalletAmount,\n      digitalWallet: wallet.digitalWalletAmount,\n      walletAmount: wallet.digitalWalletAmount,\n    });\n  }\n\n  return merged;\n}\n\nfunction findDigitalWalletValue(item, commissionObj, totalCommission, publisherCommission) {\n  const directDigitalWallet = Math.max(\n    safeNum(item.digitalWallet),\n    safeNum(item.digitalWallets),\n    safeNum(item.digitalWalletAmount),\n    safeNum(item.digitalWalletCommission),\n    safeNum(item.digitalWalletEarnings),\n    safeNum(item.wallet),\n    safeNum(item.walletAmount),\n    safeNum(commissionObj.digitalWallet),\n    safeNum(commissionObj.digitalWallets),\n    safeNum(commissionObj.digitalWalletAmount),\n    safeNum(commissionObj.digitalWalletCommission),\n    safeNum(commissionObj.digitalWalletEarnings),\n    findNumericByKeys(item, [\n      'digitalWallet',\n      'digitalWallets',\n      'digital_wallet',\n      'digital_wallets',\n      'digitalWalletAmount',\n      'digitalWalletCommission',\n      'digitalWalletEarnings',\n      'wallet',\n      'walletAmount',\n      'walletCommission',\n      'walletEarnings',\n    ])\n  );\n  const inferredDigitalWallet = Math.max(0, safeNum(totalCommission) - safeNum(publisherCommission));\n  return Math.max(directDigitalWallet, inferredDigitalWallet);\n}\n\nfunction parseMetrics(item) {\n  const commissionObj = (item.salesCommission && typeof item.salesCommission === 'object')\n    ? item.salesCommission\n    : ((item.commission && typeof item.commission === 'object') ? item.commission : {});\n  const commissionValue = (typeof item.commission === 'number' || typeof item.commission === 'string')\n    ? safeNum(item.commission)\n    : 0;\n\n  const clicks = safeNum(item.clicks);\n  const sales = safeNum(item.sales) + safeNum(item.iSales);\n  const orderValue = Math.max(\n    safeNum(item.orderValue),\n    safeNum(item.salesOrderValue),\n    safeNum(item.iSalesOrderValue),\n    safeNum(item.eventOrderValue)\n  );\n\n  const directPublisherCommission = Math.max(\n    safeNum(item.publisherCommission),\n    safeNum(commissionObj.publisherCommission),\n    findNumericByKeys(item, [\n      'publisherCommission',\n      'publisher_commission',\n      'pubCommission',\n      'publisherEarnings',\n      'publisherReward',\n      'eventPublisherCommission',\n      'eventCommission',\n      'salesCommissionPublisher',\n      'commissionAmount',\n      'commissionValue',\n    ])\n  );\n\n  const directTotalCommission = Math.max(\n    safeNum(item.totalCommission),\n    safeNum(commissionObj.totalCommission),\n    findNumericByKeys(item, [\n      'totalCommission',\n      'total_commission',\n      'commissionTotal',\n      'totalEarnings',\n      'totalPayout',\n      'networkCommission',\n      'advertiserCommission',\n      'salesCommissionTotal',\n    ])\n  );\n\n  const discoveredCommissionNumbers = [];\n  collectCommissionLikeNumbers(item.salesCommission, discoveredCommissionNumbers);\n  collectCommissionLikeNumbers(item.commission, discoveredCommissionNumbers);\n  collectCommissionLikeNumbers(item, discoveredCommissionNumbers);\n  const discoveredCommissionMax = discoveredCommissionNumbers.length ? Math.max(...discoveredCommissionNumbers) : 0;\n\n  const publisherCommission = Math.max(\n    directPublisherCommission,\n    commissionValue,\n    discoveredCommissionMax\n  );\n\n  const totalCommission = Math.max(\n    directTotalCommission,\n    commissionValue,\n    discoveredCommissionMax,\n    publisherCommission\n  );\n  const digitalWallet = findDigitalWalletValue(item, commissionObj, totalCommission, publisherCommission);\n  const totalEarnings = publisherCommission + digitalWallet;\n\n  return { clicks, sales, orderValue, publisherCommission, totalCommission, digitalWallet, totalEarnings };\n}\n\nfunction aggregateByProgram(rows) {\n  const map = new Map();\n\n  for (const item of rows || []) {\n    const programId = pickProgramId(item);\n    const programName = pickProgramName(item, programId);\n    const key = programId || programName.toLowerCase();\n    const m = parseMetrics(item);\n\n    if (!map.has(key)) {\n      map.set(key, {\n        key,\n        programId: programId || '-',\n        programName,\n        clicks: 0,\n        sales: 0,\n        orderValue: 0,\n        publisherCommission: 0,\n        totalCommission: 0,\n        digitalWallet: 0,\n        totalEarnings: 0,\n      });\n    }\n\n    const acc = map.get(key);\n    acc.clicks += m.clicks;\n    acc.sales += m.sales;\n    acc.orderValue += m.orderValue;\n    acc.publisherCommission += m.publisherCommission;\n    acc.totalCommission += m.totalCommission;\n    acc.digitalWallet += m.digitalWallet;\n    acc.totalEarnings += m.totalEarnings;\n  }\n\n  return Array.from(map.values());\n}\n\nfunction aggregateTotals(programRows) {\n  return (programRows || []).reduce((acc, row) => {\n    acc.clicks += row.clicks;\n    acc.sales += row.sales;\n    acc.orderValue += row.orderValue;\n    acc.publisherCommission += row.publisherCommission;\n    acc.totalCommission += row.totalCommission;\n    acc.digitalWallet += row.digitalWallet;\n    acc.totalEarnings += row.totalEarnings;\n    if (row.publisherCommission > 0) acc.programsWithCommission += 1;\n    return acc;\n  }, {\n    clicks: 0,\n    sales: 0,\n    orderValue: 0,\n    publisherCommission: 0,\n    totalCommission: 0,\n    digitalWallet: 0,\n    totalEarnings: 0,\n    programsWithCommission: 0,\n  });\n}\n\nfunction buildMetricRow(metric, currentValue, previousValue, formatter) {\n  const diff = safeNum(currentValue) - safeNum(previousValue);\n  return {\n    Metric: metric,\n    Recent: formatter(currentValue),\n    Previous: formatter(previousValue),\n    Difference: formatter(diff),\n    '% Variance': fmtPct(yoyPct(currentValue, previousValue)),\n  };\n}\n\nconst payload = $node[NODE_PAYLOAD] && $node[NODE_PAYLOAD].json && $node[NODE_PAYLOAD].json.payload ? $node[NODE_PAYLOAD].json.payload : {};\nconst currentRawRows = mergeDigitalWalletRows(\n  getRows(($node[NODE_CURRENT] && $node[NODE_CURRENT].json) || {}),\n  getRows(($node[NODE_CURRENT_DIGITAL_WALLETS] && $node[NODE_CURRENT_DIGITAL_WALLETS].json) || {})\n);\nconst previousRawRows = mergeDigitalWalletRows(\n  getRows(($node[NODE_PREVIOUS] && $node[NODE_PREVIOUS].json) || {}),\n  getRows(($node[NODE_PREVIOUS_DIGITAL_WALLETS] && $node[NODE_PREVIOUS_DIGITAL_WALLETS].json) || {})\n);\n\nconst currentPrograms = aggregateByProgram(currentRawRows);\nconst previousPrograms = aggregateByProgram(previousRawRows);\n\nconst previousByKey = new Map(previousPrograms.map((row) => [row.key, row]));\n\nconst comparedPrograms = currentPrograms.map((cur) => {\n  const prev = previousByKey.get(cur.key) || {\n    clicks: 0,\n    sales: 0,\n    orderValue: 0,\n    publisherCommission: 0,\n    totalCommission: 0,\n    digitalWallet: 0,\n    totalEarnings: 0,\n  };\n\n  return {\n    ...cur,\n    prevClicks: prev.clicks,\n    prevSales: prev.sales,\n    prevOrderValue: prev.orderValue,\n    prevPublisherCommission: prev.publisherCommission,\n    prevTotalCommission: prev.totalCommission,\n    prevDigitalWallet: prev.digitalWallet,\n    prevTotalEarnings: prev.totalEarnings,\n    clicksYoYAbs: cur.clicks - prev.clicks,\n    salesYoYAbs: cur.sales - prev.sales,\n    orderValueYoYAbs: cur.orderValue - prev.orderValue,\n    publisherCommissionYoYAbs: cur.publisherCommission - prev.publisherCommission,\n    digitalWalletYoYAbs: cur.digitalWallet - prev.digitalWallet,\n    totalEarningsYoYAbs: cur.totalEarnings - prev.totalEarnings,\n    clicksYoYPct: yoyPct(cur.clicks, prev.clicks),\n    salesYoYPct: yoyPct(cur.sales, prev.sales),\n    orderValueYoYPct: yoyPct(cur.orderValue, prev.orderValue),\n    publisherCommissionYoYPct: yoyPct(cur.publisherCommission, prev.publisherCommission),\n    digitalWalletYoYPct: yoyPct(cur.digitalWallet, prev.digitalWallet),\n    totalEarningsYoYPct: yoyPct(cur.totalEarnings, prev.totalEarnings),\n  };\n});\n\nconst brandNewPrograms = currentPrograms\n  .filter((cur) => {\n    const prev = previousByKey.get(cur.key);\n    const hasCurrentActivity = cur.clicks > 0 || cur.sales > 0 || cur.orderValue > 0 || cur.publisherCommission > 0 || cur.totalEarnings > 0;\n    if (!hasCurrentActivity) return false;\n    if (!prev) return true;\n    return prev.clicks <= 0 && prev.sales <= 0 && prev.orderValue <= 0 && prev.publisherCommission <= 0 && prev.totalEarnings <= 0;\n  })\n  .sort((a, b) => {\n    const byOv = b.orderValue - a.orderValue;\n    if (byOv !== 0) return byOv;\n    const bySales = b.sales - a.sales;\n    if (bySales !== 0) return bySales;\n    return b.totalEarnings - a.totalEarnings;\n  })\n  .slice(0, BRAND_NEW_LIMIT);\n\nconst requestedCurrency = normalizeCurrencyCode(payload.currencyCode);\nconst apiCurrency = normalizeCurrencyCode((currentRawRows[0] && currentRawRows[0].reportCurrencyCode) || (previousRawRows[0] && previousRawRows[0].reportCurrencyCode));\nconst currencyCode = requestedCurrency || apiCurrency || 'EUR';\nconst currencySymbol = getCurrencySymbol(currencyCode);\n\nconst currentTotals = aggregateTotals(currentPrograms);\nconst previousTotals = aggregateTotals(previousPrograms);\n\nconst currentConvRate = currentTotals.clicks ? (currentTotals.sales / currentTotals.clicks) * 100 : 0;\nconst previousConvRate = previousTotals.clicks ? (previousTotals.sales / previousTotals.clicks) * 100 : 0;\nconst currentAov = currentTotals.sales ? (currentTotals.orderValue / currentTotals.sales) : 0;\nconst previousAov = previousTotals.sales ? (previousTotals.orderValue / previousTotals.sales) : 0;\nconst currentEpc = currentTotals.clicks ? (currentTotals.publisherCommission / currentTotals.clicks) : 0;\nconst previousEpc = previousTotals.clicks ? (previousTotals.publisherCommission / previousTotals.clicks) : 0;\n\nconst currentProgramCount = currentPrograms.length;\nconst previousProgramCount = previousPrograms.length;\n\nconst kpiVarianceRaw = {\n  clicks: yoyPct(currentTotals.clicks, previousTotals.clicks),\n  sales: yoyPct(currentTotals.sales, previousTotals.sales),\n  convRate: yoyPct(currentConvRate, previousConvRate),\n  aov: yoyPct(currentAov, previousAov),\n  epc: yoyPct(currentEpc, previousEpc),\n  orderValue: yoyPct(currentTotals.orderValue, previousTotals.orderValue),\n  publisherCommission: yoyPct(currentTotals.publisherCommission, previousTotals.publisherCommission),\n  digitalWallet: yoyPct(currentTotals.digitalWallet, previousTotals.digitalWallet),\n  totalEarnings: yoyPct(currentTotals.totalEarnings, previousTotals.totalEarnings),\n  activePrograms: yoyPct(currentProgramCount, previousProgramCount),\n  programsWithCommission: yoyPct(currentTotals.programsWithCommission, previousTotals.programsWithCommission),\n};\n\nconst publisherPerformanceSummaryTable = [\n  buildMetricRow('Conversions', currentTotals.sales, previousTotals.sales, fmtInt),\n  buildMetricRow('Conversion Rate', currentConvRate, previousConvRate, fmtAbsPct),\n  buildMetricRow('Order Value', currentTotals.orderValue, previousTotals.orderValue, (v) => fmtMoney0(v, currencySymbol)),\n  buildMetricRow('Publisher Commission', currentTotals.publisherCommission, previousTotals.publisherCommission, (v) => fmtMoney0(v, currencySymbol)),\n  buildMetricRow('Digital Wallet', currentTotals.digitalWallet, previousTotals.digitalWallet, (v) => fmtMoney0(v, currencySymbol)),\n  buildMetricRow('Total Earnings', currentTotals.totalEarnings, previousTotals.totalEarnings, (v) => fmtMoney0(v, currencySymbol)),\n  buildMetricRow('Active Programs', currentProgramCount, previousProgramCount, fmtInt),\n];\n\nconst kpiSummaryTable = [\n  {\n    Period: 'Recent',\n    Conversions: fmtInt(currentTotals.sales),\n    'Conv Rate': fmtAbsPct(currentConvRate),\n    'Order Value': fmtMoney0(currentTotals.orderValue, currencySymbol),\n    'Publisher Commission': fmtMoney0(currentTotals.publisherCommission, currencySymbol),\n    'Digital Wallet': fmtMoney0(currentTotals.digitalWallet, currencySymbol),\n    'Total Earnings': fmtMoney0(currentTotals.totalEarnings, currencySymbol),\n    'Active Programs': fmtInt(currentProgramCount),\n    'Programs w/ Commission': fmtInt(currentTotals.programsWithCommission),\n  },\n  {\n    Period: 'Previous',\n    Conversions: fmtInt(previousTotals.sales),\n    'Conv Rate': fmtAbsPct(previousConvRate),\n    'Order Value': fmtMoney0(previousTotals.orderValue, currencySymbol),\n    'Publisher Commission': fmtMoney0(previousTotals.publisherCommission, currencySymbol),\n    'Digital Wallet': fmtMoney0(previousTotals.digitalWallet, currencySymbol),\n    'Total Earnings': fmtMoney0(previousTotals.totalEarnings, currencySymbol),\n    'Active Programs': fmtInt(previousProgramCount),\n    'Programs w/ Commission': fmtInt(previousTotals.programsWithCommission),\n  },\n  {\n    Period: 'Difference',\n    Conversions: fmtInt(currentTotals.sales - previousTotals.sales),\n    'Conv Rate': fmtAbsPct(currentConvRate - previousConvRate),\n    'Order Value': fmtMoney0(currentTotals.orderValue - previousTotals.orderValue, currencySymbol),\n    'Publisher Commission': fmtMoney0(currentTotals.publisherCommission - previousTotals.publisherCommission, currencySymbol),\n    'Digital Wallet': fmtMoney0(currentTotals.digitalWallet - previousTotals.digitalWallet, currencySymbol),\n    'Total Earnings': fmtMoney0(currentTotals.totalEarnings - previousTotals.totalEarnings, currencySymbol),\n    'Active Programs': fmtInt(currentProgramCount - previousProgramCount),\n    'Programs w/ Commission': fmtInt(currentTotals.programsWithCommission - previousTotals.programsWithCommission),\n  },\n  {\n    Period: '% Variance',\n    Conversions: fmtVarianceCell(kpiVarianceRaw.sales),\n    'Conv Rate': fmtVarianceCell(kpiVarianceRaw.convRate),\n    'Order Value': fmtVarianceCell(kpiVarianceRaw.orderValue),\n    'Publisher Commission': fmtVarianceCell(kpiVarianceRaw.publisherCommission),\n    'Digital Wallet': fmtVarianceCell(kpiVarianceRaw.digitalWallet),\n    'Total Earnings': fmtVarianceCell(kpiVarianceRaw.totalEarnings),\n    'Active Programs': fmtVarianceCell(kpiVarianceRaw.activePrograms),\n    'Programs w/ Commission': fmtVarianceCell(kpiVarianceRaw.programsWithCommission),\n  },\n];\n\nconst kpiVarianceColorHintsTable = [\n  { Metric: 'Conversions', 'Variance %': fmtPct(kpiVarianceRaw.sales), Tone: varianceTone(kpiVarianceRaw.sales), Color: varianceColorHex(kpiVarianceRaw.sales) },\n  { Metric: 'Conv Rate', 'Variance %': fmtPct(kpiVarianceRaw.convRate), Tone: varianceTone(kpiVarianceRaw.convRate), Color: varianceColorHex(kpiVarianceRaw.convRate) },\n  { Metric: 'Order Value', 'Variance %': fmtPct(kpiVarianceRaw.orderValue), Tone: varianceTone(kpiVarianceRaw.orderValue), Color: varianceColorHex(kpiVarianceRaw.orderValue) },\n  { Metric: 'Publisher Commission', 'Variance %': fmtPct(kpiVarianceRaw.publisherCommission), Tone: varianceTone(kpiVarianceRaw.publisherCommission), Color: varianceColorHex(kpiVarianceRaw.publisherCommission) },\n  { Metric: 'Digital Wallet', 'Variance %': fmtPct(kpiVarianceRaw.digitalWallet), Tone: varianceTone(kpiVarianceRaw.digitalWallet), Color: varianceColorHex(kpiVarianceRaw.digitalWallet) },\n  { Metric: 'Total Earnings', 'Variance %': fmtPct(kpiVarianceRaw.totalEarnings), Tone: varianceTone(kpiVarianceRaw.totalEarnings), Color: varianceColorHex(kpiVarianceRaw.totalEarnings) },\n  { Metric: 'Active Programs', 'Variance %': fmtPct(kpiVarianceRaw.activePrograms), Tone: varianceTone(kpiVarianceRaw.activePrograms), Color: varianceColorHex(kpiVarianceRaw.activePrograms) },\n  { Metric: 'Programs w/ Commission', 'Variance %': fmtPct(kpiVarianceRaw.programsWithCommission), Tone: varianceTone(kpiVarianceRaw.programsWithCommission), Color: varianceColorHex(kpiVarianceRaw.programsWithCommission) },\n];\n\nfunction compareProgramsByImpact(a, b) {\n  const aLowSignal = a.sales <= 0 && a.orderValue <= 0 && a.publisherCommission <= 0 && a.totalEarnings <= 0;\n  const bLowSignal = b.sales <= 0 && b.orderValue <= 0 && b.publisherCommission <= 0 && b.totalEarnings <= 0;\n  if (aLowSignal !== bLowSignal) return aLowSignal ? 1 : -1;\n\n  const byCommission = b.publisherCommission - a.publisherCommission;\n  if (byCommission !== 0) return byCommission;\n  const byTotalEarnings = b.totalEarnings - a.totalEarnings;\n  if (byTotalEarnings !== 0) return byTotalEarnings;\n  const byOrderValue = b.orderValue - a.orderValue;\n  if (byOrderValue !== 0) return byOrderValue;\n  const bySales = b.sales - a.sales;\n  if (bySales !== 0) return bySales;\n  return String(a.programName || '').localeCompare(String(b.programName || ''));\n}\n\nfunction toProgramBreakdownRow(r) {\n  return {\n    'Program ID': r.programId,\n    'Program Name': r.programName,\n    'Publisher Commission': fmtMoney0(r.publisherCommission, currencySymbol),\n    'Digital Wallet': fmtMoney0(r.digitalWallet, currencySymbol),\n    'Total Earnings': fmtMoney0(r.totalEarnings, currencySymbol),\n    Conversions: fmtInt(r.sales),\n    'Order Value': fmtMoney0(r.orderValue, currencySymbol),\n    'Publisher Commission YoY %': fmtPct(r.publisherCommissionYoYPct),\n    'Earnings YoY %': fmtPct(r.totalEarningsYoYPct),\n    'Conversions YoY %': fmtPct(r.salesYoYPct),\n  };\n}\n\nconst allProgramsApiScope = comparedPrograms\n  .slice()\n  .sort(compareProgramsByImpact)\n  .map(toProgramBreakdownRow);\n\nconst programLevelBreakdown = allProgramsApiScope.slice(0, DISPLAY_TOP_LIMIT);\n\nfunction buildMoversTable(metricKey, metricLabel, formatter) {\n  const yoyAbsKey = metricKey + 'YoYAbs';\n  const yoyPctKey = metricKey + 'YoYPct';\n\n  const up = comparedPrograms\n    .filter((r) => safeNum(r[yoyAbsKey]) > 0)\n    .sort((a, b) => b[yoyAbsKey] - a[yoyAbsKey])\n    .slice(0, MOVER_LIMIT)\n    .map((r) => ({\n      Direction: 'Up',\n      'Program Name': r.programName,\n      'Program ID': r.programId,\n      [metricLabel]: formatter(r[metricKey]),\n      'YoY Change': formatter(r[yoyAbsKey]),\n      'YoY %': fmtPct(r[yoyPctKey]),\n    }));\n\n  const down = comparedPrograms\n    .filter((r) => safeNum(r[yoyAbsKey]) < 0)\n    .sort((a, b) => a[yoyAbsKey] - b[yoyAbsKey])\n    .slice(0, MOVER_LIMIT)\n    .map((r) => ({\n      Direction: 'Down',\n      'Program Name': r.programName,\n      'Program ID': r.programId,\n      [metricLabel]: formatter(r[metricKey]),\n      'YoY Change': formatter(r[yoyAbsKey]),\n      'YoY %': fmtPct(r[yoyPctKey]),\n    }));\n\n  if ((up.length || down.length) || metricKey !== 'publisherCommission') {\n    return up.concat(down);\n  }\n\n  const topCurrent = comparedPrograms\n    .slice()\n    .sort((a, b) => {\n      const byMetric = safeNum(b[metricKey]) - safeNum(a[metricKey]);\n      if (byMetric !== 0) return byMetric;\n      return safeNum(b.sales) - safeNum(a.sales);\n    })\n    .slice(0, MOVER_LIMIT)\n    .map((r) => ({\n      Direction: 'Up',\n      'Program Name': r.programName,\n      'Program ID': r.programId,\n      [metricLabel]: formatter(r[metricKey]),\n      'YoY Change': formatter(r[yoyAbsKey]),\n      'YoY %': fmtPct(r[yoyPctKey]),\n    }));\n\n  const bottomCurrent = comparedPrograms\n    .slice()\n    .sort((a, b) => {\n      const byMetric = safeNum(a[metricKey]) - safeNum(b[metricKey]);\n      if (byMetric !== 0) return byMetric;\n      return safeNum(a.sales) - safeNum(b.sales);\n    })\n    .slice(0, MOVER_LIMIT)\n    .map((r) => ({\n      Direction: 'Down',\n      'Program Name': r.programName,\n      'Program ID': r.programId,\n      [metricLabel]: formatter(r[metricKey]),\n      'YoY Change': formatter(r[yoyAbsKey]),\n      'YoY %': fmtPct(r[yoyPctKey]),\n    }));\n\n  return topCurrent.concat(bottomCurrent);\n}\n\nconst moversShakersCommission = buildMoversTable('publisherCommission', 'Current Commission', (v) => fmtMoney0(v, currencySymbol));\nconst moversShakersSales = buildMoversTable('sales', 'Current Conversions', (v) => fmtInt(v));\nconst moversShakersClicks = buildMoversTable('clicks', 'Current Clicks', (v) => fmtInt(v));\n\nconst brandNewProgramsTable = brandNewPrograms.map((r) => ({\n  'Program ID': r.programId,\n  'Program Name': r.programName,\n  Conversions: fmtInt(r.sales),\n  'Order Value': fmtMoney0(r.orderValue, currencySymbol),\n  'Publisher Commission': fmtMoney0(r.publisherCommission, currencySymbol),\n  'Digital Wallet': fmtMoney0(r.digitalWallet, currencySymbol),\n  'Total Earnings': fmtMoney0(r.totalEarnings, currencySymbol),\n}));\n\nconst kpiHighlightsTable = [\n  {\n    KPI: 'Total Earnings',\n    Recent: fmtMoney0(currentTotals.totalEarnings, currencySymbol),\n    Previous: fmtMoney0(previousTotals.totalEarnings, currencySymbol),\n    'YoY %': fmtPct(kpiVarianceRaw.totalEarnings),\n  },\n  {\n    KPI: 'Publisher Commission',\n    Recent: fmtMoney0(currentTotals.publisherCommission, currencySymbol),\n    Previous: fmtMoney0(previousTotals.publisherCommission, currencySymbol),\n    'YoY %': fmtPct(kpiVarianceRaw.publisherCommission),\n  },\n  {\n    KPI: 'Digital Wallet',\n    Recent: fmtMoney0(currentTotals.digitalWallet, currencySymbol),\n    Previous: fmtMoney0(previousTotals.digitalWallet, currencySymbol),\n    'YoY %': fmtPct(kpiVarianceRaw.digitalWallet),\n  },\n  {\n    KPI: 'Order Value',\n    Recent: fmtMoney0(currentTotals.orderValue, currencySymbol),\n    Previous: fmtMoney0(previousTotals.orderValue, currencySymbol),\n    'YoY %': fmtPct(kpiVarianceRaw.orderValue),\n  },\n  {\n    KPI: 'Conversions',\n    Recent: fmtInt(currentTotals.sales),\n    Previous: fmtInt(previousTotals.sales),\n    'YoY %': fmtPct(kpiVarianceRaw.sales),\n  },\n  {\n    KPI: 'Conversion Rate',\n    Recent: fmtAbsPct(currentConvRate),\n    Previous: fmtAbsPct(previousConvRate),\n    'YoY %': fmtPct(kpiVarianceRaw.convRate),\n  },\n  {\n    KPI: 'Active Programs',\n    Recent: fmtInt(currentProgramCount),\n    Previous: fmtInt(previousProgramCount),\n    'YoY %': fmtPct(yoyPct(currentProgramCount, previousProgramCount)),\n  },\n  {\n    KPI: 'Programs w/ Commission',\n    Recent: fmtInt(currentTotals.programsWithCommission),\n    Previous: fmtInt(previousTotals.programsWithCommission),\n    'YoY %': fmtPct(yoyPct(currentTotals.programsWithCommission, previousTotals.programsWithCommission)),\n  },\n];\n\nconst salesGrowthSignalsTable = comparedPrograms\n  .filter((r) => r.salesYoYAbs > 0 || r.orderValueYoYAbs > 0 || r.totalEarningsYoYAbs > 0 || r.publisherCommissionYoYAbs > 0)\n  .sort((a, b) => {\n    const aScore = a.totalEarningsYoYAbs + (a.salesYoYAbs * 0.1);\n    const bScore = b.totalEarningsYoYAbs + (b.salesYoYAbs * 0.1);\n    return bScore - aScore;\n  })\n  .slice(0, SIGNAL_LIMIT)\n  .map((r) => ({\n    'Program Name': r.programName,\n    'Conversions YoY Change': fmtInt(r.salesYoYAbs),\n    'Conversions YoY %': fmtPct(r.salesYoYPct),\n    'Order Value YoY Change': fmtMoney0(r.orderValueYoYAbs, currencySymbol),\n    'Publisher Commission YoY Change': fmtMoney0(r.publisherCommissionYoYAbs, currencySymbol),\n    'Digital Wallet YoY Change': fmtMoney0(r.digitalWalletYoYAbs, currencySymbol),\n    'Total Earnings YoY Change': fmtMoney0(r.totalEarningsYoYAbs, currencySymbol),\n    'Total Earnings YoY %': fmtPct(r.totalEarningsYoYPct),\n  }));\n\nconst declineRisks = comparedPrograms\n  .filter((r) => r.salesYoYAbs < 0 || r.totalEarningsYoYAbs < 0 || r.publisherCommissionYoYAbs < 0)\n  .sort((a, b) => {\n    const aMagnitude = Math.abs(a.totalEarningsYoYAbs) + Math.abs(a.publisherCommissionYoYAbs) + Math.abs(a.salesYoYAbs);\n    const bMagnitude = Math.abs(b.totalEarningsYoYAbs) + Math.abs(b.publisherCommissionYoYAbs) + Math.abs(b.salesYoYAbs);\n    return bMagnitude - aMagnitude;\n  })\n  .slice(0, Math.floor(RISK_LIMIT / 2))\n  .map((r) => ({\n    'Program Name': r.programName,\n    'Risk Type': 'YoY decline',\n    Evidence: 'Conversions ' + fmtInt(r.salesYoYAbs) + ', total earnings ' + fmtMoney0(r.totalEarningsYoYAbs, currencySymbol),\n    Priority: 'High',\n  }));\n\nconst trafficWithoutSalesRisks = currentPrograms\n  .filter((r) => r.clicks >= 200 && r.sales <= 0)\n  .sort((a, b) => b.clicks - a.clicks)\n  .slice(0, Math.max(0, RISK_LIMIT - declineRisks.length))\n  .map((r) => ({\n    'Program Name': r.programName,\n    'Risk Type': 'High traffic, zero conversions',\n    Evidence: 'Traffic events ' + fmtInt(r.clicks) + ', conversions ' + fmtInt(r.sales),\n    Priority: 'Medium',\n  }));\n\nconst riskDependenciesTable = declineRisks.concat(trafficWithoutSalesRisks).slice(0, RISK_LIMIT);\nif (!riskDependenciesTable.length) {\n  riskDependenciesTable.push({\n    'Program Name': 'No critical risks detected',\n    'Risk Type': 'Monitoring',\n    Evidence: 'Current dataset does not show material declines or traffic-quality gaps.',\n    Priority: 'Low',\n  });\n}\n\nconst topGrowth = comparedPrograms\n  .filter((r) => r.publisherCommissionYoYAbs > 0)\n  .sort((a, b) => b.publisherCommissionYoYAbs - a.publisherCommissionYoYAbs)\n  .slice(0, 3)\n  .map((r) => r.programName + ' (' + fmtMoney0(r.publisherCommissionYoYAbs, currencySymbol) + ', ' + fmtPct(r.publisherCommissionYoYPct) + ')');\n\nconst topDecline = comparedPrograms\n  .filter((r) => r.publisherCommissionYoYAbs < 0)\n  .sort((a, b) => a.publisherCommissionYoYAbs - b.publisherCommissionYoYAbs)\n  .slice(0, 3)\n  .map((r) => r.programName + ' (' + fmtMoney0(r.publisherCommissionYoYAbs, currencySymbol) + ', ' + fmtPct(r.publisherCommissionYoYPct) + ')');\n\nconst topEarningsGrowth = comparedPrograms\n  .filter((r) => r.totalEarningsYoYAbs > 0)\n  .sort((a, b) => b.totalEarningsYoYAbs - a.totalEarningsYoYAbs)\n  .slice(0, 3)\n  .map((r) => r.programName + ' (' + fmtMoney0(r.totalEarningsYoYAbs, currencySymbol) + ', ' + fmtPct(r.totalEarningsYoYPct) + ')');\n\nconst topEarningsDecline = comparedPrograms\n  .filter((r) => r.totalEarningsYoYAbs < 0)\n  .sort((a, b) => a.totalEarningsYoYAbs - b.totalEarningsYoYAbs)\n  .slice(0, 3)\n  .map((r) => r.programName + ' (' + fmtMoney0(r.totalEarningsYoYAbs, currencySymbol) + ', ' + fmtPct(r.totalEarningsYoYPct) + ')');\n\nconst executiveSignals = [\n  'Total earnings ' + fmtMoney0(currentTotals.totalEarnings, currencySymbol) + ' vs ' + fmtMoney0(previousTotals.totalEarnings, currencySymbol) + ' (' + fmtPct(yoyPct(currentTotals.totalEarnings, previousTotals.totalEarnings)) + ').',\n  'Publisher commission ' + fmtMoney0(currentTotals.publisherCommission, currencySymbol) + ' vs ' + fmtMoney0(previousTotals.publisherCommission, currencySymbol) + ' (' + fmtPct(yoyPct(currentTotals.publisherCommission, previousTotals.publisherCommission)) + ').',\n  'Digital wallet ' + fmtMoney0(currentTotals.digitalWallet, currencySymbol) + ' vs ' + fmtMoney0(previousTotals.digitalWallet, currencySymbol) + ' (' + fmtPct(yoyPct(currentTotals.digitalWallet, previousTotals.digitalWallet)) + ').',\n  'Conversions ' + fmtInt(currentTotals.sales) + ' vs ' + fmtInt(previousTotals.sales) + ' (' + fmtPct(yoyPct(currentTotals.sales, previousTotals.sales)) + ').',\n  'Order value ' + fmtMoney0(currentTotals.orderValue, currencySymbol) + ' vs ' + fmtMoney0(previousTotals.orderValue, currencySymbol) + ' (' + fmtPct(yoyPct(currentTotals.orderValue, previousTotals.orderValue)) + ').',\n  'Conversion rate ' + fmtAbsPct(currentConvRate) + ' vs ' + fmtAbsPct(previousConvRate) + ' (' + fmtPct(yoyPct(currentConvRate, previousConvRate)) + ').',\n  'Active programs ' + fmtInt(currentProgramCount) + ' vs ' + fmtInt(previousProgramCount) + ' (' + fmtPct(yoyPct(currentProgramCount, previousProgramCount)) + ').',\n  topEarningsGrowth.length ? ('Top total earnings growth programs: ' + topEarningsGrowth.join('; ')) : 'Top total earnings growth programs: none identified from this extract.',\n  topEarningsDecline.length ? ('Top total earnings decline programs: ' + topEarningsDecline.join('; ')) : 'Top total earnings decline programs: none identified from this extract.',\n  'Brand new programs this period: ' + fmtInt(brandNewPrograms.length) + '.',\n];\n\nconst summaryNextSteps = [\n  currentTotals.clicks > 0 && currentTotals.sales === 0\n    ? 'Traffic is present but no recorded conversions in the selected period; validate conversion tracking and attribution setup.'\n    : null,\n  currentTotals.clicks > previousTotals.clicks && currentConvRate < previousConvRate\n    ? 'Conversion rate declined despite increased traffic; prioritise optimisation of low-converting high-traffic programs.'\n    : null,\n  currentTotals.totalEarnings > previousTotals.totalEarnings && currentTotals.sales <= previousTotals.sales\n    ? 'Total earnings increased faster than conversion volume; review event mix and payout efficiency by top-earning programs.'\n    : null,\n  brandNewPrograms.length > 0\n    ? 'Review activation quality for ' + fmtInt(brandNewPrograms.length) + ' newly active programs and confirm expected contribution targets.'\n    : 'No newly active programs detected; shortlist expansion opportunities from top YoY growth programs.',\n  topDecline.length > 0\n    ? 'Prioritise recovery plan for largest commission decliners highlighted in Movers & Shakers.'\n    : 'No major commission decliners detected in this extract.',\n].filter(Boolean);\n\nconst topSalesGrowthPrograms = comparedPrograms\n  .filter((r) => r.salesYoYAbs > 0)\n  .sort((a, b) => b.salesYoYAbs - a.salesYoYAbs)\n  .slice(0, 3)\n  .map((r) => r.programName + ' (' + fmtInt(r.salesYoYAbs) + ', ' + fmtPct(r.salesYoYPct) + ')');\n\nconst topSalesDeclinePrograms = comparedPrograms\n  .filter((r) => r.salesYoYAbs < 0)\n  .sort((a, b) => a.salesYoYAbs - b.salesYoYAbs)\n  .slice(0, 3)\n  .map((r) => r.programName + ' (' + fmtInt(r.salesYoYAbs) + ', ' + fmtPct(r.salesYoYPct) + ')');\n\nconst highClicksZeroSalesPrograms = currentPrograms\n  .filter((r) => r.clicks > 0 && r.sales <= 0)\n  .sort((a, b) => b.clicks - a.clicks)\n  .slice(0, 3)\n  .map((r) => r.programName + ' (' + fmtInt(r.clicks) + ' traffic events, ' + fmtInt(r.sales) + ' conversions)');\n\nconst kpiHighlightNarrative = [\n  'Total earnings moved from ' + fmtMoney0(previousTotals.totalEarnings, currencySymbol) + ' to ' + fmtMoney0(currentTotals.totalEarnings, currencySymbol) + ' (' + fmtPct(kpiVarianceRaw.totalEarnings) + '), calculated as publisher commission plus digital wallet.',\n  'Publisher commission moved from ' + fmtMoney0(previousTotals.publisherCommission, currencySymbol) + ' to ' + fmtMoney0(currentTotals.publisherCommission, currencySymbol) + ' (' + fmtPct(kpiVarianceRaw.publisherCommission) + ').',\n  'Digital wallet moved from ' + fmtMoney0(previousTotals.digitalWallet, currencySymbol) + ' to ' + fmtMoney0(currentTotals.digitalWallet, currencySymbol) + ' (' + fmtPct(kpiVarianceRaw.digitalWallet) + ').',\n  'Order value moved from ' + fmtMoney0(previousTotals.orderValue, currencySymbol) + ' to ' + fmtMoney0(currentTotals.orderValue, currencySymbol) + ' (' + fmtPct(kpiVarianceRaw.orderValue) + ').',\n  'Conversions moved from ' + fmtInt(previousTotals.sales) + ' to ' + fmtInt(currentTotals.sales) + ' (' + fmtPct(kpiVarianceRaw.sales) + ').',\n  'Conversion rate shifted from ' + fmtAbsPct(previousConvRate) + ' to ' + fmtAbsPct(currentConvRate) + ' (' + fmtPct(kpiVarianceRaw.convRate) + ').',\n  topEarningsGrowth.length ? ('Top total earnings growth programs: ' + topEarningsGrowth.join('; ') + '.') : 'Top total earnings growth programs: none identified from this extract.',\n  topEarningsDecline.length ? ('Top total earnings decline programs: ' + topEarningsDecline.join('; ') + '.') : 'Top total earnings decline programs: none identified from this extract.',\n  topGrowth.length ? ('Top commission growth programs: ' + topGrowth.join('; ') + '.') : 'Top commission growth programs: none identified from this extract.',\n  topDecline.length ? ('Top commission decline programs: ' + topDecline.join('; ') + '.') : 'Top commission decline programs: none identified from this extract.',\n  topSalesGrowthPrograms.length ? ('Top conversion growth programs: ' + topSalesGrowthPrograms.join('; ') + '.') : 'Top conversion growth programs: none identified from this extract.',\n  topSalesDeclinePrograms.length ? ('Top conversion decline programs: ' + topSalesDeclinePrograms.join('; ') + '.') : 'Top conversion decline programs: none identified from this extract.',\n  highClicksZeroSalesPrograms.length ? ('High-traffic, zero-conversion exposure: ' + highClicksZeroSalesPrograms.join('; ') + '.') : null,\n  'Active programs changed from ' + fmtInt(previousProgramCount) + ' to ' + fmtInt(currentProgramCount) + ' (' + fmtPct(kpiVarianceRaw.activePrograms) + '), while programs with commission moved from ' + fmtInt(previousTotals.programsWithCommission) + ' to ' + fmtInt(currentTotals.programsWithCommission) + ' (' + fmtPct(kpiVarianceRaw.programsWithCommission) + ').',\n].filter(Boolean);\n\nconst kpiHighlightNarrativeTable = kpiHighlightNarrative.map((line, idx) => ({\n  Priority: String(idx + 1),\n  Highlight: line,\n}));\n\nconst qbrPack = {\n  reportStyle: 'Advertiser-QBR-aligned publisher program analysis',\n  reportingPeriod: payload.reportingPeriod || '',\n  comparisonPeriod: payload.comparisonPeriod || '',\n  currencyCode,\n  reportType: payload.reportType || 'program',\n  intervalType: payload.intervalType || 'month',\n  totals: {\n    current: {\n      ...currentTotals,\n      convRate: currentConvRate,\n      aov: currentAov,\n      epc: currentEpc,\n      activePrograms: currentProgramCount,\n    },\n    previous: {\n      ...previousTotals,\n      convRate: previousConvRate,\n      aov: previousAov,\n      epc: previousEpc,\n      activePrograms: previousProgramCount,\n    },\n  },\n  executiveSignals,\n  summaryNextSteps,\n  kpiHighlightNarrative,\n  apiScope: {\n    source: 'publisher_statistics_export_api',\n    sourceFilterEnabled: Boolean(payload.sourceFilterEnabled),\n    primarySourceId: String(payload.primarySourceId || payload.sourceId || payload.sourceID || ''),\n    totalProgramsFromApi: comparedPrograms.length,\n    displayProgramRows: programLevelBreakdown.length,\n  },\n  tables: {\n    publisherPerformanceSummaryTable,\n    kpiSummaryTable,\n    kpiVarianceColorHintsTable,\n    programLevelBreakdown,\n    allProgramsApiScope,\n    kpiHighlightsTable,\n    kpiHighlightNarrativeTable,\n    moversShakersCommission,\n    moversShakersSales,\n    moversShakersClicks,\n    brandNewProgramsTable,\n    salesGrowthSignalsTable,\n    riskDependenciesTable,\n  },\n};\n\nreturn [{\n  json: {\n    dataForAI: JSON.stringify(qbrPack, null, 2),\n    publisherQbrPack: qbrPack,\n    publisherPerformanceTables: qbrPack.tables,\n    diagnostics: {\n      currentRows: currentRawRows.length,\n      previousRows: previousRawRows.length,\n      currentPrograms: currentPrograms.length,\n      previousPrograms: previousPrograms.length,\n      comparedPrograms: comparedPrograms.length,\n      brandNewPrograms: brandNewPrograms.length,\n      analysisProgramsFromApi: allProgramsApiScope.length,\n      displayProgramsInBreakdown: programLevelBreakdown.length,\n      currentProgramCount,\n      previousProgramCount,\n      reportingPeriod: payload.reportingPeriod || '',\n      comparisonPeriod: payload.comparisonPeriod || '',\n      currencyCode,\n      reportType: payload.reportType || 'program',\n      intervalType: payload.intervalType || 'month',\n      salesGrowthSignals: salesGrowthSignalsTable.length,\n      riskDependencies: riskDependenciesTable.length,\n    },\n  },\n}];\n\r\n\r\n"
+      },
+      "name": "Process Publisher QBR Pack",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1296,
+        352
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{$json.dataForAI}}\n\nYou are preparing the Publisher Performance section for a client QBR.\n\nPRIMARY QBR FOCUS:\n- Focus theme: {{$node[\"yoy data extraction1\"].json.payload.qbrFocus || \"General performance review\"}}\n- Focus detail: {{$node[\"yoy data extraction1\"].json.payload.qbrFocusDetail || \"N/A\"}}\n\nMODE: CONTEXT-RICH REPORTING\n- Keep output factual, concise, and presentation-ready.\n- Provide concise, data-backed implications; recommendations are allowed only when explicitly supported by provided data.\n- Do not infer causes unless directly evidenced in the provided data.\n- If cause is unclear, state: \"Driver not confirmed from available data.\"\n\nOUTPUT STRUCTURE:\n## Publisher Performance\n\n### Reporting Period\n- 1 bullet with current period and YoY comparison period.\n\n### KPI Highlights (Detailed)\n- This section feeds the KPI Highlights slide directly.\n- Provide 8-10 presentation-ready bullets with concise business implication headlines and supporting values.\n- Every bullet must include current value, previous value (or explicit N/A), and YoY change when available.\n- Cover at minimum: Publisher Commission, Digital Wallet, Total Earnings, Order Value, Sales, Clicks, Conversion Rate, EPC, Active Programs, Programs w/ Commission.\n- Include at least 2 bullets naming top growth programs and at least 2 bullets naming top decline programs (if available).\n- Include at least 1 bullet on risk exposure when risk evidence exists.\n\n### Program Level Analysis (Top Performers)\n- Fact-only KPI lines for top programs using supplied table values.\n\n### Movers & Shakers\n- Cover Publisher Commission and Conversions only.\n- Show risers and decliners with YoY values only.\n- Do not produce a Clicks movers section.\n\n### Risks and Dependencies\n- 3-5 concise bullets from supplied risk evidence only.\n\nLANGUAGE REQUIREMENT:\nWrite all narrative text and bullets in {{$node[\"yoy data extraction1\"].json.payload.languageName}}.\n\nNUMBER & DATE REQUIREMENT:\n- Use UK number formatting only: 1,234.56\n- Use currency symbol before number (e.g. £1,899.64)\n- Use % symbol for rates\n- Keep numeric values and table structures exactly as provided.\n",
+        "options": {
+          "systemMessage": "You are a Tradedoubler publisher reporting assistant for QBR slides.\\n\\nGoal:\\nProduce advertiser-style publisher QBR narrative grounded only in supplied data.\\n\\nRules:\\n- Write narrative text in the requested language from the user payload.\\n- Keep numeric values, dates, percentages, table values, and currency symbols exactly as supplied.\\n- Keep insights concise and factual.\\n- No invented causes, benchmarks, or recommendations unsupported by data.\\n- If data is missing, state it explicitly."
+        }
+      },
+      "name": "AI Agent: Publisher QBR",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.7,
+      "position": [
+        1552,
+        352
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Tag Publisher Output - UPDATED\nreturn [{\n  json: {\n    publisherAnalysis: $json.output ?? \"\",\n    publisherTables: $node[\"Process Publisher QBR Pack\"].json.publisherPerformanceTables ?? {}\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1920,
+        352
+      ],
+      "name": "Tag Publisher Output1"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "publisher-qbr-v1-20260415",
+        "responseMode": "responseNode",
+        "options": {
+          "allowedOrigins": "*"
+        }
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -320,
+        176
+      ],
+      "name": "Webhook1",
+      "webhookId": "publisher-qbr-v1-20260415"
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw =\n  $json.incomingText ||\n  $json.message ||\n  $json.body?.message ||\n  '';\n\nconst prefix = 'QBR_REQUEST';\nlet payload = {};\n\nif (typeof $json.payload === 'object' && $json.payload !== null) {\n  payload = $json.payload;\n} else if (typeof $json.qbr_payload === 'object' && $json.qbr_payload !== null) {\n  payload = $json.qbr_payload;\n} else if (typeof $json.body?.payload === 'object' && $json.body.payload !== null) {\n  payload = $json.body.payload;\n} else if (typeof $json.body?.qbr_payload === 'object' && $json.body.qbr_payload !== null) {\n  payload = $json.body.qbr_payload;\n} else if (raw.startsWith(prefix)) {\n  try {\n    payload = JSON.parse(raw.slice(prefix.length).trim());\n  } catch {\n    payload = {};\n  }\n}\n\nconst tdTokens =\n  $json.body?.td_tokens ||\n  $json.td_tokens ||\n  $json.qbr_payload?.td_tokens ||\n  $json.body?.qbr_payload?.td_tokens ||\n  payload.td_tokens ||\n  {};\n\nreturn [\n  {\n    ...$json,\n    payload,\n    td_tokens: tdTokens,\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -144,
+        176
+      ],
+      "name": "receive payload1"
+    },
+    {
+      "parameters": {
+        "jsCode": "const rawPayload = $json.payload || {};\n\nfunction normalizeIdList(input) {\n  if (Array.isArray(input)) {\n    return input.map((value) => String(value || '').trim()).filter(Boolean);\n  }\n  if (typeof input === 'string' && input.trim()) {\n    return input.split(',').map((value) => value.trim()).filter(Boolean);\n  }\n  if (input !== null && input !== undefined && String(input).trim()) {\n    return [String(input).trim()];\n  }\n  return [];\n}\n\nfunction extractSourceIdsFromEndpoint(url) {\n  if (!url || typeof url !== 'string') return [];\n  try {\n    const parsed = new URL(url);\n    return [\n      parsed.searchParams.get('sourceID'),\n      parsed.searchParams.get('sourceId'),\n      parsed.searchParams.get('sourceid'),\n    ].map((v) => String(v || '').trim()).filter(Boolean);\n  } catch {\n    return [];\n  }\n}\n\nfunction toYyyyMmDd(input, fallbackDate) {\n  const value = String(input || '').trim();\n  if (value) {\n    if (/^\\d{8}$/.test(value)) return value;\n    const digits = value.replace(/[^0-9]/g, '');\n    if (digits.length === 8) return digits;\n  }\n\n  const date = fallbackDate instanceof Date ? fallbackDate : new Date(fallbackDate);\n  const y = date.getUTCFullYear();\n  const m = String(date.getUTCMonth() + 1).padStart(2, '0');\n  const d = String(date.getUTCDate()).padStart(2, '0');\n  return y + m + d;\n}\n\nfunction shiftYear(yyyymmdd, years) {\n  const y = parseInt(String(yyyymmdd).slice(0, 4), 10) + years;\n  const m = String(yyyymmdd).slice(4, 6);\n  const d = String(yyyymmdd).slice(6, 8);\n  return String(y) + m + d;\n}\n\nfunction formatYmd(yyyymmdd) {\n  const s = String(yyyymmdd || '');\n  if (!/^\\d{8}$/.test(s)) return s;\n  return s.slice(0, 4) + '-' + s.slice(4, 6) + '-' + s.slice(6, 8);\n}\n\nfunction parseDateParts(yyyymmdd) {\n  const value = String(yyyymmdd || '');\n  if (!/^\\d{8}$/.test(value)) return null;\n\n  const year = parseInt(value.slice(0, 4), 10);\n  const month = parseInt(value.slice(4, 6), 10);\n  const day = parseInt(value.slice(6, 8), 10);\n  if (!year || month < 1 || month > 12 || day < 1 || day > 31) return null;\n\n  return { year, month, day };\n}\n\nfunction formatDateParts(parts) {\n  return String(parts.year).padStart(4, '0') + String(parts.month).padStart(2, '0') + String(parts.day).padStart(2, '0');\n}\n\nfunction firstDayOfNextMonth(parts) {\n  if (parts.month === 12) {\n    return { year: parts.year + 1, month: 1, day: 1 };\n  }\n  return { year: parts.year, month: parts.month + 1, day: 1 };\n}\n\nfunction normalizeDateRangeByInterval(fromYyyymmdd, toYyyymmdd, interval) {\n  if (interval !== 'month') {\n    return { fromDate: fromYyyymmdd, toDate: toYyyymmdd };\n  }\n\n  const fromParts = parseDateParts(fromYyyymmdd);\n  const toParts = parseDateParts(toYyyymmdd);\n  if (!fromParts || !toParts) {\n    return { fromDate: fromYyyymmdd, toDate: toYyyymmdd };\n  }\n\n  const monthFrom = formatDateParts({ year: fromParts.year, month: fromParts.month, day: 1 });\n  let monthTo = toParts.day === 1\n    ? formatDateParts(toParts)\n    : formatDateParts(firstDayOfNextMonth(toParts));\n\n  if (monthTo <= monthFrom) {\n    monthTo = formatDateParts(firstDayOfNextMonth(parseDateParts(monthFrom)));\n  }\n\n  return { fromDate: monthFrom, toDate: monthTo };\n}\n\nconst fromSource = rawPayload.fromDate || rawPayload.startDate || rawPayload.from || '';\nconst toSource = rawPayload.toDate || rawPayload.endDate || rawPayload.to || '';\n\nconst endpointSourceIds = extractSourceIdsFromEndpoint(rawPayload.publisherEndpoint || rawPayload.publisherEndpointUrl || '');\nconst sourceIds = Array.from(new Set([\n  ...normalizeIdList(rawPayload.sourceIDs),\n  ...normalizeIdList(rawPayload.sourceIds),\n  ...normalizeIdList(rawPayload.sourceID),\n  ...normalizeIdList(rawPayload.sourceId),\n  ...endpointSourceIds,\n].filter(Boolean)));\nconst primarySourceId = sourceIds[0] || '';\n\nconst today = new Date();\nconst fallbackTo = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()));\nconst fallbackFrom = new Date(fallbackTo);\nfallbackFrom.setUTCDate(fallbackFrom.getUTCDate() - 89);\n\nconst reportType = String(rawPayload.reportType || 'program').toLowerCase().trim() || 'program';\nconst intervalType = String(rawPayload.intervalType || 'month').toLowerCase().trim() || 'month';\n\nconst initialFromDate = toYyyyMmDd(fromSource, fallbackFrom);\nconst initialToDate = toYyyyMmDd(toSource, fallbackTo);\nconst normalizedRange = normalizeDateRangeByInterval(initialFromDate, initialToDate, intervalType);\n\nconst fromDate = normalizedRange.fromDate;\nconst toDate = normalizedRange.toDate;\nconst prevFromDate = shiftYear(fromDate, -1);\nconst prevToDate = shiftYear(toDate, -1);\n\nconst languageCode = String(rawPayload.languageCode || 'EN').toUpperCase().trim();\nconst currencyCode = String(rawPayload.currencyCode || 'EUR').toUpperCase().trim();\nconst digitalWalletLimit = Math.max(1, Math.min(1000, parseInt(rawPayload.digitalWalletLimit || '1000', 10) || 1000));\nconst digitalWalletStatus = String(rawPayload.digitalWalletStatus || '').toUpperCase().trim();\nconst digitalWalletProgramId = String(rawPayload.digitalWalletProgramId || rawPayload.programId || '').trim();\nconst sourceFilterEnabled = String(rawPayload.sourceFilterEnabled || 'false').toLowerCase() === 'true';\n\nconst languageMap = {\n  EN: 'English', DE: 'German', FR: 'French', ES: 'Spanish', IT: 'Italian',\n  NL: 'Dutch', PL: 'Polish', SV: 'Swedish', NO: 'Norwegian', DA: 'Danish', FI: 'Finnish',\n};\n\nconst reportingPeriod = formatYmd(fromDate) + ' to ' + formatYmd(toDate);\nconst comparisonPeriod = formatYmd(prevFromDate) + ' to ' + formatYmd(prevToDate);\n\nreturn [{\n  ...$json,\n  payload: {\n    ...rawPayload,\n    analysisLevel: 'publisher_program',\n    sourceIDs: sourceIds,\n    sourceIds,\n    sourceID: primarySourceId,\n    sourceId: primarySourceId,\n    primarySourceId,\n    sourceFilterEnabled,\n    fromDate,\n    toDate,\n    currencyCode,\n    languageCode,\n    languageName: languageMap[languageCode] || 'English',\n    reportingPeriod,\n    comparisonPeriod,\n    reportingPeriodLabel: String(rawPayload.reportingPeriod || 'custom').trim(),\n    qbrFocus: String(rawPayload.qbrFocus || rawPayload.focusTheme || 'General performance review').trim(),\n    qbrFocusDetail: String(rawPayload.qbrFocusDetail || rawPayload.focusDetail || '').trim(),\n    publisherExportEndpoint: String(\n      rawPayload.publisherExportEndpoint ||\n      'https://connect.tradedoubler.com/publisher/report/statistics/export'\n    ).trim(),\n    digitalWalletEndpoint: String(\n      rawPayload.digitalWalletEndpoint ||\n      rawPayload.publisherDigitalWalletEndpoint ||\n      'https://connect.tradedoubler.com/publisher/report/payments/digitalwallets'\n    ).trim(),\n    digitalWalletCurrentFromDate: formatYmd(fromDate),\n    digitalWalletCurrentToDate: formatYmd(toDate),\n    digitalWalletPreviousFromDate: formatYmd(prevFromDate),\n    digitalWalletPreviousToDate: formatYmd(prevToDate),\n    digitalWalletLimit,\n    digitalWalletStatus,\n    digitalWalletProgramId,\n    reportType,\n    intervalType,\n  },\n  prev: {\n    fromDate: prevFromDate,\n    toDate: prevToDate,\n  },\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        432,
+        224
+      ],
+      "name": "yoy data extraction1"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Build publisher-program payload for Presenton generation\nconst publisherData = $input.first().json || {};\nconst payload = $node['yoy data extraction1']?.json?.payload || $node['receive payload1']?.json?.payload || {};\n\nfunction asText(value, fallback = '') {\n  if (value === null || value === undefined) return fallback;\n  const t = String(value).trim();\n  return t || fallback;\n}\n\nfunction normalizeRows(rows) {\n  if (!Array.isArray(rows)) return [];\n  return rows.map((row) => {\n    if (!row || typeof row !== 'object' || Array.isArray(row)) return { Value: asText(row, '-') };\n    const out = {};\n    for (const [k, v] of Object.entries(row)) out[asText(k, 'Field')] = asText(v, '-');\n    return out;\n  });\n}\n\nfunction normalizeTablesObject(tables) {\n  if (!tables || typeof tables !== 'object' || Array.isArray(tables)) return {};\n  const out = {};\n  for (const [name, rows] of Object.entries(tables)) {\n    out[name] = normalizeRows(rows);\n  }\n  return out;\n}\n\nfunction parseNumeric(value) {\n  const txt = asText(value, '').replace(/[^\\d,.\\-]/g, '');\n  if (!txt) return 0;\n  const lastComma = txt.lastIndexOf(',');\n  const lastDot = txt.lastIndexOf('.');\n  let normalized = txt;\n  if (lastComma > -1 && lastDot > -1) {\n    normalized = lastComma > lastDot\n      ? txt.replace(/\\./g, '').replace(',', '.')\n      : txt.replace(/,/g, '');\n  } else if (lastComma > -1) {\n    normalized = txt.replace(',', '.');\n  }\n  const n = Number(normalized);\n  return Number.isFinite(n) ? n : 0;\n}\n\nfunction sortProgramBreakdown(rows) {\n  const normalized = normalizeRows(rows);\n  if (!normalized.length) return [];\n  const ordered = normalized\n    .slice()\n    .sort((a, b) => {\n      const aConversions = parseNumeric(a.Conversions || a.Sales);\n      const bConversions = parseNumeric(b.Conversions || b.Sales);\n      const aOrderValue = parseNumeric(a['Order Value']);\n      const bOrderValue = parseNumeric(b['Order Value']);\n      const aCommission = parseNumeric(a['Publisher Commission'] || a.Commission);\n      const bCommission = parseNumeric(b['Publisher Commission'] || b.Commission);\n      const aDigitalWallet = parseNumeric(a['Digital Wallet']);\n      const bDigitalWallet = parseNumeric(b['Digital Wallet']);\n      const aTotalEarnings = parseNumeric(a['Total Earnings']) || (aCommission + aDigitalWallet);\n      const bTotalEarnings = parseNumeric(b['Total Earnings']) || (bCommission + bDigitalWallet);\n      const aLowSignal = aConversions <= 0 && aOrderValue <= 0 && aTotalEarnings <= 0 && aCommission <= 0;\n      const bLowSignal = bConversions <= 0 && bOrderValue <= 0 && bTotalEarnings <= 0 && bCommission <= 0;\n\n      if (aLowSignal !== bLowSignal) return aLowSignal ? 1 : -1;\n      if (aCommission !== bCommission) return bCommission - aCommission;\n      if (aTotalEarnings !== bTotalEarnings) return bTotalEarnings - aTotalEarnings;\n      if (aOrderValue !== bOrderValue) return bOrderValue - aOrderValue;\n      if (aConversions !== bConversions) return bConversions - aConversions;\n\n      return asText(a['Program Name']).localeCompare(asText(b['Program Name']));\n    });\n  return ordered;\n}\n\nfunction buildProgramYoYTable(kpiSummaryRows) {\n  const rows = normalizeRows(kpiSummaryRows);\n  if (!rows.length) return [];\n\n  const pickRow = (label) =>\n    rows.find((row) => asText(row.Period).toLowerCase() === label.toLowerCase()) || null;\n\n  const recent = pickRow('Recent');\n  const previous = pickRow('Previous');\n  const difference = pickRow('Difference');\n  const variance = pickRow('% Variance');\n\n  const toMetricRow = (rowLabel, source) => ({\n    Row: rowLabel,\n    Conversions: asText(source?.Conversions || source?.Sales, '-'),\n    ConvRate: asText(source?.['Conv Rate'], '-'),\n    OrderValue: asText(source?.['Order Value'], '-'),\n    PublCommission: asText(source?.['Publisher Commission'], '-'),\n    DigitalWallet: asText(source?.['Digital Wallet'], '-'),\n    TotalEarnings: asText(source?.['Total Earnings'], '-'),\n    ActivePrograms: asText(source?.['Active Programs'], '-'),\n  });\n\n  return [\n    toMetricRow('Recent', recent),\n    toMetricRow('Previous', previous),\n    toMetricRow('Difference', difference),\n    toMetricRow('Variance', variance),\n  ];\n}\n\n\nfunction stripMarkdownMarker(line) {\n  return asText(line, '')\n    .replace(/^\\s*[-*•]\\s+/, '')\n    .replace(/^\\s*\\d+[.)]\\s+/, '')\n    .replace(/^\\s*>\\s*/, '')\n    .trim();\n}\n\nfunction extractAiSectionLines(markdown, sectionNames, maxLines = 10) {\n  const names = (Array.isArray(sectionNames) ? sectionNames : [sectionNames])\n    .map((name) => asText(name).toLowerCase())\n    .filter(Boolean);\n  if (!names.length) return [];\n\n  const lines = asText(markdown).split(/\\r?\\n/);\n  const out = [];\n  let inSection = false;\n  let sectionLevel = 0;\n\n  for (const rawLine of lines) {\n    const line = asText(rawLine);\n    const heading = line.match(/^(#{1,6})\\s+(.+)$/);\n    if (heading) {\n      const level = heading[1].length;\n      const title = asText(heading[2]).toLowerCase();\n      if (inSection && level <= sectionLevel) break;\n      if (names.some((name) => title.includes(name))) {\n        inSection = true;\n        sectionLevel = level;\n      }\n      continue;\n    }\n\n    if (!inSection) continue;\n    const cleaned = stripMarkdownMarker(line);\n    if (!cleaned || /^[-*_]{3,}$/.test(cleaned)) continue;\n    if (/^(reporting period|program level analysis|movers|risks and dependencies)\\b/i.test(cleaned)) continue;\n    out.push(cleaned);\n    if (out.length >= maxLines) break;\n  }\n\n  return out;\n}\n\nfunction uniqueLines(lines) {\n  const seen = new Set();\n  const out = [];\n  for (const line of lines || []) {\n    const cleaned = asText(line);\n    const key = cleaned.toLowerCase();\n    if (!cleaned || seen.has(key)) continue;\n    seen.add(key);\n    out.push(cleaned);\n  }\n  return out;\n}\n\nconst languageCode = asText(payload.languageCode, 'EN').toUpperCase();\nconst languageMap = {\n  EN: 'English', DE: 'German', FR: 'French', ES: 'Spanish', IT: 'Italian',\n  NL: 'Dutch', PL: 'Polish', SV: 'Swedish', NO: 'Norwegian', DA: 'Danish', FI: 'Finnish',\n};\nconst languageName = languageMap[languageCode] || 'English';\n\nconst client =\n  asText(payload.clientName) ||\n  asText(payload.programName) ||\n  asText(payload.clientUsername) ||\n  'Publisher QBR';\n\nconst reportingPeriod = asText(payload.reportingPeriod, 'Not specified');\nconst comparisonPeriod = asText(payload.comparisonPeriod, 'Not specified');\n\nconst publisherAnalysis = asText(publisherData.publisherAnalysis, '(No publisher analysis returned)');\nconst publisherTablesRaw = normalizeTablesObject(publisherData.publisherTables || {});\nconst publisherTables = {\n  ...publisherTablesRaw,\n  programLevelBreakdown: sortProgramBreakdown(publisherTablesRaw.programLevelBreakdown || []),\n};\nconst tableKpiHighlightNarrative = normalizeRows(publisherTables.kpiHighlightNarrativeTable || [])\n  .map((row) => asText(row.Highlight, ''))\n  .filter(Boolean);\nconst aiKpiHighlightNarrative = extractAiSectionLines(\n  publisherAnalysis,\n  ['KPI Highlights', 'KPI Highlights (Detailed)', 'Confirmed Changes', 'Business Implications'],\n  10\n);\nconst kpiHighlightNarrative = uniqueLines([\n  ...aiKpiHighlightNarrative,\n  ...tableKpiHighlightNarrative,\n]).slice(0, 10);\npublisherTables.kpiHighlightNarrativeTable = kpiHighlightNarrative.map((highlight, index) => ({\n  Priority: String(index + 1),\n  Highlight: highlight,\n}));\nconst programYoYTable = buildProgramYoYTable(publisherTables.kpiSummaryTable || []);\nconst programScopeTable = publisherTables.programLevelBreakdown || [];\nconst allProgramsApiScopeTable = normalizeRows(publisherTables.allProgramsApiScope || []);\n\nconst slideBlueprint = [\n  { slide: 1, key: 'cover', title: 'Performance Review Cover' },\n  { slide: 2, key: 'executive_summary', title: 'Executive Summary' },\n  { slide: 3, key: 'kpi_summary_table', title: 'KPI Summary' },\n  { slide: 4, key: 'program_level_analysis', title: 'Program Level Analysis' },\n  { slide: 5, key: 'kpi_highlights', title: 'KPI Highlights' },\n  { slide: 6, key: 'movers_commission', title: 'Movers & Shakers - Commission' },\n  { slide: 7, key: 'movers_sales', title: 'Movers & Shakers - Conversions' },\n  { slide: 8, key: 'brand_new_programs', title: 'Brand New Programs' },\n  { slide: 9, key: 'sales_growth_risk_dependencies', title: 'Conversion Growth Signals & Risk and Dependencies' },\n  { slide: 10, key: 'thank_you', title: 'Thank You' },\n];\n\nconst requestedSlidesRaw = payload.n_slides ?? payload.targetSlides ?? payload.target_slides;\nconst requestedSlidesNum = Number(requestedSlidesRaw);\nconst targetSlides = Number.isFinite(requestedSlidesNum) && requestedSlidesNum > 0\n  ? Math.min(Math.floor(requestedSlidesNum), slideBlueprint.length)\n  : slideBlueprint.length;\n\nconst slideTableBindings = {\n  kpi_summary_table: 'kpiSummaryTable + kpiVarianceColorHintsTable',\n  program_level_analysis: 'programLevelBreakdown (display subset from API) + allProgramsApiScope (full API scope)',\n  kpi_highlights: 'kpiHighlightsTable + kpiHighlightNarrativeTable',\n  movers_commission: 'moversShakersCommission',\n  movers_sales: 'moversShakersSales',\n  brand_new_programs: 'brandNewProgramsTable',\n  sales_growth_risk_dependencies: 'salesGrowthSignalsTable + riskDependenciesTable',\n};\n\nconst baseAdditionalInstructions = asText(\n  payload.presentonAdditionalInstructions ||\n  payload.presenton_additional_instructions ||\n  payload.gammaAdditionalInstructions ||\n  payload.gamma_additional_instructions ||\n  ''\n);\n\nconst presentonAdditionalInstructions = [\n  baseAdditionalInstructions,\n  'Clone advertiser QBR layout style for publisher deck only. Do not use advertiser data.',\n  'Do not create slides called Publisher Performance Overview or Publisher Segment Analysis.',\n  'Slide 1 cover title must be \"' + client + ' performance review\"; never use \"affiliate program\" wording.',\n  'Slide 2 executive KPI cards must show Conversions, Total Order Value, Total Earnings, Conversion Rate, and Publisher Commission; do not show ROI, AOV, or Sales as labels.',\n  'Total Earnings must equal Publisher Commission plus Digital Wallet.',\n  'Slide 3 must be KPI Summary using kpiSummaryTable in advertiser-style tabular layout. It must include Conversions, Publisher Commission, Digital Wallet, and Total Earnings, and it must not include Clicks, AOV, or ROI.',\n  'Slide 3 conditional format rule: in the % Variance row use green text for positive values, red text for negative values, and amber text for zero/N/A (source: kpiVarianceColorHintsTable).',\n  'Slide 4 must be Program Level Analysis using programLevelBreakdown table, ranked by Publisher Commission descending. The first visible column must be Program ID, followed by Program Name, then Publisher Commission, Digital Wallet, Total Earnings, Conversions, Order Value, Publisher Commission YoY %, Earnings YoY %, and Conversions YoY %. Do not show Clicks, Clicks YoY, Sales, Sales YoY, AOV, or generic Commission labels on this slide.',\n  'Slide 5 must be KPI Highlights using the agent-generated KPI Highlights section first, then kpiHighlightsTable and kpiHighlightNarrativeTable for numeric backup. Mirror the advertiser QBR style: concise business implication headlines followed by the supporting current, previous, and YoY values.',\n  'Slide 5 depth rule: include 8-10 data-backed bullets where space allows; cover core KPI movement, named growth/decline programs, efficiency movement, total earnings including digital wallet, and at least one risk signal from supplied tables.',\n  'API scope rule: Slide 2 bottom summary analysis and Slide 5 KPI highlight narrative must be derived from full API scope (allProgramsApiScope + KPI totals), not only the displayed 12-row programLevelBreakdown subset.',\n  'Slides 6-7 must be Movers & Shakers tables: commission and conversions only. Do not create a Clicks movers slide.',\n  'Slide 8 must be Brand New Programs table with breakdown.',\n  'Slide 10 must cover Conversion Growth Signals and Risk and Dependencies using both salesGrowthSignalsTable and riskDependenciesTable.',\n  'Slide 11 must be Thank You.',\n  'Use only supplied numbers/tables and keep statements data-led.',\n  'Use UK number formatting only: 1,234.56 and keep currency symbols before values.',\n  'Write all narrative text in ' + languageName + '.',\n  'Show reporting period (' + reportingPeriod + ') and YoY comparison (' + comparisonPeriod + ') clearly.',\n].filter(Boolean).join('\\n');\n\nreturn [{\n  json: {\n    client,\n    deckTitle: 'QBR - ' + client,\n    targetSlides,\n    templateSlideCount: slideBlueprint.length,\n    slideBlueprint: slideBlueprint.slice(0, targetSlides),\n    slideTableBindings,\n    reportingPeriod,\n    comparisonPeriod,\n    qbrFocus: asText(payload.qbrFocus, 'General performance review'),\n    qbrFocusDetail: asText(payload.qbrFocusDetail, ''),\n    analysisLevel: 'publisher_program',\n    programOutput: publisherAnalysis,\n    programYoYTable,\n    programScopeTable,\n    allProgramsApiScopeTable,\n    publisherAnalysis,\n    kpiHighlightNarrative,\n    publisherInsights: [],\n    publisherTables,\n    languageCode,\n    languageName,\n    currencyCode: asText(payload.currencyCode, 'EUR'),\n    presentonTemplateId: asText(\n      payload.presentonTemplateId ||\n      payload.presenton_template_id ||\n      payload.templateId ||\n      payload.template_id ||\n      payload.gammaThemeId ||\n      payload.gamma_theme_id ||\n      ''\n    ),\n    presentonAdditionalInstructions,\n    presentonExportAs: asText(\n      payload.presentonExportAs ||\n      payload.presenton_export_as ||\n      payload.gammaExportAs ||\n      payload.gamma_export_as ||\n      'pptx'\n    ),\n    presentonApiUrl: asText(payload.presentonApiUrl || payload.presenton_api_url || ''),\n  },\n}];\n\r\n\r\n"
+      },
+      "name": "Build Final Response1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2704,
+        480
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{$node[\"yoy data extraction1\"].json.payload.publisherExportEndpoint}}?reportType={{$node[\"yoy data extraction1\"].json.payload.reportType}}&intervalType={{$node[\"yoy data extraction1\"].json.payload.intervalType}}&reportCurrencyCode={{$node[\"yoy data extraction1\"].json.payload.currencyCode}}&fromDate={{$node[\"yoy data extraction1\"].json.payload.fromDate}}&toDate={{$node[\"yoy data extraction1\"].json.payload.toDate}}{{$node[\"yoy data extraction1\"].json.payload.sourceFilterEnabled && $node[\"yoy data extraction1\"].json.payload.primarySourceId ? '&sourceId=' + encodeURIComponent($node[\"yoy data extraction1\"].json.payload.primarySourceId) : ''}}",
+        "options": {},
+        "headerParametersUi": {
+          "parameter": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{$('receive payload1').first().json.td_tokens.impersonate_access_token}}"
+            },
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        }
+      },
+      "name": "API Publisher Current1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 2,
+      "position": [
+        752,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{$node[\"yoy data extraction1\"].json.payload.publisherExportEndpoint}}?reportType={{$node[\"yoy data extraction1\"].json.payload.reportType}}&intervalType={{$node[\"yoy data extraction1\"].json.payload.intervalType}}&reportCurrencyCode={{$node[\"yoy data extraction1\"].json.payload.currencyCode}}&fromDate={{$node[\"yoy data extraction1\"].json.prev.fromDate}}&toDate={{$node[\"yoy data extraction1\"].json.prev.toDate}}{{$node[\"yoy data extraction1\"].json.payload.sourceFilterEnabled && $node[\"yoy data extraction1\"].json.payload.primarySourceId ? '&sourceId=' + encodeURIComponent($node[\"yoy data extraction1\"].json.payload.primarySourceId) : ''}}",
+        "options": {},
+        "headerParametersUi": {
+          "parameter": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{$('receive payload1').first().json.td_tokens.impersonate_access_token}}"
+            },
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        }
+      },
+      "name": "API Publisher Previous1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 2,
+      "position": [
+        752,
+        416
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ (() => {\n  const d = $input.first().json;\n  return {\n    success: Boolean(\n      d.pptx_url ||\n      d.path ||\n      d.presentation_url ||\n      d.presentation_id ||\n      d.presentationId\n    ) && !d.error,\n\n    provider: d.provider || 'presenton',\n    message: d.error\n      ? 'Presenton generation failed'\n      : (d.message || 'Presentation generated successfully'),\n\n    generation_status: d.status || null,\n    generation_id: d.presentation_id || d.presentationId || null,\n    presentation_id: d.presentation_id || d.presentationId || null,\n    presentation_url: d.presentation_url || null,\n    edit_url: d.edit_path || d.editPath || null,\n\n    pptx_url: d.pptx_url || d.path || d.download_url || d.file_url || null,\n    file_name: d.file_name || null,\n\n    theme: d.template || d.theme || null,\n    slide_count: d.slide_count || null,\n    error: d.error || null\n  };\n})() }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              },
+              {
+                "name": "Access-Control-Allow-Methods",
+                "value": "POST, OPTIONS"
+              },
+              {
+                "name": "Access-Control-Allow-Headers",
+                "value": "Content-Type, Authorization"
+              }
+            ]
+          }
+        }
+      },
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        3136,
+        480
+      ]
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gpt-5-mini"
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        2144,
+        656
+      ],
+      "name": "OpenAI Chat Model",
+      "credentials": {
+        "openAiApi": {
+          "id": "L4g2aVcKF4eab59w",
+          "name": "OpenAi account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const response = $json || {};\n\nfunction isLikelyMetricRow(row) {\n  if (!row || typeof row !== 'object' || Array.isArray(row)) return false;\n  const keys = Object.keys(row);\n  if (keys.length === 0) return false;\n  const signal = ['clicks', 'sales', 'iSales', 'conversions', 'orderValue', 'salesOrderValue', 'eventOrderValue', 'programName', 'programId'];\n  return signal.some((k) => Object.prototype.hasOwnProperty.call(row, k));\n}\n\nlet rows = [];\nif (Array.isArray(response)) {\n  rows = response;\n} else if (Array.isArray(response.items)) {\n  rows = response.items;\n} else if (Array.isArray(response.data)) {\n  rows = response.data;\n} else if (Array.isArray(response.rows)) {\n  rows = response.rows;\n} else if (isLikelyMetricRow(response)) {\n  rows = [response];\n}\n\nreturn [{\n  json: {\n    items: rows,\n    allItems: rows,\n    rowCount: rows.length,\n  },\n}];\n"
+      },
+      "name": "Collect Publisher Current",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        944,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const response = $json || {};\n\nfunction isLikelyMetricRow(row) {\n  if (!row || typeof row !== 'object' || Array.isArray(row)) return false;\n  const keys = Object.keys(row);\n  if (keys.length === 0) return false;\n  const signal = ['clicks', 'sales', 'iSales', 'conversions', 'orderValue', 'salesOrderValue', 'eventOrderValue', 'programName', 'programId'];\n  return signal.some((k) => Object.prototype.hasOwnProperty.call(row, k));\n}\n\nlet rows = [];\nif (Array.isArray(response)) {\n  rows = response;\n} else if (Array.isArray(response.items)) {\n  rows = response.items;\n} else if (Array.isArray(response.data)) {\n  rows = response.data;\n} else if (Array.isArray(response.rows)) {\n  rows = response.rows;\n} else if (isLikelyMetricRow(response)) {\n  rows = [response];\n}\n\nreturn [{\n  json: {\n    items: rows,\n    allItems: rows,\n    rowCount: rows.length,\n  },\n}];\n"
+      },
+      "name": "Collect Publisher Previous",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        944,
+        416
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{$node[\"yoy data extraction1\"].json.payload.digitalWalletEndpoint}}?fromDate={{$node[\"yoy data extraction1\"].json.payload.digitalWalletCurrentFromDate}}&toDate={{$node[\"yoy data extraction1\"].json.payload.digitalWalletCurrentToDate}}&limit={{$node[\"yoy data extraction1\"].json.payload.digitalWalletLimit}}&offset=0&sortBy=programId&sortOrder=asc{{$node[\"yoy data extraction1\"].json.payload.sourceFilterEnabled && $node[\"yoy data extraction1\"].json.payload.primarySourceId ? '&sourceId=' + encodeURIComponent($node[\"yoy data extraction1\"].json.payload.primarySourceId) : ''}}{{$node[\"yoy data extraction1\"].json.payload.digitalWalletProgramId ? '&programId=' + encodeURIComponent($node[\"yoy data extraction1\"].json.payload.digitalWalletProgramId) : ''}}{{$node[\"yoy data extraction1\"].json.payload.digitalWalletStatus ? '&status=' + encodeURIComponent($node[\"yoy data extraction1\"].json.payload.digitalWalletStatus) : ''}}",
+        "authentication": "none",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{$('receive payload1').first().json.td_tokens.impersonate_access_token}}"
+            },
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "API Publisher Digital Wallets Current",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1136,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const response = $json || {};\n\nfunction isLikelyWalletRow(row) {\n  if (!row || typeof row !== 'object' || Array.isArray(row)) return false;\n  const keys = Object.keys(row);\n  if (keys.length === 0) return false;\n  const signal = ['programId', 'sourceId', 'createdDate', 'status', 'amount', 'digitalWalletAmount', 'walletAmount'];\n  return signal.some((k) => Object.prototype.hasOwnProperty.call(row, k));\n}\n\nlet rows = [];\nif (Array.isArray(response)) {\n  rows = response;\n} else if (Array.isArray(response.items)) {\n  rows = response.items;\n} else if (Array.isArray(response.data)) {\n  rows = response.data;\n} else if (Array.isArray(response.rows)) {\n  rows = response.rows;\n} else if (Array.isArray(response.results)) {\n  rows = response.results;\n} else if (Array.isArray(response.content)) {\n  rows = response.content;\n} else if (Array.isArray(response.digitalWallets)) {\n  rows = response.digitalWallets;\n} else if (Array.isArray(response.wallets)) {\n  rows = response.wallets;\n} else if (isLikelyWalletRow(response)) {\n  rows = [response];\n}\n\nreturn [{\n  json: {\n    rows,\n    rowCount: rows.length,\n  },\n}];\n"
+      },
+      "name": "Collect Publisher Digital Wallets Current",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1328,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{$node[\"yoy data extraction1\"].json.payload.digitalWalletEndpoint}}?fromDate={{$node[\"yoy data extraction1\"].json.payload.digitalWalletPreviousFromDate}}&toDate={{$node[\"yoy data extraction1\"].json.payload.digitalWalletPreviousToDate}}&limit={{$node[\"yoy data extraction1\"].json.payload.digitalWalletLimit}}&offset=0&sortBy=programId&sortOrder=asc{{$node[\"yoy data extraction1\"].json.payload.sourceFilterEnabled && $node[\"yoy data extraction1\"].json.payload.primarySourceId ? '&sourceId=' + encodeURIComponent($node[\"yoy data extraction1\"].json.payload.primarySourceId) : ''}}{{$node[\"yoy data extraction1\"].json.payload.digitalWalletProgramId ? '&programId=' + encodeURIComponent($node[\"yoy data extraction1\"].json.payload.digitalWalletProgramId) : ''}}{{$node[\"yoy data extraction1\"].json.payload.digitalWalletStatus ? '&status=' + encodeURIComponent($node[\"yoy data extraction1\"].json.payload.digitalWalletStatus) : ''}}",
+        "authentication": "none",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{$('receive payload1').first().json.td_tokens.impersonate_access_token}}"
+            },
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "API Publisher Digital Wallets Previous",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1136,
+        416
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const response = $json || {};\n\nfunction isLikelyWalletRow(row) {\n  if (!row || typeof row !== 'object' || Array.isArray(row)) return false;\n  const keys = Object.keys(row);\n  if (keys.length === 0) return false;\n  const signal = ['programId', 'sourceId', 'createdDate', 'status', 'amount', 'digitalWalletAmount', 'walletAmount'];\n  return signal.some((k) => Object.prototype.hasOwnProperty.call(row, k));\n}\n\nlet rows = [];\nif (Array.isArray(response)) {\n  rows = response;\n} else if (Array.isArray(response.items)) {\n  rows = response.items;\n} else if (Array.isArray(response.data)) {\n  rows = response.data;\n} else if (Array.isArray(response.rows)) {\n  rows = response.rows;\n} else if (Array.isArray(response.results)) {\n  rows = response.results;\n} else if (Array.isArray(response.content)) {\n  rows = response.content;\n} else if (Array.isArray(response.digitalWallets)) {\n  rows = response.digitalWallets;\n} else if (Array.isArray(response.wallets)) {\n  rows = response.wallets;\n} else if (isLikelyWalletRow(response)) {\n  rows = [response];\n}\n\nreturn [{\n  json: {\n    rows,\n    rowCount: rows.length,\n  },\n}];\n"
+      },
+      "name": "Collect Publisher Digital Wallets Previous",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1328,
+        416
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://deliver-committees-became-mix.trycloudflare.com/generate",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Accept",
+              "value": "application/json"
+            },
+            {
+              "name": "x-api-key",
+              "value": "td-qbr-pptx-local-2026-secret"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json }}",
+        "options": {
+          "timeout": 300000
+        }
+      },
+      "name": "Generate Presenton PPTX1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        2928,
+        480
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook1": {
+      "main": [
+        [
+          {
+            "node": "receive payload1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "receive payload1": {
+      "main": [
+        [
+          {
+            "node": "yoy data extraction1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "yoy data extraction1": {
+      "main": [
+        [
+          {
+            "node": "API Publisher Current1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "API Publisher Current1": {
+      "main": [
+        [
+          {
+            "node": "Collect Publisher Current",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Collect Publisher Current": {
+      "main": [
+        [
+          {
+            "node": "API Publisher Previous1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "API Publisher Previous1": {
+      "main": [
+        [
+          {
+            "node": "Collect Publisher Previous",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Collect Publisher Previous": {
+      "main": [
+        [
+          {
+            "node": "API Publisher Digital Wallets Current",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process Publisher QBR Pack": {
+      "main": [
+        [
+          {
+            "node": "AI Agent: Publisher QBR",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent: Publisher QBR": {
+      "main": [
+        [
+          {
+            "node": "Tag Publisher Output1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tag Publisher Output1": {
+      "main": [
+        [
+          {
+            "node": "Build Final Response1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Final Response1": {
+      "main": [
+        [
+          {
+            "node": "Generate Presenton PPTX1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Presenton PPTX1": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent: Publisher QBR",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "API Publisher Digital Wallets Current": {
+      "main": [
+        [
+          {
+            "node": "Collect Publisher Digital Wallets Current",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Collect Publisher Digital Wallets Current": {
+      "main": [
+        [
+          {
+            "node": "API Publisher Digital Wallets Previous",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "API Publisher Digital Wallets Previous": {
+      "main": [
+        [
+          {
+            "node": "Collect Publisher Digital Wallets Previous",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Collect Publisher Digital Wallets Previous": {
+      "main": [
+        [
+          {
+            "node": "Process Publisher QBR Pack",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {},
+  "tags": [],
+  "active": false
+}

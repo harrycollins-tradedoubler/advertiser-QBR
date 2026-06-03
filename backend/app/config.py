@@ -21,6 +21,10 @@ class Settings(BaseSettings):
     td_user_url: str = "https://connect.tradedoubler.com/usermanagement"
     td_manage_url: str = "https://connect.tradedoubler.com/advertiser"
     td_impersonate_url: str = "https://connect.tradedoubler.com/uaa/admin/impersonate"
+    td_oauth_url: str = ""
+    td_oauth_basic_auth: str = ""
+    td_oauth_username: str = ""
+    td_oauth_password: str = ""
     qbr_agent_webhook_url: str = "https://coe-n8n.coe-untrust-eu-de.prod.tddrift.net/webhook/qbr-v4-presenton-1e2f9f4d"
 
     class Config:
