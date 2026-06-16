@@ -117,7 +117,9 @@ async function serveFile(req, res, parsed, config) {
     const data = await fs.readFile(fullPath);
     const contentType = fileName.endsWith(".json")
       ? "application/json"
-      : "application/vnd.openxmlformats-officedocument.presentationml.presentation";
+      : fileName.endsWith(".xlsx")
+        ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        : "application/vnd.openxmlformats-officedocument.presentationml.presentation";
     res.writeHead(200, {
       "Content-Type": contentType,
       "Access-Control-Allow-Origin": "*",
@@ -201,11 +203,22 @@ function createServer(options = {}) {
             now: config.now
           })
           : null;
+        const excelUrl = saved.excelFileName
+          ? createSignedFileUrl(root, saved.excelFileName, {
+            apiKey: config.apiKey,
+            secret: config.downloadTokenSecret,
+            ttlSeconds: config.downloadTtlSeconds,
+            now: config.now
+          })
+          : null;
 
         if (config.scheduleDeletion) {
           scheduleOutputDeletion(config.outputDir, savedFileName, config.downloadTtlSeconds);
           if (saved.deckSpecFileName) {
             scheduleOutputDeletion(config.outputDir, saved.deckSpecFileName, config.downloadTtlSeconds);
+          }
+          if (saved.excelFileName) {
+            scheduleOutputDeletion(config.outputDir, saved.excelFileName, config.downloadTtlSeconds);
           }
         }
 
@@ -216,8 +229,10 @@ function createServer(options = {}) {
           presentation_id: result.deckSpec.metadata.requestId,
           pptx_url: pptxUrl,
           deck_spec_url: deckSpecUrl,
+          excel_url: excelUrl,
           download_expires_at: new Date(config.now() + config.downloadTtlSeconds * 1000).toISOString(),
           file_name: savedFileName,
+          excel_file_name: saved.excelFileName || null,
           slide_count: result.deckSpec.slides.length,
           theme: result.deckSpec.theme.name
         });

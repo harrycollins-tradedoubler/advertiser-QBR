@@ -1,8 +1,0 @@
-node_modules
-outputs
-.git
-.gitignore
-*.pptx
-*.deck-spec.json
-npm-debug.log*
-.env

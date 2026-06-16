@@ -43,7 +43,8 @@ test("generated file URLs are signed and raw file links are rejected", async () 
     }),
     saveOutput: async (_result, dir) => {
       await fs.writeFile(path.join(dir, "report.pptx"), "pptx-bytes");
-      return { deckSpecFileName: null };
+      await fs.writeFile(path.join(dir, "publisher-recommendations.xlsx"), "xlsx-bytes");
+      return { deckSpecFileName: null, excelFileName: "publisher-recommendations.xlsx" };
     }
   });
 
@@ -62,6 +63,8 @@ test("generated file URLs are signed and raw file links are rejected", async () 
     assert.equal(body.success, true);
     assert.match(body.pptx_url, /\/files\/report\.pptx\?expires=\d+&token=/);
     assert.equal(body.deck_spec_url, null);
+    assert.match(body.excel_url, /\/files\/publisher-recommendations\.xlsx\?expires=\d+&token=/);
+    assert.equal(body.excel_file_name, "publisher-recommendations.xlsx");
     assert.equal(body.download_expires_at, "2026-01-01T12:01:00.000Z");
 
     const rawResponse = await fetch(`${root}/files/report.pptx`);
@@ -72,6 +75,14 @@ test("generated file URLs are signed and raw file links are rejected", async () 
     assert.equal(await signedResponse.text(), "pptx-bytes");
     assert.equal(signedResponse.headers.get("cache-control"), "no-store");
     assert.match(signedResponse.headers.get("content-disposition") || "", /attachment/);
+
+    const excelResponse = await fetch(body.excel_url);
+    assert.equal(excelResponse.status, 200);
+    assert.equal(await excelResponse.text(), "xlsx-bytes");
+    assert.equal(
+      excelResponse.headers.get("content-type"),
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    );
 
     nowMs += 61_000;
     const expiredResponse = await fetch(body.pptx_url);

@@ -128,6 +128,14 @@ async def _impersonate_username(username: str) -> dict[str, str]:
     }
 
 
+async def impersonate_client_username(username: str, bearer_token: str | None = None) -> dict[str, str]:
+    global user_access_token
+    token = str(bearer_token or "").strip()
+    if token:
+        user_access_token = token
+    return await _impersonate_username(username)
+
+
 def get_current_td_tokens() -> dict[str, str] | None:
     if not user_access_token or not impersonate_access_token:
         return None
@@ -190,19 +198,20 @@ async def advertiser_impersonate(request: Request, payload: dict[str, Any]) -> d
         raise HTTPException(status_code=400, detail="client username is required")
 
     auth_header = request.headers.get("authorization") or ""
-    if auth_header.lower().startswith("bearer "):
-        token = auth_header.split(" ", 1)[1].strip()
-        if token:
-            global user_access_token
-            user_access_token = token
+    bearer_token = auth_header.split(" ", 1)[1].strip() if auth_header.lower().startswith("bearer ") else None
 
-    await _impersonate_username(username)
+    await impersonate_client_username(username, bearer_token)
     return {
         "status": "ok",
         "username": username,
         "impersonated": True,
         "tokenStoredServerSide": True,
     }
+
+
+@router.post("/td/agency-impersonate")
+async def agency_impersonate(request: Request, payload: dict[str, Any]) -> dict[str, Any]:
+    return await advertiser_impersonate(request, payload)
 
 
 @router.get("/td/organisation")

@@ -21,22 +21,57 @@
           <form id="advertiserForm" class="form-stack">
             <section class="panel">
               <div class="panel-heading">
-                <h2>Extension API Endpoint</h2>
-                <p>Requests are sent through the extension service worker.</p>
+                <h2>TD Connection</h2>
+                <p>The extension service worker authenticates with TD directly, then sends the report payload to n8n.</p>
               </div>
-              <div class="inline-row">
-                <label class="field field-grow" for="apiBaseUrl">
-                  <span>API Base URL</span>
-                  <input id="apiBaseUrl" name="apiBaseUrl" type="text" autocomplete="off" spellcheck="false">
+              <div class="form-grid">
+                <label class="field" for="adminUsername">
+                  <span>Admin Username</span>
+                  <input id="adminUsername" name="adminUsername" type="text" autocomplete="username" placeholder="admin.user@example.com">
                 </label>
-                <button class="button button-secondary" id="testApi" type="button">Test API</button>
+
+                <label class="field" for="adminPassword">
+                  <span>Admin Password</span>
+                  <input id="adminPassword" name="adminPassword" type="password" autocomplete="current-password" placeholder="Required when no bearer token is provided">
+                </label>
+
+                <label class="field field-wide" for="qbrWebhookUrl">
+                  <span>QBR Webhook URL</span>
+                  <input id="qbrWebhookUrl" name="qbrWebhookUrl" type="text" autocomplete="off" spellcheck="false">
+                </label>
+              </div>
+
+              <details>
+                <summary>Advanced TD endpoints</summary>
+                <div class="form-grid advanced-grid">
+                  <label class="field field-wide" for="oauthUrl">
+                    <span>OAuth URL</span>
+                    <input id="oauthUrl" name="oauthUrl" type="text" autocomplete="off" spellcheck="false">
+                  </label>
+                  <label class="field field-wide" for="impersonateUrl">
+                    <span>Impersonate URL Prefix</span>
+                    <input id="impersonateUrl" name="impersonateUrl" type="text" autocomplete="off" spellcheck="false">
+                  </label>
+                  <label class="field field-wide" for="advertiserBase">
+                    <span>Advertiser API Base</span>
+                    <input id="advertiserBase" name="advertiserBase" type="text" autocomplete="off" spellcheck="false">
+                  </label>
+                  <label class="field field-wide" for="oauthBasic">
+                    <span>OAuth Basic</span>
+                    <input id="oauthBasic" name="oauthBasic" type="password" autocomplete="off" spellcheck="false">
+                  </label>
+                </div>
+              </details>
+
+              <div class="action-row">
+                <button class="button button-secondary" id="testApi" type="button">Save Connection</button>
               </div>
             </section>
 
             <section class="panel">
               <div class="panel-heading">
                 <h2>1. Authenticate / Impersonate</h2>
-                <p>Enter the client username. The backend calls TD impersonation and keeps the token server-side.</p>
+                <p>Enter the client username. The extension service worker calls TD impersonation and keeps the token in memory.</p>
               </div>
 
               <div class="form-grid">
@@ -46,8 +81,8 @@
                 </label>
 
                 <label class="field field-wide" for="accessToken">
-                  <span>Backend User Token Override</span>
-                  <input id="accessToken" name="accessToken" type="password" autocomplete="off" placeholder="Optional fallback if backend OAuth is not configured">
+                  <span>Admin Bearer Token Override</span>
+                  <input id="accessToken" name="accessToken" type="password" autocomplete="off" placeholder="Optional fallback instead of admin username/password">
                 </label>
               </div>
 
@@ -123,7 +158,7 @@
             <section class="panel">
               <div class="panel-heading">
                 <h2>4. Reporting Period</h2>
-                <p>Pick the date range that the backend workflow should analyze.</p>
+                <p>Pick the date range that the n8n workflow should analyze.</p>
               </div>
 
               <div class="form-grid form-grid-three">
@@ -144,7 +179,7 @@
             <section class="panel">
               <div class="panel-heading">
                 <h2>5. Batch Automation</h2>
-                <p>Upload a CSV or XLSX file and run advertiser requests server-side without filling the single-request form.</p>
+                <p>Upload a CSV or XLSX file and run advertiser requests through the extension service worker.</p>
               </div>
 
               <div class="inline-row">

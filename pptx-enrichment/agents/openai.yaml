@@ -1,0 +1,8 @@
+interface:
+  display_name: "PPTX Enrichment"
+  short_description: "Enrich decks with brand-safe content"
+  brand_color: "#2F6FF2"
+  default_prompt: "Use $pptx-enrichment to add my extra data, narrative, and brand rules to this PowerPoint while keeping logo, font, colour, and table design consistent."
+
+policy:
+  allow_implicit_invocation: true

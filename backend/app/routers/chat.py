@@ -10,11 +10,13 @@ import httpx
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import Response
 
+from app.config import get_settings
 from app.routers.agents import AGENTS
-from app.routers.td_auth import get_current_td_tokens
+from app.routers.td_auth import get_current_td_tokens, impersonate_client_username
 from app.services.n8n_client import n8n_client
 
 router = APIRouter()
+settings = get_settings()
 
 
 # In-memory thread storage
@@ -22,6 +24,7 @@ THREADS: dict[str, list[dict]] = {}
 QBR_JOBS: dict[str, dict] = {}
 QBR_PREFIX = "QBR_REQUEST "
 PPTX_URL_REGEX = re.compile(r"(https?://[^\s\"']+?\.pptx(?:\?[^\s\"']*)?)", re.IGNORECASE)
+POLLABLE_TERMINAL_STATES = {"completed", "error", "completed_with_errors"}
 
 
 def _first_non_empty(mapping: dict, keys: list[str]) -> str | None:
@@ -62,6 +65,59 @@ def _extract_qbr_response(result: object) -> tuple[str, str | None, str | None]:
     return result_text, matched.group(1) if matched else None, None
 
 
+def _clean_text(value: object) -> str:
+    return str(value or "").strip()
+
+
+def _normalize_date(value: object) -> str:
+    text = re.sub(r"[^0-9]", "", str(value or ""))
+    return text if len(text) == 8 else ""
+
+
+def _build_agency_payload(body: dict[str, object]) -> dict[str, object]:
+    client_username = _clean_text(
+        body.get("clientUsername") or body.get("username") or body.get("impersonateUsername")
+    )
+    agency_name = _clean_text(body.get("agencyName") or body.get("client") or client_username)
+    from_date = _normalize_date(body.get("fromDate") or body.get("startDate") or body.get("dateFrom"))
+    to_date = _normalize_date(body.get("toDate") or body.get("endDate") or body.get("dateTo"))
+
+    return {
+        **body,
+        "type": "AGENCY_QBR_REQUEST",
+        "analysisLevel": "agency_portfolio",
+        "clientUsername": client_username,
+        "agencyName": agency_name,
+        "client": agency_name,
+        "fromDate": from_date,
+        "toDate": to_date,
+        "currencyCode": _clean_text(body.get("currencyCode") or "EUR") or "EUR",
+        "languageCode": _clean_text(body.get("languageCode") or "EN").upper() or "EN",
+        "tdSession": {
+            "mode": "backend_agency_impersonation",
+            "tokensIncluded": False,
+        },
+        "requestedFrom": _clean_text(body.get("requestedFrom") or "agency-qbr-extension"),
+    }
+
+
+def _agency_result_url(job_id: str, job: dict[str, object]) -> str:
+    download_url = _clean_text(job.get("download_url"))
+    if download_url:
+        return download_url
+    if _clean_text(job.get("status")) == "completed":
+        return f"/api/agency-agent/download/{job_id}"
+    return ""
+
+
+def _authorization_bearer(request: Request) -> str | None:
+    auth_header = request.headers.get("authorization") or ""
+    if not auth_header.lower().startswith("bearer "):
+        return None
+    token = auth_header.split(" ", 1)[1].strip()
+    return token or None
+
+
 async def _run_qbr_job(
     job_id: str,
     webhook_url: str,
@@ -95,6 +151,185 @@ async def _run_qbr_job(
         QBR_JOBS[job_id]["status"] = "error"
         QBR_JOBS[job_id]["error"] = str(exc)
         QBR_JOBS[job_id]["completed_at"] = datetime.utcnow().isoformat()
+
+
+async def _enqueue_agency_job(job_id: str, payload: dict[str, object]) -> None:
+    td_tokens = get_current_td_tokens()
+    if not td_tokens:
+        QBR_JOBS[job_id]["status"] = "error"
+        QBR_JOBS[job_id]["error"] = "No agency impersonation token available for this request."
+        QBR_JOBS[job_id]["completed_at"] = datetime.utcnow().isoformat()
+        return
+
+    thread_id = QBR_JOBS[job_id]["thread_id"]
+    message = f"{QBR_PREFIX}{json.dumps(payload)}"
+    await _run_qbr_job(
+        job_id=job_id,
+        webhook_url=settings.agency_qbr_agent_webhook_url,
+        message=message,
+        thread_id=thread_id,
+        extra_data={"td_tokens": td_tokens},
+    )
+
+
+@router.post("/agency-agent")
+async def submit_agency_agent(payload: dict[str, object]) -> dict[str, object]:
+    agency_payload = _build_agency_payload(payload or {})
+    if not agency_payload["clientUsername"]:
+        raise HTTPException(status_code=400, detail="clientUsername is required.")
+    if not agency_payload["fromDate"] or not agency_payload["toDate"]:
+        raise HTTPException(status_code=400, detail="startDate/endDate are required.")
+
+    job_id = str(uuid.uuid4())
+    thread_id = job_id
+    THREADS[thread_id] = []
+    QBR_JOBS[job_id] = {
+        "status": "queued",
+        "created_at": datetime.utcnow().isoformat(),
+        "thread_id": thread_id,
+        "request": agency_payload,
+    }
+
+    asyncio.create_task(_enqueue_agency_job(job_id, agency_payload))
+
+    return {
+        "ok": True,
+        "data": {
+            "executionId": job_id,
+            "status": "queued",
+            "request": agency_payload,
+        },
+    }
+
+
+@router.get("/agency-agent/status/{job_id}")
+async def get_agency_agent_status(job_id: str) -> dict[str, object]:
+    job = QBR_JOBS.get(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Agency QBR job not found.")
+
+    result_url = _agency_result_url(job_id, job)
+    return {
+        "ok": True,
+        "data": {
+            **job,
+            "id": job_id,
+            "executionId": job_id,
+            "resultUrl": result_url,
+            "terminal": _clean_text(job.get("status")) in POLLABLE_TERMINAL_STATES,
+        },
+    }
+
+
+@router.get("/agency-agent/download/{job_id}")
+async def download_agency_agent_file(job_id: str) -> Response:
+    job = QBR_JOBS.get(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Agency QBR job not found.")
+    if job.get("status") != "completed":
+        raise HTTPException(status_code=409, detail="Agency QBR report is not ready yet.")
+
+    download_url = _clean_text(job.get("download_url"))
+    if not download_url:
+        raise HTTPException(status_code=404, detail="No downloadable report URL available for this job.")
+
+    parsed = urlparse(download_url)
+    if parsed.scheme not in {"http", "https"}:
+        raise HTTPException(status_code=400, detail="Invalid download URL.")
+
+    try:
+        async with httpx.AsyncClient(trust_env=False) as client:
+            upstream = await client.get(download_url, timeout=120)
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=502, detail=f"Failed to download report: {exc}") from exc
+
+    if upstream.status_code >= 400:
+        raise HTTPException(status_code=502, detail="Failed to download report from source.")
+
+    file_name = _clean_text(job.get("file_name")) or os.path.basename(parsed.path) or f"agency-qbr-{job_id}.pptx"
+    if not file_name.lower().endswith(".pptx"):
+        file_name = f"{file_name}.pptx"
+
+    return Response(
+        content=upstream.content,
+        media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        headers={"Content-Disposition": f'attachment; filename="{file_name}"'},
+    )
+
+
+@router.post("/agency-agent/batch")
+async def submit_agency_agent_batch(request: Request, payload: dict[str, object]) -> dict[str, object]:
+    rows = payload.get("rows") if isinstance(payload, dict) else []
+    if not isinstance(rows, list) or not rows:
+        raise HTTPException(status_code=400, detail="rows[] is required.")
+
+    batch_id = str(uuid.uuid4())
+    batch = {
+        "id": batch_id,
+        "status": "queued",
+        "createdAt": datetime.utcnow().isoformat(),
+        "rows": [
+            {
+                "rowNumber": index + 1,
+                "status": "queued",
+                "payload": _build_agency_payload(row if isinstance(row, dict) else {}),
+            }
+            for index, row in enumerate(rows)
+        ],
+    }
+    QBR_JOBS[batch_id] = batch
+
+    async def _process_batch() -> None:
+        batch["status"] = "running"
+        bearer_token = _authorization_bearer(request)
+        for row in batch["rows"]:
+            row_payload = row["payload"]
+            try:
+                username = _clean_text(row_payload.get("clientUsername"))
+                if not username:
+                    raise ValueError("clientUsername is required for each batch row.")
+                await impersonate_client_username(username, bearer_token)
+
+                job_id = str(uuid.uuid4())
+                row["executionId"] = job_id
+                row["status"] = "running"
+                THREADS[job_id] = []
+                QBR_JOBS[job_id] = {
+                    "status": "queued",
+                    "created_at": datetime.utcnow().isoformat(),
+                    "thread_id": job_id,
+                    "request": row_payload,
+                }
+                await _enqueue_agency_job(job_id, row_payload)
+                job = QBR_JOBS.get(job_id, {})
+                row["status"] = "success" if job.get("status") == "completed" else "error"
+                row["result"] = job.get("result")
+                row["download_url"] = job.get("download_url")
+                row["file_name"] = job.get("file_name")
+                row["error"] = job.get("error")
+            except Exception as exc:
+                row["status"] = "error"
+                row["error"] = str(exc)
+        batch["status"] = "completed_with_errors" if any(row["status"] == "error" for row in batch["rows"]) else "completed"
+
+    asyncio.create_task(_process_batch())
+
+    return {
+        "ok": True,
+        "data": {
+            "batchId": batch_id,
+            "status": "queued",
+            "rowCount": len(batch["rows"]),
+        },
+    }
+
+
+@router.get("/agency-agent/batch/{batch_id}/status")
+async def get_agency_agent_batch_status(batch_id: str) -> dict[str, object]:
+    batch = QBR_JOBS.get(batch_id)
+    if not batch:
+        raise HTTPException(status_code=404, detail="Agency batch not found.")
+    return {"ok": True, "data": {"batch": batch}}
 
 
 @router.post("/chat")

@@ -4,6 +4,12 @@ This repo currently supports a Tradedoubler QBR workflow: a React frontend, Fast
 
 The original Agentic RAG masterclass docs are no longer the best description of the active product.
 
+## Active n8n Source
+
+- Active workflow source of truth: advertiser workflow `WpsIHbeMDD86vg5y`
+- Unless explicitly stated otherwise, use the advertiser workflow as the current implementation reference for backend and presentation behavior.
+- Do not assume publisher workflow exports are the active runtime path.
+
 ## Active Applications
 
 | Area | Path | Purpose |

@@ -26,6 +26,7 @@ class Settings(BaseSettings):
     td_oauth_username: str = ""
     td_oauth_password: str = ""
     qbr_agent_webhook_url: str = "https://coe-n8n.coe-untrust-eu-de.prod.tddrift.net/webhook/qbr-v4-presenton-1e2f9f4d"
+    agency_qbr_agent_webhook_url: str = "http://127.0.0.1:5678/webhook/agency-agent-qbr-backend-auth-20260610"
 
     class Config:
         env_file = ".env"

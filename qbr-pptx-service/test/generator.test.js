@@ -369,7 +369,7 @@ test("cover title and client copy use the base program name for multi-program re
   assert.doesNotMatch(coverSlide.bullets[0], /\+7 more|HP store BE|HP store UK/i);
 });
 
-test("program breakdown uses the program name when the Market column is missing", async () => {
+test("program breakdown extracts a market code from the program name when the Market column is missing", async () => {
   const result = await generatePresentation({
     ...misleadingHeadingPayload(),
     programScopeTable: [
@@ -392,10 +392,10 @@ test("program breakdown uses the program name when the Market column is missing"
   assert.ok(programBreakdownSlide);
   assert.equal(programBreakdownSlide.tables[0].columns[1], "Market");
   assert.equal(programBreakdownSlide.tables[0].rows[0][0], "12345");
-  assert.equal(programBreakdownSlide.tables[0].rows[0][1], "HP store BE");
+  assert.equal(programBreakdownSlide.tables[0].rows[0][1], "BE");
 });
 
-test("program breakdown populates the Market column with the program name", async () => {
+test("program breakdown prefers the explicit Market value when provided", async () => {
   const result = await generatePresentation({
     ...misleadingHeadingPayload(),
     programScopeTable: [
@@ -417,7 +417,31 @@ test("program breakdown populates the Market column with the program name", asyn
   const programBreakdownSlide = result.deckSpec.slides.find((slide) => slide.id === "kpi-cost-roi");
 
   assert.ok(programBreakdownSlide);
-  assert.equal(programBreakdownSlide.tables[0].rows[0][1], "HP Store");
+  assert.equal(programBreakdownSlide.tables[0].rows[0][1], "UK");
+});
+
+test("program breakdown extracts a trailing country name when the Market column is missing", async () => {
+  const result = await generatePresentation({
+    ...misleadingHeadingPayload(),
+    programScopeTable: [
+      {
+        Program: "HP Store Germany",
+        "Program ID": "54321",
+        Clicks: "15,000",
+        Impressions: "120,000",
+        Sales: "640",
+        "Conversion Rate": "4.27%",
+        AOV: "EUR 48.00",
+        "Total Order Value": "EUR 30,720",
+        "YoY Change": "+6.0%"
+      }
+    ]
+  });
+
+  const programBreakdownSlide = result.deckSpec.slides.find((slide) => slide.id === "kpi-cost-roi");
+
+  assert.ok(programBreakdownSlide);
+  assert.equal(programBreakdownSlide.tables[0].rows[0][1], "Germany");
 });
 
 test("program KPI tables survive n8n-style request wrappers", async () => {
@@ -951,6 +975,157 @@ test("advertiser Brand New Publishers uses a single panel when there is no disti
   assert.match(slideXml, /Highest order value new publishers/);
   assert.doesNotMatch(slideXml, /Lower order value new publishers/);
   assert.match(slideXml, /£10,000|Â£10,000/);
+});
+
+test("advertiser publisher recommendations render as one deck summary and one-sheet workbook", async () => {
+  const contentPublishers = Array.from({ length: 12 }, (_, index) => ({
+    "Publisher Name": `Content Prospect ${index + 1}`,
+    "Source ID": `content-${index + 1}`,
+    "Promotion Type": "Content",
+    Description: `Editorial and review publisher ${index + 1}`,
+    URL: `https://content-${index + 1}.example.com`,
+    "Total Connections": String(100 - index),
+    "Acceptance Ratio": `${90 - index}%`,
+    "Accepted Connections": String(50 - index),
+    "Rejected Connections": String(index)
+  }));
+
+  const result = await generatePresentation({
+    ...misleadingHeadingPayload(),
+    publisherCategorySlides: [
+      {
+        category: "Content",
+        recommendation: "Review the top 10 unconnected Content publishers.",
+        evidence: ["12 reviewable publisher source(s)", "1,140 total connection signal(s)"],
+        recommendedPublishers: contentPublishers
+      },
+      {
+        category: "Price Comparison",
+        recommendation: "Review high-fit price comparison opportunities.",
+        evidence: ["3 reviewable publisher source(s)"],
+        recommendedPublishers: [
+          {
+            "Publisher Name": "Compare Prospect",
+            "Source ID": "compare-101",
+            "Promotion Type": "Price Comparison",
+            Description: "Comparison engine for category-led shopping.",
+            URL: "https://compare.example.com",
+            "Total Connections": "77",
+            "Acceptance Ratio": "88%",
+            "Accepted Connections": "77",
+            "Rejected Connections": "5"
+          }
+        ]
+      }
+    ]
+  });
+
+  const summarySlide = result.deckSpec.slides.find((slide) => slide.id === "publisher-expansion-opportunities");
+  const categorySlides = result.deckSpec.slides.filter((slide) => /^publisher-recommendations-/.test(slide.id));
+
+  assert.ok(summarySlide);
+  assert.equal(categorySlides.length, 0);
+  assert.equal(summarySlide.kind, "publisher-table");
+  assert.equal(summarySlide.title, "Publisher Expansion Opportunities");
+  assert.deepEqual(summarySlide.tables[0].columns, [
+    "Publisher Type",
+    "Publishers",
+    "Accepted Connections",
+    "Avg Acceptance Ratio"
+  ]);
+  assert.deepEqual(summarySlide.tables[0].rows[0], ["Content", "12", "534", "84.5%"]);
+  assert.match(summarySlide.callout, /Excel workbook/i);
+
+  assert.ok(Buffer.isBuffer(result.excelBuffer));
+  assert.equal(result.excelFileName, "qbr_deck_publisher_recommendations.xlsx");
+
+  const workbook = await JSZip.loadAsync(result.excelBuffer);
+  const sheetXml = await workbook.file("xl/worksheets/sheet1.xml").async("string");
+  const sharedStrings = await workbook.file("xl/sharedStrings.xml").async("string");
+  const decodedSheet = sheetXml.replace(/<v>(\d+)<\/v>/g, (_match, index) => {
+    const strings = Array.from(sharedStrings.matchAll(/<si><t[^>]*>(.*?)<\/t><\/si>/g)).map(([, value]) => value);
+    return strings[Number(index)] || "";
+  });
+
+  [
+    "Program ID",
+    "Publisher Type",
+    "Publisher Name",
+    "Source ID",
+    "Description",
+    "URL",
+    "Acceptance Ratio",
+    "Accepted Connections",
+    "Rejected Connections",
+    "Compare Prospect",
+    "compare-101",
+    "Content Prospect 1"
+  ].forEach((text) => assert.match(decodedSheet, new RegExp(text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))));
+  assert.ok(decodedSheet.indexOf("Compare Prospect") < decodedSheet.indexOf("Content Prospect 1"));
+});
+
+test("advertiser publisher recommendation workbook separates multi-program rows by program ID", async () => {
+  const result = await generatePresentation({
+    ...misleadingHeadingPayload(),
+    publisherProgramIds: ["327928", "123456"],
+    publisherCategorySlides: [
+      {
+        programId: "327928",
+        category: "Content",
+        recommendedPublishers: [
+          {
+            "Publisher Name": "Program A Publisher",
+            "Source ID": "source-a",
+            "Program ID": "327928",
+            "Promotion Type": "Content",
+            Description: "Publisher for first submitted program.",
+            URL: "https://program-a.example.com",
+            "Acceptance Ratio": "91%",
+            "Accepted Connections": "20",
+            "Rejected Connections": "2"
+          }
+        ]
+      },
+      {
+        programId: "123456",
+        category: "Cashback",
+        recommendedPublishers: [
+          {
+            "Publisher Name": "Program B Publisher",
+            "Source ID": "source-b",
+            "Program ID": "123456",
+            "Promotion Type": "Cashback",
+            Description: "Publisher for second submitted program.",
+            URL: "https://program-b.example.com",
+            "Acceptance Ratio": "87%",
+            "Accepted Connections": "30",
+            "Rejected Connections": "4"
+          }
+        ]
+      }
+    ]
+  });
+
+  const workbook = await JSZip.loadAsync(result.excelBuffer);
+  const workbookXml = await workbook.file("xl/workbook.xml").async("string");
+  const sheet1Xml = await workbook.file("xl/worksheets/sheet1.xml").async("string");
+  const sheet2Xml = await workbook.file("xl/worksheets/sheet2.xml").async("string");
+  const sharedStrings = await workbook.file("xl/sharedStrings.xml").async("string");
+  const strings = Array.from(sharedStrings.matchAll(/<si><t[^>]*>(.*?)<\/t><\/si>/g)).map(([, value]) => value);
+  const decode = (xml) => xml.replace(/<v>(\d+)<\/v>/g, (_match, index) => strings[Number(index)] || "");
+
+  assert.match(workbookXml, /name="327928"/);
+  assert.match(workbookXml, /name="123456"/);
+  const decodedSheets = [decode(sheet1Xml), decode(sheet2Xml)];
+  const programASheet = decodedSheets.find((sheet) => /Program A Publisher/.test(sheet));
+  const programBSheet = decodedSheets.find((sheet) => /Program B Publisher/.test(sheet));
+  assert.ok(programASheet);
+  assert.ok(programBSheet);
+  assert.match(programASheet, /Program ID/);
+  assert.match(programASheet, /327928/);
+  assert.match(programBSheet, /123456/);
+  assert.doesNotMatch(programASheet, /Program B Publisher/);
+  assert.doesNotMatch(programBSheet, /Program A Publisher/);
 });
 
 test("cover slide renders the TD logo as the white image asset", async () => {

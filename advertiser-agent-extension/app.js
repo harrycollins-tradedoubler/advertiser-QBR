@@ -1,25 +1,23 @@
-const DEFAULT_API_BASE_URL = "http://localhost:3000";
+const DEFAULTS = {
+  oauthUrl: "https://connect.tradedoubler.com/uaa/oauth/token",
+  impersonateUrl: "https://connect.tradedoubler.com/uaa/admin/impersonate?username=",
+  advertiserBase: "https://connect.tradedoubler.com/advertiser/",
+  oauthBasic: "dGRjb25uZWN0X3B1Ymxpc2hlcjoxMjM0NTY=",
+  qbrWebhookUrl: "http://127.0.0.1:5678/webhook/agency-agent-qbr-backend-auth-20260610"
+};
 const STORAGE_KEYS = {
-  apiBaseUrl: "advertiserAgentApiBaseUrl"
+  connectionConfig: "advertiserAgentConnectionConfig"
 };
-const ROUTES = {
-  health: "/api/health",
-  submit: "/api/advertiser-agent",
-  status: (executionId) => `/api/advertiser-agent/status/${encodeURIComponent(executionId)}`,
-  download: (executionId) => `/api/advertiser-agent/download/${encodeURIComponent(executionId)}`,
-  batch: "/api/advertiser-agent/batch",
-  batchStatus: (batchId) => `/api/advertiser-agent/batch/${encodeURIComponent(batchId)}/status`,
-  tdAdvertiserImpersonate: "/api/td/advertiser-impersonate",
-  tdAdvertiserPrograms: (limit = 100) => `/api/td/advertiser-programs?limit=${encodeURIComponent(limit)}`,
-  tdClearTokens: "/api/td/clear-tokens"
-};
-const POLL_INTERVAL_MS = 2000;
-const MAX_POLL_ATTEMPTS = 12;
-
 const form = document.getElementById("advertiserForm");
-const apiBaseUrlInput = document.getElementById("apiBaseUrl");
 const testApiButton = document.getElementById("testApi");
 const submitButton = document.getElementById("submitRequest");
+const adminUsernameInput = document.getElementById("adminUsername");
+const adminPasswordInput = document.getElementById("adminPassword");
+const qbrWebhookUrlInput = document.getElementById("qbrWebhookUrl");
+const oauthUrlInput = document.getElementById("oauthUrl");
+const impersonateUrlInput = document.getElementById("impersonateUrl");
+const advertiserBaseInput = document.getElementById("advertiserBase");
+const oauthBasicInput = document.getElementById("oauthBasic");
 const accessTokenInput = document.getElementById("accessToken");
 const clientUsernameInput = document.getElementById("clientUsername");
 const impersonateClientButton = document.getElementById("impersonateClient");
@@ -40,25 +38,22 @@ const batchFileInput = document.getElementById("batchFile");
 const runBatchButton = document.getElementById("runBatch");
 const batchPreview = document.getElementById("batchPreview");
 
-let lastHealthCheck = {
-  baseUrl: "",
-  ok: false
-};
 let programs = [];
 let selectedProgramIds = [];
 let impersonatedClientUsername = "";
 let batchRows = [];
 
-function normalizeApiBaseUrl(value) {
+function normalizeBaseUrl(value, fallback = "") {
   const trimmed = String(value || "").trim();
-  if (!trimmed) return DEFAULT_API_BASE_URL;
+  if (!trimmed) return fallback;
 
   const withProtocol = /^[a-z][a-z\d+\-.]*:\/\//i.test(trimmed) ? trimmed : `http://${trimmed}`;
   return withProtocol.replace(/\/+$/, "");
 }
 
-function joinUrl(baseUrl, path) {
-  return `${normalizeApiBaseUrl(baseUrl)}${path.startsWith("/") ? path : `/${path}`}`;
+function ensureTrailingSlash(value) {
+  const text = String(value || "").trim();
+  return text.endsWith("/") ? text : `${text}/`;
 }
 
 function normalizeDate(date) {
@@ -83,11 +78,50 @@ function setStorageValue(key, value) {
   });
 }
 
+function getConnectionConfig() {
+  return {
+    adminUsername: adminUsernameInput.value.trim(),
+    adminPassword: adminPasswordInput.value,
+    oauthUrl: oauthUrlInput.value.trim() || DEFAULTS.oauthUrl,
+    impersonateUrl: impersonateUrlInput.value.trim() || DEFAULTS.impersonateUrl,
+    advertiserBase: ensureTrailingSlash(advertiserBaseInput.value.trim() || DEFAULTS.advertiserBase),
+    oauthBasic: oauthBasicInput.value.trim() || DEFAULTS.oauthBasic,
+    qbrWebhookUrl: normalizeBaseUrl(qbrWebhookUrlInput.value.trim(), DEFAULTS.qbrWebhookUrl)
+  };
+}
+
+async function saveConnectionConfig() {
+  const cfg = getConnectionConfig();
+  await setStorageValue(STORAGE_KEYS.connectionConfig, {
+    adminUsername: cfg.adminUsername,
+    oauthUrl: cfg.oauthUrl,
+    impersonateUrl: cfg.impersonateUrl,
+    advertiserBase: cfg.advertiserBase,
+    oauthBasic: cfg.oauthBasic,
+    qbrWebhookUrl: cfg.qbrWebhookUrl
+  });
+  return cfg;
+}
+
+function applyConnectionConfig(cfg = {}) {
+  adminUsernameInput.value = cfg.adminUsername || "";
+  adminPasswordInput.value = "";
+  oauthUrlInput.value = cfg.oauthUrl || DEFAULTS.oauthUrl;
+  impersonateUrlInput.value = cfg.impersonateUrl || DEFAULTS.impersonateUrl;
+  advertiserBaseInput.value = cfg.advertiserBase || DEFAULTS.advertiserBase;
+  oauthBasicInput.value = cfg.oauthBasic || DEFAULTS.oauthBasic;
+  qbrWebhookUrlInput.value = cfg.qbrWebhookUrl || DEFAULTS.qbrWebhookUrl;
+}
+
 function sendRuntimeMessage(message) {
   return new Promise((resolve, reject) => {
     chrome.runtime.sendMessage(message, (result) => {
       if (chrome.runtime.lastError) {
-        reject(new Error(chrome.runtime.lastError.message));
+        const rawMessage = chrome.runtime.lastError.message || "Chrome runtime message failed.";
+        const reloadHint = /message port closed|receiving end does not exist/i.test(rawMessage)
+          ? " Reload the unpacked extension in chrome://extensions, then reopen the extension page."
+          : "";
+        reject(new Error(`${rawMessage}${reloadHint}`));
         return;
       }
       resolve(result);
@@ -95,34 +129,17 @@ function sendRuntimeMessage(message) {
   });
 }
 
-async function requestApiJson(path, options = {}) {
-  const baseUrl = normalizeApiBaseUrl(apiBaseUrlInput.value || DEFAULT_API_BASE_URL);
-  await setStorageValue(STORAGE_KEYS.apiBaseUrl, baseUrl);
-
-  const headers = {
-    Accept: "application/json",
-    ...(options.headers || {})
-  };
-
-  let body = options.body;
-  if (body && typeof body !== "string") {
-    headers["Content-Type"] = "application/json";
-    body = JSON.stringify(body);
-  }
-
+async function sendExtensionRequest(message) {
   const result = await sendRuntimeMessage({
-    type: "ADVERTISER_AGENT_API_REQUEST",
-    url: joinUrl(baseUrl, path),
-    method: options.method || "GET",
-    headers,
-    body
+    ...message,
+    cfg: getConnectionConfig()
   });
 
   if (!result || !result.ok) {
     throw new Error(result?.error || "The extension service worker did not return a response.");
   }
 
-  return result.response;
+  return result.data;
 }
 
 function redact(value) {
@@ -166,7 +183,7 @@ function showResultLink(label, href) {
 function showBatchDownloadLinks(batch) {
   clearResultLink();
   const rows = Array.isArray(batch?.rows) ? batch.rows : [];
-  const successfulRows = rows.filter((row) => row.status === "success" && row.executionId);
+  const successfulRows = rows.filter((row) => row.status === "success" && (row.resultUrl || row.download_url || row.pptx_url));
 
   if (!successfulRows.length) return;
 
@@ -176,7 +193,7 @@ function showBatchDownloadLinks(batch) {
       : "unknown-program";
     appendResultLink(
       `Download row ${row.rowNumber} (${row.clientUsername} - ${programLabel})`,
-      joinUrl(apiBaseUrlInput.value || DEFAULT_API_BASE_URL, ROUTES.download(row.executionId))
+      resolveResultUrl(row.resultUrl || row.download_url || row.pptx_url)
     );
   }
 }
@@ -217,7 +234,7 @@ function getFormPayload() {
     fromDate: normalizeDate(data.get("dateFrom")),
     toDate: normalizeDate(data.get("dateTo")),
     tdSession: {
-      mode: "backend_advertiser_impersonation",
+      mode: "extension_advertiser_impersonation",
       tokensIncluded: false
     },
     requestedFrom: "advertiser-agent-extension"
@@ -239,23 +256,8 @@ function findFirstValue(data, keys) {
   return "";
 }
 
-function getExecutionId(data) {
-  return findFirstValue(data, ["executionId", "jobId", "id"]);
-}
-
 function getResultUrl(data) {
-  return findFirstValue(data, ["reportUrl", "downloadUrl", "download_url", "url"]);
-}
-
-function responseErrorMessage(response, fallback) {
-  const rawData = typeof response?.data === "string" ? response.data : "";
-  const routeNotFoundMatch = rawData.match(/Cannot\s+(GET|POST|PUT|PATCH|DELETE)\s+([^\s<]+)/i);
-  if (routeNotFoundMatch) {
-    return `${fallback}: API Base URL does not expose ${routeNotFoundMatch[1].toUpperCase()} ${routeNotFoundMatch[2]}`;
-  }
-
-  const detail = response?.data?.detail || response?.data?.message || rawData.trim() || response?.statusText;
-  return detail ? `${fallback}: ${detail}` : fallback;
+  return findFirstValue(data, ["reportUrl", "resultUrl", "downloadUrl", "download_url", "pptx_url", "file_url", "url"]);
 }
 
 function normalizeProgramItems(data) {
@@ -489,12 +491,7 @@ function resolveResultUrl(value) {
   if (!value) return "";
   const url = String(value);
   if (/^[a-z][a-z\d+\-.]*:\/\//i.test(url)) return url;
-  return joinUrl(apiBaseUrlInput.value || DEFAULT_API_BASE_URL, url);
-}
-
-function isTerminalStatus(data) {
-  const status = String(findFirstValue(data, ["status", "state"]) || "").toLowerCase();
-  return ["complete", "completed", "done", "failed", "error", "cancelled"].includes(status);
+  return url;
 }
 
 function renderPrograms() {
@@ -596,36 +593,26 @@ function updateSummary() {
   updateRangePreview();
 }
 
-function getAuthHeaders() {
-  const headers = {};
-  const accessToken = accessTokenInput.value.trim();
-  if (accessToken) {
-    headers.Authorization = `Bearer ${accessToken}`;
-  }
-  return headers;
-}
-
 async function testApi() {
   clearResultLink();
-  const baseUrl = normalizeApiBaseUrl(apiBaseUrlInput.value || DEFAULT_API_BASE_URL);
-  apiBaseUrlInput.value = baseUrl;
   testApiButton.disabled = true;
-  writeStatus("Testing API health endpoint...", { url: joinUrl(baseUrl, ROUTES.health) });
+  writeStatus("Saving TD connection settings...", {
+    qbrWebhookUrl: qbrWebhookUrlInput.value,
+    advertiserBase: advertiserBaseInput.value
+  });
 
   try {
-    const response = await requestApiJson(ROUTES.health);
-    writeStatus("API health response", response);
-    lastHealthCheck = {
-      baseUrl,
-      ok: Boolean(response.ok)
-    };
-    return lastHealthCheck.ok;
+    const cfg = await saveConnectionConfig();
+    const response = await sendExtensionRequest({ type: "SAVE_CONFIG" });
+    writeStatus("TD connection settings saved", {
+      ...response,
+      qbrWebhookUrl: cfg.qbrWebhookUrl,
+      advertiserBase: cfg.advertiserBase,
+      passwordStored: false
+    });
+    return true;
   } catch (error) {
-    writeStatus("API health check failed", { error: error.message });
-    lastHealthCheck = {
-      baseUrl,
-      ok: false
-    };
+    writeStatus("TD connection settings failed", { error: error.message });
     return false;
   } finally {
     testApiButton.disabled = false;
@@ -643,27 +630,20 @@ async function impersonateClient() {
   programStatus.textContent = "Impersonating client...";
 
   try {
-    const response = await requestApiJson(ROUTES.tdAdvertiserImpersonate, {
-      method: "POST",
-      headers: getAuthHeaders(),
-      body: {
-        username: clientUsername
-      }
+    await saveConnectionConfig();
+    const response = await sendExtensionRequest({
+      type: "IMPERSONATE_CLIENT",
+      username: clientUsername,
+      bearerToken: accessTokenInput.value.trim()
     });
-    if (!response.ok) {
-      throw new Error(responseErrorMessage(response, `Client impersonation request returned HTTP ${response.status}`));
-    }
 
     impersonatedClientUsername = clientUsername;
     programStatus.textContent = `Impersonated ${clientUsername}.`;
     updateSummary();
-    writeStatus("Client impersonated via backend", {
-      ok: response.ok,
-      status: response.status,
+    writeStatus("Client impersonated via extension", {
       username: clientUsername,
-      data: response.data,
-      tokenStoredInExtension: false,
-      tokenStoredServerSide: true
+      data: response,
+      tokenStoredInExtension: true
     });
     return true;
   } catch (error) {
@@ -672,7 +652,7 @@ async function impersonateClient() {
     programStatus.textContent = "Client impersonation failed.";
     writeStatus("Client impersonation failed", {
       error: error.message,
-      hint: "Configure backend TD OAuth settings, or provide a temporary backend user token override."
+      hint: "Check admin credentials, OAuth Basic, and the client username. You can also provide an admin bearer token override."
     });
     return false;
   } finally {
@@ -696,17 +676,17 @@ async function loadPrograms() {
       if (!didImpersonate) return;
     }
 
-    const response = await requestApiJson(ROUTES.tdAdvertiserPrograms(100));
-    if (!response.ok) {
-      throw new Error(responseErrorMessage(response, `Advertiser programs request returned HTTP ${response.status}`));
-    }
+    const response = await sendExtensionRequest({
+      type: "LIST_ADVERTISER_PROGRAMS",
+      limit: 100
+    });
 
-    const items = normalizeProgramItems(response.data);
+    const items = normalizeProgramItems(response);
     programs = items
       .filter((item) => item?.active === true && item?.closedProgram !== true)
       .map((item) => ({
-        id: String(item.id || ""),
-        name: item.name ? String(item.name) : `Program ${item.id}`
+        id: String(item.programId || item.id || ""),
+        name: item.name || item.programName ? String(item.name || item.programName) : `Program ${item.programId || item.id}`
       }))
       .filter((item) => item.id)
       .sort((a, b) => a.name.localeCompare(b.name));
@@ -715,16 +695,13 @@ async function loadPrograms() {
     renderPrograms();
     updateProgramStatus();
     updateSummary();
-    writeStatus("Advertiser programs loaded via backend impersonation", {
-      ok: response.ok,
-      status: response.status,
-      activeOnly: response.data?.activeOnly === true,
+    writeStatus("Advertiser programs loaded via extension impersonation", {
       programCount: programs.length,
       selectedProgramIds,
       tdSession: {
-        mode: "backend_advertiser_impersonation",
+        mode: "extension_advertiser_impersonation",
         clientUsername,
-        tokenStoredInExtension: false
+        tokenStoredInExtension: true
       }
     });
   } catch (error) {
@@ -744,6 +721,7 @@ async function loadPrograms() {
 
 async function clearSessionFields() {
   accessTokenInput.value = "";
+  adminPasswordInput.value = "";
   clientUsernameInput.value = "";
   impersonatedClientUsername = "";
   programs = [];
@@ -753,55 +731,14 @@ async function clearSessionFields() {
   updateSummary();
 
   try {
-    await requestApiJson(ROUTES.tdClearTokens, { method: "POST" });
-    writeStatus("TD session cleared", { extensionTokenFieldCleared: true, backendSessionClearRequested: true });
+    await sendRuntimeMessage({ type: "CLEAR_STATE" });
+    writeStatus("TD session cleared", { extensionTokenFieldCleared: true, extensionSessionCleared: true });
   } catch (error) {
     writeStatus("Extension fields cleared", {
       extensionTokenFieldCleared: true,
-      backendSessionClearError: error.message
+      extensionSessionClearError: error.message
     });
   }
-}
-
-async function pollStatus(executionId) {
-  for (let attempt = 1; attempt <= MAX_POLL_ATTEMPTS; attempt += 1) {
-    await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
-
-    const response = await requestApiJson(ROUTES.status(executionId));
-    writeStatus(`Status poll ${attempt} of ${MAX_POLL_ATTEMPTS}`, response);
-
-    const resultUrl = getResultUrl(response.data);
-    if (resultUrl) {
-      showResultLink("Open result", resolveResultUrl(resultUrl));
-    }
-
-    if (isTerminalStatus(response.data)) {
-      if (!resultUrl && response.ok) {
-        const downloadUrl = joinUrl(apiBaseUrlInput.value, ROUTES.download(executionId));
-        showResultLink("Open download endpoint", downloadUrl);
-      }
-      return response;
-    }
-  }
-
-  return null;
-}
-
-function isBatchTerminal(batch) {
-  return ["completed", "completed_with_errors", "error"].includes(String(batch?.status || "").toLowerCase());
-}
-
-async function pollBatchStatus(batchId) {
-  for (let attempt = 1; attempt <= 120; attempt += 1) {
-    await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
-    const response = await requestApiJson(ROUTES.batchStatus(batchId));
-    writeStatus(`Batch status poll ${attempt}`, response);
-    if (isBatchTerminal(response.data?.batch)) {
-      showBatchDownloadLinks(response.data?.batch);
-      return response;
-    }
-  }
-  return null;
 }
 
 async function handleBatchFileChange() {
@@ -830,6 +767,46 @@ async function handleBatchFileChange() {
   }
 }
 
+function splitBatchList(value) {
+  return String(value || "")
+    .split(/[;,]/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function buildBatchPayload(row) {
+  const clientUsername = String(getBatchCell(row, ["clientUsername", "username", "client email"]) || "").trim();
+  const programIds = splitBatchList(getBatchCell(row, ["programIds", "program IDs", "programId", "advertiserProgramIds"]));
+  const programNames = splitBatchList(getBatchCell(row, ["programNames", "program names", "programName"]));
+  const startDate = String(getBatchCell(row, ["startDate", "start date", "dateFrom", "fromDate"]) || "").trim();
+  const endDate = String(getBatchCell(row, ["endDate", "end date", "dateTo", "toDate"]) || "").trim();
+  const currencyCode = String(getBatchCell(row, ["currencyCode", "currency"]) || form.currencyCode?.value || "EUR").trim();
+  const languageCode = String(getBatchCell(row, ["languageCode", "language"]) || form.languageCode?.value || "EN").trim();
+
+  return {
+    type: "ADVERTISER_AGENT_REQUEST",
+    analysisLevel: "program",
+    clientUsername,
+    programId: programIds[0] || "",
+    programName: programNames[0] || (programIds[0] ? `Program ${programIds[0]}` : ""),
+    advertiserProgramIds: programIds,
+    publisherProgramIds: programIds,
+    analysisProgramIds: programIds,
+    programNames,
+    languageCode,
+    currencyCode,
+    startDate,
+    endDate,
+    fromDate: normalizeDate(startDate),
+    toDate: normalizeDate(endDate),
+    tdSession: {
+      mode: "extension_advertiser_impersonation",
+      tokensIncluded: false
+    },
+    requestedFrom: "advertiser-agent-extension-batch"
+  };
+}
+
 async function runBatch(event) {
   event?.preventDefault();
   event?.stopPropagation();
@@ -840,33 +817,44 @@ async function runBatch(event) {
   }
 
   runBatchButton.disabled = true;
-  const currentBaseUrl = normalizeApiBaseUrl(apiBaseUrlInput.value || DEFAULT_API_BASE_URL);
-  apiBaseUrlInput.value = currentBaseUrl;
 
   try {
-    if (lastHealthCheck.baseUrl !== currentBaseUrl || !lastHealthCheck.ok) {
-      const apiIsHealthy = await testApi();
-      if (!apiIsHealthy) {
-        writeStatus("Batch blocked", {
-          message: "Run Test API successfully before submitting the batch.",
-          healthEndpoint: joinUrl(currentBaseUrl, ROUTES.health)
+    await saveConnectionConfig();
+    const batch = {
+      id: `extension-batch-${Date.now()}`,
+      status: "running",
+      rows: []
+    };
+
+    for (let index = 0; index < batchRows.length; index += 1) {
+      const payload = buildBatchPayload(batchRows[index]);
+      const row = {
+        rowNumber: index + 1,
+        clientUsername: payload.clientUsername,
+        advertiserProgramIds: payload.advertiserProgramIds,
+        status: "running"
+      };
+      batch.rows.push(row);
+      writeStatus(`Batch row ${row.rowNumber} of ${batchRows.length}`, batch);
+
+      try {
+        const response = await sendExtensionRequest({
+          type: "SUBMIT_QBR_REQUEST",
+          payload,
+          bearerToken: accessTokenInput.value.trim()
         });
-        return;
+        row.status = "success";
+        row.result = response.data || response;
+        row.resultUrl = getResultUrl(response.data || response);
+      } catch (error) {
+        row.status = "error";
+        row.error = error.message;
       }
     }
 
-    const response = await requestApiJson(ROUTES.batch, {
-      method: "POST",
-      body: {
-        rows: batchRows
-      }
-    });
-    writeStatus("Batch accepted", response);
-
-    const batchId = response.data?.batchId;
-    if (batchId) {
-      await pollBatchStatus(batchId);
-    }
+    batch.status = batch.rows.some((row) => row.status === "error") ? "completed_with_errors" : "completed";
+    writeStatus("Batch completed", batch);
+    showBatchDownloadLinks(batch);
   } catch (error) {
     writeStatus("Batch request failed", { error: error.message });
   } finally {
@@ -900,44 +888,20 @@ async function submitRequest() {
   }
 
   submitButton.disabled = true;
-  const currentBaseUrl = normalizeApiBaseUrl(apiBaseUrlInput.value || DEFAULT_API_BASE_URL);
-  apiBaseUrlInput.value = currentBaseUrl;
 
   try {
-    if (lastHealthCheck.baseUrl !== currentBaseUrl || !lastHealthCheck.ok) {
-      const apiIsHealthy = await testApi();
-      if (!apiIsHealthy) {
-        writeStatus("Advertiser request blocked", {
-          message: "Run Test API successfully before submitting the workflow request.",
-          healthEndpoint: joinUrl(currentBaseUrl, ROUTES.health)
-        });
-        return;
-      }
-    }
-
+    await saveConnectionConfig();
     writeStatus("Submitting advertiser request...", payload);
-    const response = await requestApiJson(ROUTES.submit, {
-      method: "POST",
-      body: payload
+    const response = await sendExtensionRequest({
+      type: "SUBMIT_QBR_REQUEST",
+      payload,
+      bearerToken: accessTokenInput.value.trim()
     });
     writeStatus("Advertiser request response", response);
 
-    const resultUrl = getResultUrl(response.data);
+    const resultUrl = getResultUrl(response.data || response);
     if (resultUrl) {
       showResultLink("Open result", resolveResultUrl(resultUrl));
-    }
-
-    const executionId = getExecutionId(response.data);
-    if (executionId && response.ok) {
-      try {
-        await pollStatus(executionId);
-      } catch (error) {
-        writeStatus("Status polling stopped", {
-          executionId,
-          error: error.message,
-          statusEndpoint: ROUTES.status(executionId)
-        });
-      }
     }
   } catch (error) {
     writeStatus("Advertiser request failed", { error: error.message });
@@ -947,8 +911,8 @@ async function submitRequest() {
 }
 
 async function init() {
-  const storedApiBaseUrl = await getStorageValue(STORAGE_KEYS.apiBaseUrl);
-  apiBaseUrlInput.value = normalizeApiBaseUrl(storedApiBaseUrl || DEFAULT_API_BASE_URL);
+  const storedConfig = await getStorageValue(STORAGE_KEYS.connectionConfig);
+  applyConnectionConfig(storedConfig || DEFAULTS);
   renderPrograms();
   updateProgramStatus();
   updateSummary();
@@ -956,11 +920,11 @@ async function init() {
 
 form.addEventListener("input", updateSummary);
 form.addEventListener("change", updateSummary);
-apiBaseUrlInput.addEventListener("blur", async () => {
-  const normalized = normalizeApiBaseUrl(apiBaseUrlInput.value || DEFAULT_API_BASE_URL);
-  apiBaseUrlInput.value = normalized;
-  await setStorageValue(STORAGE_KEYS.apiBaseUrl, normalized);
-});
+for (const input of [adminUsernameInput, qbrWebhookUrlInput, oauthUrlInput, impersonateUrlInput, advertiserBaseInput, oauthBasicInput]) {
+  input.addEventListener("blur", () => {
+    saveConnectionConfig().catch((error) => writeStatus("Connection config save failed", { error: error.message }));
+  });
+}
 testApiButton.addEventListener("click", testApi);
 impersonateClientButton.addEventListener("click", impersonateClient);
 loadProgramsButton.addEventListener("click", loadPrograms);

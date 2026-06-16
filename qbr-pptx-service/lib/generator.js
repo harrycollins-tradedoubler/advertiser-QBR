@@ -15,6 +15,7 @@ function loadPackage(name) {
 }
 
 const PptxGenJS = loadPackage("pptxgenjs");
+const JSZip = loadPackage("jszip");
 const TEMPLATE_BLUE_BG_PATH = path.join(__dirname, "..", "assets", "qbr-bg-blue.png");
 const TEMPLATE_LIGHT_BG_PATH = path.join(__dirname, "..", "assets", "qbr-bg-light.png");
 const TD_WHITE_LOGO_PATH = path.join(__dirname, "..", "assets", "td-logo-white.png");
@@ -437,6 +438,48 @@ const MARKET_SUFFIX_CODES = new Set([
   "NL", "NO", "PL", "PT", "SE", "UK", "US"
 ]);
 
+const MARKET_SUFFIX_LABELS = new Map([
+  ["AT", "AT"],
+  ["AU", "AU"],
+  ["BE", "BE"],
+  ["BELGIUM", "Belgium"],
+  ["CA", "CA"],
+  ["CANADA", "Canada"],
+  ["CH", "CH"],
+  ["SWITZERLAND", "Switzerland"],
+  ["DE", "DE"],
+  ["GERMANY", "Germany"],
+  ["DK", "DK"],
+  ["DENMARK", "Denmark"],
+  ["ES", "ES"],
+  ["SPAIN", "Spain"],
+  ["EU", "EU"],
+  ["EUROPE", "Europe"],
+  ["FI", "FI"],
+  ["FINLAND", "Finland"],
+  ["FR", "FR"],
+  ["FRANCE", "France"],
+  ["IE", "IE"],
+  ["IRELAND", "Ireland"],
+  ["IT", "IT"],
+  ["ITALY", "Italy"],
+  ["NL", "NL"],
+  ["NETHERLANDS", "Netherlands"],
+  ["NO", "NO"],
+  ["NORWAY", "Norway"],
+  ["PL", "PL"],
+  ["POLAND", "Poland"],
+  ["PT", "PT"],
+  ["PORTUGAL", "Portugal"],
+  ["SE", "SE"],
+  ["SWEDEN", "Sweden"],
+  ["UK", "UK"],
+  ["UNITED KINGDOM", "United Kingdom"],
+  ["US", "US"],
+  ["USA", "US"],
+  ["UNITED STATES", "United States"]
+]);
+
 function stripProgramMarketSuffix(value) {
   let text = cleanInlineText(value || "");
   if (!text) return "";
@@ -457,6 +500,51 @@ function stripProgramMarketSuffix(value) {
   }
 
   return text.replace(/[\s.+-]+$/g, "").trim();
+}
+
+function extractProgramMarketSuffix(value) {
+  let text = cleanInlineText(value || "");
+  if (!text) return "";
+
+  text = text
+    .replace(/\s*(?:\+\s*\d+\s+more\b[\s.]*)+$/i, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  const bracketMatch = text.match(/^(.*?)(?:\s*[\[(]([A-Za-z][A-Za-z\s]{1,})[\])])$/);
+  if (bracketMatch) {
+    const candidate = cleanInlineText(bracketMatch[2] || "").toUpperCase();
+    if (MARKET_SUFFIX_LABELS.has(candidate)) return MARKET_SUFFIX_LABELS.get(candidate);
+  }
+
+  const normalizedUpper = text.toUpperCase();
+  const fullLabelMatches = Array.from(MARKET_SUFFIX_LABELS.keys())
+    .filter((label) => !MARKET_SUFFIX_CODES.has(label))
+    .sort((a, b) => b.length - a.length);
+  for (const label of fullLabelMatches) {
+    if (normalizedUpper === label || normalizedUpper.endsWith(` ${label}`) || normalizedUpper.endsWith(` - ${label}`)) {
+      return MARKET_SUFFIX_LABELS.get(label);
+    }
+  }
+
+  const suffixMatch = text.match(/^(.*?)(?:\s+|\s*-\s*)([A-Za-z]{2,3})$/);
+  if (suffixMatch) {
+    const candidate = cleanInlineText(suffixMatch[2] || "").toUpperCase();
+    if (MARKET_SUFFIX_LABELS.has(candidate)) return MARKET_SUFFIX_LABELS.get(candidate);
+  }
+
+  return "";
+}
+
+function resolveProgramMarket(programName, marketSource) {
+  const explicitMarket = cleanInlineText(marketSource || "");
+  if (explicitMarket && explicitMarket !== "-") return explicitMarket;
+
+  const derivedMarket = extractProgramMarketSuffix(programName);
+  if (derivedMarket) return derivedMarket;
+
+  const fallbackProgram = cleanInlineText(programName || "");
+  return fallbackProgram && fallbackProgram !== "-" ? fallbackProgram : "-";
 }
 
 function readProgramNameCandidates(programScopeTable) {
@@ -838,6 +926,30 @@ function normalizeTables(input) {
   return tables;
 }
 
+function normalizePublisherCategorySlides(input) {
+  if (!Array.isArray(input)) return [];
+  return input
+    .map((slide) => {
+      if (!slide || typeof slide !== "object" || Array.isArray(slide)) return null;
+      const category = cleanInlineText(slide.category || slide.promotionType || slide.promotionTypeName || "");
+      const recommendedPublishers = Array.isArray(slide.recommendedPublishers)
+        ? slide.recommendedPublishers
+        : Array.isArray(slide.opportunityPublishers)
+          ? slide.opportunityPublishers
+          : [];
+      const rows = normalizeRows(recommendedPublishers);
+      if (!category || !rows.length) return null;
+      return {
+        programId: cleanInlineText(slide.programId || slide["Program ID"] || ""),
+        category,
+        recommendation: cleanInlineText(slide.recommendation || ""),
+        evidence: normalizeStringList(slide.evidence),
+        recommendedPublishers: rows
+      };
+    })
+    .filter(Boolean);
+}
+
 function normalizeProgramScopeTable(input) {
   const rowsInput = Array.isArray(input)
     ? input
@@ -1187,6 +1299,16 @@ function normalizePayload(payload) {
     rankingContext
   );
   const tables = normalizeTables(payload.publisherTables || nestedPayload.publisherTables || {});
+  const publisherCategorySlides = normalizePublisherCategorySlides(
+    payload.publisherCategorySlides
+    || nestedPayload.publisherCategorySlides
+    || payload.publisherCategoryRecommendationSlides
+    || nestedPayload.publisherCategoryRecommendationSlides
+    || payload.publisherRecommendationPack?.slides
+    || nestedPayload.publisherRecommendationPack?.slides
+    || payload.publisherTables?.publisherCategoryRecommendationSlides
+    || nestedPayload.publisherTables?.publisherCategoryRecommendationSlides
+  );
   const { metrics, metricMap } = normalizeMetrics(rawProgramYoYTable || []);
   const programScopeTable = (
     Array.isArray(rawProgramScopeTable)
@@ -1230,6 +1352,7 @@ function normalizePayload(payload) {
     publisherAnalysis,
     publisherOrderValueRanking,
     brandNewPublisherRanking,
+    publisherCategorySlides,
     metrics,
     metricMap,
     tables,
@@ -1513,9 +1636,7 @@ function buildProgramBreakdownTable(input) {
         }
         const programName = firstObjectValue(row, ["Program", "Program Name", "ProgramName", "Name"]);
         const marketSource = firstObjectValue(row, ["Market", "Country", "Region"]);
-        const market = cleanInlineText(programName) && cleanInlineText(programName) !== "-"
-          ? programName
-          : marketSource;
+        const market = resolveProgramMarket(programName, marketSource);
         const clicks = firstObjectValue(row, ["Clicks", "Current Clicks"]);
         const impressions = firstObjectValue(row, ["Impressions"]);
         const sales = firstObjectValue(row, ["Sales", "Current Sales"]);
@@ -1564,9 +1685,7 @@ function buildProgramBreakdownTable(input) {
         }
         const programName = firstRowCell(row, idx, ["program", "program name", "programname", "name"]);
         const marketSource = firstRowCell(row, idx, ["market", "country", "region"]);
-        const market = cleanInlineText(programName) && cleanInlineText(programName) !== "-"
-          ? programName
-          : marketSource;
+        const market = resolveProgramMarket(programName, marketSource);
         const clicks = firstRowCell(row, idx, ["clicks", "current clicks"]);
         const impressions = firstRowCell(row, idx, ["impressions"]);
         const sales = firstRowCell(row, idx, ["sales", "current sales"]);
@@ -2999,6 +3118,368 @@ function buildSalesRiskDependenciesTable(input, salesGrowthTable, riskDependenci
   };
 }
 
+function publisherRecommendationValue(row, aliases, fallback = "-") {
+  if (!row || typeof row !== "object" || Array.isArray(row)) return fallback;
+  const keys = Object.keys(row);
+  const byLower = Object.fromEntries(keys.map((key) => [cleanInlineText(key).toLowerCase(), key]));
+  for (const alias of aliases) {
+    const key = byLower[cleanInlineText(alias).toLowerCase()];
+    if (!key) continue;
+    const value = cleanInlineText(row[key]);
+    if (value) return value;
+  }
+  return fallback;
+}
+
+function publisherRecommendationRank(row) {
+  const totalConnections = parseNumber(publisherRecommendationValue(row, [
+    "Total Connections",
+    "totalConnections",
+    "Connections"
+  ], "0")) || 0;
+  const acceptanceRatio = parseNumber(publisherRecommendationValue(row, [
+    "Acceptance Ratio",
+    "acceptanceRatio"
+  ], "0")) || 0;
+  return { totalConnections, acceptanceRatio };
+}
+
+function publisherRecommendationNumber(row, aliases, fallback = 0) {
+  const parsed = parseNumber(publisherRecommendationValue(row, aliases, String(fallback)));
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function publisherRecommendationText(row, aliases, fallback = "-") {
+  const value = publisherRecommendationValue(row, aliases, fallback);
+  return cleanInlineText(value || fallback, fallback);
+}
+
+function publisherAcceptanceRatioLabel(value) {
+  if (!Number.isFinite(value)) return "N/A";
+  return `${value.toFixed(1)}%`;
+}
+
+function slugForSlideId(value) {
+  return cleanInlineText(value || "publisher-type")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "") || "publisher-type";
+}
+
+function buildPublisherRecommendationWorkbookRows(input) {
+  const rows = [];
+  const fallbackProgramId = cleanInlineText((input.publisherProgramIds || [])[0] || input.publisherProgramId || input.programId || "", "");
+
+  for (const categorySlide of input.publisherCategorySlides || []) {
+    const category = cleanInlineText(categorySlide.category || "Publisher Type");
+    const categoryProgramId = cleanInlineText(categorySlide.programId || categorySlide["Program ID"] || "", "");
+    for (const row of categorySlide.recommendedPublishers || categorySlide.opportunityPublishers || []) {
+      const acceptanceRatio = publisherRecommendationNumber(row, [
+        "Acceptance Ratio",
+        "acceptanceRatio"
+      ], 0);
+      const acceptedConnections = publisherRecommendationNumber(row, [
+        "Accepted Connections",
+        "acceptedConnections",
+        "Accepted",
+        "accepted"
+      ], 0);
+      const rejectedConnections = publisherRecommendationNumber(row, [
+        "Rejected Connections",
+        "rejectedConnections",
+        "Rejected",
+        "rejected"
+      ], 0);
+
+      rows.push({
+        publisherType: publisherRecommendationValue(row, [
+          "Publisher Type",
+          "Promotion Type",
+          "promotionTypeName",
+          "category"
+        ], category),
+        publisherName: publisherRecommendationText(row, [
+          "Publisher Name",
+          "Publisher",
+          "sourceName"
+        ]),
+        sourceId: publisherRecommendationText(row, [
+          "Source ID",
+          "SourceID",
+          "sourceId",
+          "siteId",
+          "publisherId"
+        ], "-"),
+        programId: publisherRecommendationText(row, [
+          "Program ID",
+          "ProgramId",
+          "ProgramID",
+          "programId",
+          "Publisher Program ID",
+          "publisherProgramId"
+        ], categoryProgramId || fallbackProgramId || "Publisher Recommendations"),
+        description: publisherRecommendationText(row, [
+          "Description",
+          "description",
+          "Themes"
+        ], "-"),
+        url: publisherRecommendationText(row, ["URL", "url"], "-"),
+        acceptanceRatio,
+        acceptedConnections,
+        rejectedConnections
+      });
+    }
+  }
+
+  return rows
+    .filter((row) => row.publisherName && row.publisherName !== "-")
+    .sort((a, b) => {
+      return (b.acceptedConnections - a.acceptedConnections)
+        || (b.acceptanceRatio - a.acceptanceRatio)
+        || (b.rejectedConnections - a.rejectedConnections)
+        || a.publisherName.localeCompare(b.publisherName);
+    });
+}
+
+function buildPublisherRecommendationSummaryTable(rows) {
+  const groups = new Map();
+  for (const row of rows) {
+    const type = cleanInlineText(row.publisherType || "Unclassified", "Unclassified");
+    if (!groups.has(type)) {
+      groups.set(type, {
+        type,
+        publishers: 0,
+        acceptedConnections: 0,
+        acceptanceRatioTotal: 0,
+        acceptanceRatioCount: 0
+      });
+    }
+    const group = groups.get(type);
+    group.publishers += 1;
+    group.acceptedConnections += row.acceptedConnections;
+    if (Number.isFinite(row.acceptanceRatio)) {
+      group.acceptanceRatioTotal += row.acceptanceRatio;
+      group.acceptanceRatioCount += 1;
+    }
+  }
+
+  const summaryRows = Array.from(groups.values())
+    .sort((a, b) => {
+      const avgA = a.acceptanceRatioCount ? a.acceptanceRatioTotal / a.acceptanceRatioCount : 0;
+      const avgB = b.acceptanceRatioCount ? b.acceptanceRatioTotal / b.acceptanceRatioCount : 0;
+      return (b.acceptedConnections - a.acceptedConnections)
+        || (avgB - avgA)
+        || a.type.localeCompare(b.type);
+    })
+    .slice(0, 10)
+    .map((group) => [
+      group.type,
+      String(group.publishers),
+      Math.round(group.acceptedConnections).toLocaleString("en-GB"),
+      publisherAcceptanceRatioLabel(
+        group.acceptanceRatioCount ? group.acceptanceRatioTotal / group.acceptanceRatioCount : NaN
+      )
+    ]);
+
+  return {
+    title: "Publisher recommendation summary",
+    columns: ["Publisher Type", "Publishers", "Accepted Connections", "Avg Acceptance Ratio"],
+    rows: summaryRows.length ? summaryRows : [["-", "-", "-", "-"]],
+    dense: false,
+    colW: [4.1, 1.8, 2.8, 2.6]
+  };
+}
+
+function buildPublisherRecommendationSlides(input) {
+  const rows = buildPublisherRecommendationWorkbookRows(input);
+  if (!rows.length) return [];
+
+  return [{
+    id: "publisher-expansion-opportunities",
+    kind: "publisher-table",
+    title: "Publisher Expansion Opportunities",
+    subtitle: "Gap-analysis publisher prospects from advertiser/sources for AM review.",
+    bullets: [],
+    kpis: [],
+    tables: [buildPublisherRecommendationSummaryTable(rows)],
+    callout: "Full publisher recommendation detail is supplied in the Excel workbook, ranked by Accepted Connections then Acceptance Ratio."
+  }];
+}
+
+function escapeXml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+}
+
+function columnName(index) {
+  let n = index + 1;
+  let out = "";
+  while (n > 0) {
+    const rem = (n - 1) % 26;
+    out = String.fromCharCode(65 + rem) + out;
+    n = Math.floor((n - 1) / 26);
+  }
+  return out;
+}
+
+function buildWorksheetXml(values, indexFor) {
+  const rows = values.map((row, rowIndex) => {
+    const cells = row.map((value, columnIndex) => {
+      const ref = `${columnName(columnIndex)}${rowIndex + 1}`;
+      return `<c r="${ref}" t="s"><v>${indexFor(value)}</v></c>`;
+    }).join("");
+    return `<row r="${rowIndex + 1}">${cells}</row>`;
+  }).join("");
+
+  const lastRow = Math.max(values.length, 1);
+  const lastColumn = columnName(Math.max((values[0] || []).length - 1, 0));
+  const sheetRef = `A1:${lastColumn}${lastRow}`;
+
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+<sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>
+<cols><col min="1" max="1" width="18" customWidth="1"/><col min="2" max="2" width="24" customWidth="1"/><col min="3" max="3" width="32" customWidth="1"/><col min="4" max="4" width="18" customWidth="1"/><col min="5" max="5" width="58" customWidth="1"/><col min="6" max="6" width="42" customWidth="1"/><col min="7" max="9" width="18" customWidth="1"/></cols>
+<sheetData>${rows}</sheetData>
+<autoFilter ref="${sheetRef}"/>
+</worksheet>`;
+}
+
+function createSharedStringIndexer() {
+  const strings = [];
+  const indexByValue = new Map();
+  const indexFor = (value) => {
+    const normalized = cleanInlineText(value, "");
+    if (!indexByValue.has(normalized)) {
+      indexByValue.set(normalized, strings.length);
+      strings.push(normalized);
+    }
+    return indexByValue.get(normalized);
+  };
+
+  const toXml = () => `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" count="${strings.length}" uniqueCount="${strings.length}">
+${strings.map((value) => `<si><t>${escapeXml(value)}</t></si>`).join("")}
+</sst>`;
+
+  return { indexFor, toXml };
+}
+
+function sanitizeExcelSheetName(value, fallback) {
+  const cleaned = cleanInlineText(value || fallback || "Sheet", fallback || "Sheet")
+    .replace(/[:\\/?*\[\]]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 31);
+  return cleaned || fallback || "Sheet";
+}
+
+function uniqueExcelSheetName(value, used, fallback) {
+  const base = sanitizeExcelSheetName(value, fallback);
+  let name = base;
+  let suffix = 2;
+  while (used.has(name.toLowerCase())) {
+    const marker = ` ${suffix}`;
+    name = `${base.slice(0, Math.max(1, 31 - marker.length))}${marker}`;
+    suffix += 1;
+  }
+  used.add(name.toLowerCase());
+  return name;
+}
+
+async function buildPublisherRecommendationWorkbook(input) {
+  const rows = buildPublisherRecommendationWorkbookRows(input);
+  if (!rows.length) return null;
+
+  const columns = [
+    "Program ID",
+    "Publisher Type",
+    "Publisher Name",
+    "Source ID",
+    "Description",
+    "URL",
+    "Acceptance Ratio",
+    "Accepted Connections",
+    "Rejected Connections"
+  ];
+
+  const groupedRows = new Map();
+  for (const row of rows) {
+    const programId = cleanInlineText(row.programId || "Publisher Recommendations", "Publisher Recommendations");
+    if (!groupedRows.has(programId)) groupedRows.set(programId, []);
+    groupedRows.get(programId).push(row);
+  }
+
+  const sharedStrings = createSharedStringIndexer();
+  const usedSheetNames = new Set();
+  const sheets = Array.from(groupedRows.entries()).map(([programId, programRows], index) => {
+    const sheetValues = [
+      columns,
+      ...programRows.map((row) => [
+        row.programId,
+        row.publisherType,
+        row.publisherName,
+        row.sourceId,
+        row.description,
+        row.url,
+        publisherAcceptanceRatioLabel(row.acceptanceRatio),
+        Math.round(row.acceptedConnections).toLocaleString("en-GB"),
+        Math.round(row.rejectedConnections).toLocaleString("en-GB")
+      ])
+    ];
+    return {
+      id: index + 1,
+      relId: `rId${index + 1}`,
+      name: uniqueExcelSheetName(programId, usedSheetNames, `Program ${index + 1}`),
+      xml: buildWorksheetXml(sheetValues, sharedStrings.indexFor)
+    };
+  });
+
+  const zip = new JSZip();
+  zip.file("[Content_Types].xml", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+<Default Extension="xml" ContentType="application/xml"/>
+<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
+${sheets.map((sheet) => `<Override PartName="/xl/worksheets/sheet${sheet.id}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`).join("\n")}
+<Override PartName="/xl/sharedStrings.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sharedStrings+xml"/>
+<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>
+</Types>`);
+  zip.folder("_rels").file(".rels", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
+</Relationships>`);
+  zip.folder("xl").file("workbook.xml", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+<sheets>${sheets.map((sheet) => `<sheet name="${escapeXml(sheet.name)}" sheetId="${sheet.id}" r:id="${sheet.relId}"/>`).join("")}</sheets>
+</workbook>`);
+  const styleRelId = `rId${sheets.length + 1}`;
+  const sharedStringsRelId = `rId${sheets.length + 2}`;
+  zip.folder("xl").folder("_rels").file("workbook.xml.rels", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+${sheets.map((sheet) => `<Relationship Id="${sheet.relId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${sheet.id}.xml"/>`).join("\n")}
+<Relationship Id="${styleRelId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
+<Relationship Id="${sharedStringsRelId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/sharedStrings" Target="sharedStrings.xml"/>
+</Relationships>`);
+  sheets.forEach((sheet) => {
+    zip.folder("xl").folder("worksheets").file(`sheet${sheet.id}.xml`, sheet.xml);
+  });
+  zip.folder("xl").file("sharedStrings.xml", sharedStrings.toXml());
+  zip.folder("xl").file("styles.xml", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+<fonts count="1"><font><sz val="11"/><name val="Calibri"/></font></fonts>
+<fills count="1"><fill><patternFill patternType="none"/></fill></fills>
+<borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>
+<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
+<cellXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/></cellXfs>
+</styleSheet>`);
+
+  return zip.generateAsync({ type: "nodebuffer", compression: "DEFLATE" });
+}
+
 function buildPublisherProgramDeckSpec(input, theme) {
   const slides = [];
   const headline = buildHeadline(input);
@@ -3607,6 +4088,8 @@ function buildDeckSpec(input, theme) {
     kpis: [],
     tables: []
   });
+
+  slides.push(...buildPublisherRecommendationSlides(input));
 
   slides.push({
     id: "risks-dependencies",
@@ -5452,15 +5935,31 @@ async function generatePresentation(payload, options = {}) {
   const deckSpec = buildDeckSpec(normalized, theme);
   const localizedDeckSpec = await localizeDeckSpec(deckSpec, normalized.languageCode);
   const buffer = await renderDeck(localizedDeckSpec);
+  const excelBuffer = await buildPublisherRecommendationWorkbook(normalized);
   const requestedFileName = normalized.outputFileName || `${safeName(localizedDeckSpec.metadata.deckTitle)}_${crypto.randomUUID()}.pptx`;
   const fileName = sanitizeOutputFileName(requestedFileName);
+  const excelFileName = excelBuffer ? "qbr_deck_publisher_recommendations.xlsx" : null;
 
-  return { normalized, deckSpec: localizedDeckSpec, buffer, fileName };
+  return { normalized, deckSpec: localizedDeckSpec, buffer, fileName, excelBuffer, excelFileName };
 }
 
 async function saveOutput(result, outputDir) {
   await fs.mkdir(outputDir, { recursive: true });
   const savedPptx = await writeCreateOnly(fs, outputDir, sanitizeOutputFileName(result.fileName), result.buffer);
+
+  let excelFileName = null;
+  if (result.excelBuffer) {
+    const preferredExcelName = cleanInlineText(result.excelFileName || "", "")
+      || savedPptx.fileName.replace(/\.pptx$/i, "_publisher_recommendations.xlsx");
+    const safeExcelName = path.basename(preferredExcelName)
+      .replace(/[^a-zA-Z0-9-_. ]/g, "")
+      .replace(/\s+/g, "_")
+      .replace(/_+/g, "_")
+      .toLowerCase()
+      .replace(/\.xlsx$/i, "") || "publisher_recommendations";
+    const savedExcel = await writeCreateOnly(fs, outputDir, `${safeExcelName}.xlsx`, result.excelBuffer);
+    excelFileName = savedExcel.fileName;
+  }
 
   let deckSpecFileName = null;
   if (result.normalized.debug) {
@@ -5475,7 +5974,7 @@ async function saveOutput(result, outputDir) {
     deckSpecFileName = savedDeckSpec.fileName;
   }
 
-  return { pptxPath: savedPptx.fullPath, fileName: savedPptx.fileName, deckSpecFileName };
+  return { pptxPath: savedPptx.fullPath, fileName: savedPptx.fileName, deckSpecFileName, excelFileName };
 }
 
 module.exports = {

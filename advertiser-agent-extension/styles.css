@@ -224,6 +224,25 @@ textarea:focus {
   margin-top: 14px;
 }
 
+details {
+  margin: 2px 0 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #ffffff;
+  padding: 10px 12px;
+}
+
+summary {
+  color: #334155;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.advanced-grid {
+  margin: 12px 0 0;
+}
+
 .button {
   display: inline-flex;
   align-items: center;

@@ -14,6 +14,12 @@ The active system is:
 
 Do not treat the old RAG module plan as the source of truth. Use this file, `progress.md`, source code, and recent git history before making changes.
 
+## Active n8n Source
+
+- Treat the advertiser n8n workflow with ID `WpsIHbeMDD86vg5y` as the active workflow source of truth for this repo unless the user explicitly says otherwise.
+- Do not assume publisher workflows are the active implementation path when reasoning about the current frontend, backend, or presentation flow.
+- If multiple exported n8n workflows exist under `workflows/`, prefer tracing runtime behavior from the backend webhook configuration first, then map that to the advertiser workflow above.
+
 ## Primary Local Services
 
 - Backend API: `http://localhost:8008`
