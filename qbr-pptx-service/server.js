@@ -5,7 +5,7 @@ const path = require("node:path");
 
 const { generatePresentation, saveOutput } = require("./lib/generator");
 
-const PORT = Number(process.env.PORT || 3010);
+const PORT = Number(process.env.PORT || 3011);
 const API_KEY = process.env.QBR_PPTX_API_KEY || process.env.API_KEY || "td-qbr-pptx-local-2026-secret";
 const OUTPUT_DIR = path.join(__dirname, "outputs");
 const DEFAULT_DOWNLOAD_TTL_SECONDS = 60 * 60;

@@ -1,0 +1,119 @@
+# actionlint: disable=runner-label,action
+
+name: QBR PPTX Service - Build Image to ECR
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "qbr-pptx-service/**"
+      - ".github/workflows/qbr-pptx-service-ci-build-ecr.yml"
+  push:
+    branches: [main]
+    paths:
+      - "qbr-pptx-service/**"
+      - ".github/workflows/qbr-pptx-service-ci-build-ecr.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  AWS_REGION: eu-central-1
+  ECR_REGISTRY: 644602157532.dkr.ecr.eu-central-1.amazonaws.com
+  PROJECT: qbr-pptx-service
+  IMAGE_NAME: qbr-pptx-service
+  PLATFORMS: linux/arm64
+  SERVICE_DIR: qbr-pptx-service
+
+jobs:
+  checks:
+    runs-on: td-self-hosted-runners-arm64
+    defaults:
+      run:
+        working-directory: ${{ env.SERVICE_DIR }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: ${{ env.SERVICE_DIR }}/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm test
+
+  publish:
+    needs: checks
+    if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch'
+    runs-on: td-self-hosted-runners-arm64
+    environment: prod
+    concurrency:
+      group: qbr-pptx-service-build-ecr-${{ github.ref }}
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve image metadata
+        run: |
+          set -euo pipefail
+          RELEASE_PATH="${ECR_REGISTRY}/tradedoubler/releases/coe/${PROJECT}"
+          IMAGE="${RELEASE_PATH}/${IMAGE_NAME}"
+          TAG="${GITHUB_SHA}"
+          {
+            echo "RELEASE_PATH=${RELEASE_PATH}"
+            echo "IMAGE=${IMAGE}"
+            echo "TAG=${TAG}"
+          } >> "$GITHUB_ENV"
+
+      - name: Show resolved settings
+        run: |
+          {
+            echo "### Build settings"
+            echo "- PROJECT: ${PROJECT}"
+            echo "- ECR_REGISTRY: ${ECR_REGISTRY}"
+            echo "- RELEASE_PATH: ${RELEASE_PATH}"
+            echo "- IMAGE: ${IMAGE}"
+            echo "- TAG: ${TAG}"
+            echo "- BRANCH: ${GITHUB_REF##*/}"
+            echo "- SERVICE_DIR: ${SERVICE_DIR}"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: ${{ env.AWS_REGION }}
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          role-external-id: ${{ secrets.AWS_ROLE_EXTERNAL_ID }}
+          role-duration-seconds: 3600
+
+      - name: Login to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build and push image
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ env.SERVICE_DIR }}
+          file: ${{ env.SERVICE_DIR }}/Dockerfile
+          platforms: ${{ env.PLATFORMS }}
+          push: true
+          tags: ${{ env.IMAGE }}:${{ env.TAG }}
+
+      - name: Summary
+        run: |
+          {
+            echo "### Docker image"
+            echo "- Image: ${IMAGE}:${TAG}"
+            echo "- Pushed: true"
+          } >> "$GITHUB_STEP_SUMMARY"
