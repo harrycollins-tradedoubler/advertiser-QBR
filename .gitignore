@@ -39,3 +39,6 @@ htmlcov/
 tmp/
 temp/
 *.tmp
+
+# Generated QBR outputs
+qbr-pptx-service/outputs/

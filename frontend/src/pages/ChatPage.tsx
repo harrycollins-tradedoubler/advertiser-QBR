@@ -149,7 +149,7 @@ export function ChatPage({ agents, onQbrLog }: ChatPageProps) {
           return
         }
         emitQbrLog(jobId, title, 'running', 'Generating report...')
-      } catch (error) {
+      } catch {
         updateMessageContent(jobId, 'Still working on the QBR report. Checking again shortly...')
         emitQbrLog(jobId, title, 'running', 'Still processing...')
       }

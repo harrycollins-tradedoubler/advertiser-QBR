@@ -123,6 +123,40 @@ class NeonDB:
             response.raise_for_status()
             return response.json()
 
+    async def insert_postgrest(self, table: str, payload: dict) -> list[dict]:
+        """
+        Insert a row through a PostgREST endpoint.
+        """
+        if not self.is_postgrest:
+            raise ValueError(
+                "NEON_API_URL is not a PostgREST endpoint; use SQL queries instead."
+            )
+        if self.database_url:
+            raise ValueError(
+                "DATABASE_URL is set; PostgREST inserts are disabled in favor of direct SQL."
+            )
+        if not self.api_url or not self.api_url.strip():
+            raise ValueError(
+                "NEON_API_URL is not set. Add it to backend/.env with your Neon Data API endpoint."
+            )
+
+        headers = {
+            "Prefer": "return=representation",
+        }
+        if self.auth_token:
+            headers["Authorization"] = f"Bearer {self.auth_token}"
+
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                f"{self.api_url}/{table}",
+                json=payload,
+                headers=headers,
+                timeout=self.timeout,
+            )
+            response.raise_for_status()
+            data = response.json()
+            return data if isinstance(data, list) else [data]
+
 
 # Singleton instance
 neon_db = NeonDB()

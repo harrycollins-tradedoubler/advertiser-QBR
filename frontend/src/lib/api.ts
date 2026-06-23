@@ -1,4 +1,4 @@
-import type { Agent, Message, OnboardingStatus, OnboardingSearchResult } from './types'
+import type { Agent, Message, OnboardingStatus, OnboardingSearchResult, ProgramRequestRun } from './types'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8008'
 
@@ -202,4 +202,15 @@ export async function searchOnboardingPrograms(searchTerm: string): Promise<Onbo
   }
   const data = await response.json()
   return data.results
+}
+
+export async function fetchProgramRequestRuns(limit = 100): Promise<ProgramRequestRun[]> {
+  const params = new URLSearchParams()
+  params.set('limit', String(limit))
+  const response = await fetch(`${API_URL}/api/program-request-runs?${params.toString()}`)
+  if (!response.ok) {
+    throw new Error(await readErrorDetail(response, 'Failed to fetch run log'))
+  }
+  const data = await response.json()
+  return Array.isArray(data?.runs) ? data.runs : []
 }

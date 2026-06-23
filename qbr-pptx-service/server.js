@@ -203,8 +203,25 @@ function createServer(options = {}) {
             now: config.now
           })
           : null;
-        const excelUrl = saved.excelFileName
+        const publisherRecommendationsExcelUrl = saved.excelFileName
           ? createSignedFileUrl(root, saved.excelFileName, {
+            apiKey: config.apiKey,
+            secret: config.downloadTokenSecret,
+            ttlSeconds: config.downloadTtlSeconds,
+            now: config.now
+          })
+          : null;
+        const legacyExcelFileName = saved.publisherPerformanceExcelFileName || saved.excelFileName || null;
+        const excelUrl = legacyExcelFileName
+          ? createSignedFileUrl(root, legacyExcelFileName, {
+            apiKey: config.apiKey,
+            secret: config.downloadTokenSecret,
+            ttlSeconds: config.downloadTtlSeconds,
+            now: config.now
+          })
+          : null;
+        const publisherPerformanceExcelUrl = saved.publisherPerformanceExcelFileName
+          ? createSignedFileUrl(root, saved.publisherPerformanceExcelFileName, {
             apiKey: config.apiKey,
             secret: config.downloadTokenSecret,
             ttlSeconds: config.downloadTtlSeconds,
@@ -220,6 +237,9 @@ function createServer(options = {}) {
           if (saved.excelFileName) {
             scheduleOutputDeletion(config.outputDir, saved.excelFileName, config.downloadTtlSeconds);
           }
+          if (saved.publisherPerformanceExcelFileName) {
+            scheduleOutputDeletion(config.outputDir, saved.publisherPerformanceExcelFileName, config.downloadTtlSeconds);
+          }
         }
 
         json(res, 200, {
@@ -230,9 +250,13 @@ function createServer(options = {}) {
           pptx_url: pptxUrl,
           deck_spec_url: deckSpecUrl,
           excel_url: excelUrl,
+          publisher_recommendations_excel_url: publisherRecommendationsExcelUrl,
+          publisher_performance_excel_url: publisherPerformanceExcelUrl,
           download_expires_at: new Date(config.now() + config.downloadTtlSeconds * 1000).toISOString(),
           file_name: savedFileName,
-          excel_file_name: saved.excelFileName || null,
+          excel_file_name: legacyExcelFileName,
+          publisher_recommendations_excel_file_name: saved.excelFileName || null,
+          publisher_performance_excel_file_name: saved.publisherPerformanceExcelFileName || null,
           slide_count: result.deckSpec.slides.length,
           theme: result.deckSpec.theme.name
         });

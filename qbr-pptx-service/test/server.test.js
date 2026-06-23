@@ -44,7 +44,12 @@ test("generated file URLs are signed and raw file links are rejected", async () 
     saveOutput: async (_result, dir) => {
       await fs.writeFile(path.join(dir, "report.pptx"), "pptx-bytes");
       await fs.writeFile(path.join(dir, "publisher-recommendations.xlsx"), "xlsx-bytes");
-      return { deckSpecFileName: null, excelFileName: "publisher-recommendations.xlsx" };
+      await fs.writeFile(path.join(dir, "publisher-performance.xlsx"), "publisher-performance-bytes");
+      return {
+        deckSpecFileName: null,
+        excelFileName: "publisher-recommendations.xlsx",
+        publisherPerformanceExcelFileName: "publisher-performance.xlsx"
+      };
     }
   });
 
@@ -63,8 +68,12 @@ test("generated file URLs are signed and raw file links are rejected", async () 
     assert.equal(body.success, true);
     assert.match(body.pptx_url, /\/files\/report\.pptx\?expires=\d+&token=/);
     assert.equal(body.deck_spec_url, null);
-    assert.match(body.excel_url, /\/files\/publisher-recommendations\.xlsx\?expires=\d+&token=/);
-    assert.equal(body.excel_file_name, "publisher-recommendations.xlsx");
+    assert.match(body.excel_url, /\/files\/publisher-performance\.xlsx\?expires=\d+&token=/);
+    assert.equal(body.excel_file_name, "publisher-performance.xlsx");
+    assert.match(body.publisher_recommendations_excel_url, /\/files\/publisher-recommendations\.xlsx\?expires=\d+&token=/);
+    assert.equal(body.publisher_recommendations_excel_file_name, "publisher-recommendations.xlsx");
+    assert.match(body.publisher_performance_excel_url, /\/files\/publisher-performance\.xlsx\?expires=\d+&token=/);
+    assert.equal(body.publisher_performance_excel_file_name, "publisher-performance.xlsx");
     assert.equal(body.download_expires_at, "2026-01-01T12:01:00.000Z");
 
     const rawResponse = await fetch(`${root}/files/report.pptx`);
@@ -78,11 +87,19 @@ test("generated file URLs are signed and raw file links are rejected", async () 
 
     const excelResponse = await fetch(body.excel_url);
     assert.equal(excelResponse.status, 200);
-    assert.equal(await excelResponse.text(), "xlsx-bytes");
+    assert.equal(await excelResponse.text(), "publisher-performance-bytes");
     assert.equal(
       excelResponse.headers.get("content-type"),
       "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     );
+
+    const recommendationResponse = await fetch(body.publisher_recommendations_excel_url);
+    assert.equal(recommendationResponse.status, 200);
+    assert.equal(await recommendationResponse.text(), "xlsx-bytes");
+
+    const publisherPerformanceResponse = await fetch(body.publisher_performance_excel_url);
+    assert.equal(publisherPerformanceResponse.status, 200);
+    assert.equal(await publisherPerformanceResponse.text(), "publisher-performance-bytes");
 
     nowMs += 61_000;
     const expiredResponse = await fetch(body.pptx_url);

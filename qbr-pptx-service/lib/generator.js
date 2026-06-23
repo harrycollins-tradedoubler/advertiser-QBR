@@ -128,6 +128,10 @@ const TABLE_KEY_MAP = {
   newpublisherprospects: "newPublisherProspects",
   toppublisherperformancetable: "topPublisherPerformance",
   toppublisherperformance: "topPublisherPerformance",
+  publisherperformancebyprogram: "publisherPerformanceByProgram",
+  publisherprogramperformance: "publisherPerformanceByProgram",
+  publisherperformanceperprogram: "publisherPerformanceByProgram",
+  programpublisherperformance: "publisherPerformanceByProgram",
   publisherperformancesummarytable: "publisherPerformanceSummary",
   kpisummarytable: "kpiSummary",
   programlevelbreakdown: "programLevelBreakdown",
@@ -1791,6 +1795,138 @@ function buildTopPublisherPerformanceTable(input) {
   };
 }
 
+function programScopeRows(input) {
+  const scope = input.programScopeTable;
+  if (!scope) return [];
+  if (Array.isArray(scope)) return normalizeRows(scope);
+  if (Array.isArray(scope.rows)) return normalizeRows(scope.rows);
+  return [];
+}
+
+function programScopeMap(input) {
+  const map = new Map();
+  programScopeRows(input).forEach((row) => {
+    const programId = readTableCell(row, ["Program ID", "ProgramId", "ProgramID", "ID"]);
+    if (!programId) return;
+    map.set(programId, {
+      programId,
+      programName: readTableCell(row, ["Program", "Program Name", "ProgramName", "Name"]) || programId,
+      currentOv: parseNumber(readTableCell(row, ["Current OV", "Total Order Value", "Order Value", "Total OV"])) || 0
+    });
+  });
+  return map;
+}
+
+function buildPublisherPerformanceRows(input) {
+  const scopeByProgram = programScopeMap(input);
+  const sourceTable = [
+    input.tables.publisherPerformanceByProgram,
+    input.tables.topPublisherPerformance,
+    input.tables.topCurrentPerformers,
+    input.tables.top10ByOV
+  ].find((candidate) => Array.isArray(candidate?.rows) && candidate.rows.length);
+  const rows = Array.isArray(sourceTable?.rows) ? sourceTable.rows : [];
+
+  return rows
+    .map((row) => {
+      const programId = readTableCell(row, [
+        "Program ID",
+        "ProgramId",
+        "ProgramID",
+        "Publisher Program ID",
+        "publisherProgramId",
+        "PublisherProgramID",
+        "Advertiser Program ID",
+        "AdvertiserProgramID",
+        "ID"
+      ]);
+      if (!programId) return null;
+      const scopeProgram = scopeByProgram.get(programId);
+      const programName = readTableCell(row, ["Program Name", "Program", "ProgramName", "Name"]) || scopeProgram?.programName || programId;
+      const totalOrderValue = readTableCell(row, ["Total Order Value", "Current OV", "Order Value", "Current Order Value", "Total OV"]);
+      const orderValueNumber = parseNumber(totalOrderValue);
+      const publisher = readTableCell(row, ["Publisher", "Publisher Name", "Name"]);
+      if (!publisher || !Number.isFinite(orderValueNumber)) return null;
+      return {
+        programId,
+        programName,
+        publisher,
+        siteId: readTableCell(row, ["Site ID", "SiteID", "Site Id", "Publisher ID", "Source ID"]),
+        segment: readTableCell(row, ["Segment", "Category", "Publisher Segment"]),
+        clicks: readTableCell(row, ["Clicks", "Current Clicks"]),
+        sales: readTableCell(row, ["Sales", "Current Sales"]),
+        conversionRate: readTableCell(row, ["Conversion Rate", "Conv Rate"]),
+        aov: readTableCell(row, ["AOV"]),
+        totalOrderValue,
+        orderValueNumber,
+        ovYoy: readTableCell(row, ["OV YoY %", "YoY %", "% Variance", "Variance"]),
+        salesYoy: readTableCell(row, ["Sales YoY %"]),
+        publisherCommission: readTableCell(row, ["Publisher Commission", "Pub Commission", "Publ Commission", "Commission"]),
+        cpa: readTableCell(row, ["CPA"])
+      };
+    })
+    .filter(Boolean);
+}
+
+function groupPublisherPerformanceRows(input, limitPerProgram = 40) {
+  const grouped = new Map();
+  buildPublisherPerformanceRows(input).forEach((row) => {
+    if (!grouped.has(row.programId)) grouped.set(row.programId, []);
+    grouped.get(row.programId).push(row);
+  });
+
+  grouped.forEach((rows, programId) => {
+    grouped.set(
+      programId,
+      rows
+        .slice()
+        .sort((a, b) => b.orderValueNumber - a.orderValueNumber || a.publisher.localeCompare(b.publisher))
+        .slice(0, limitPerProgram)
+    );
+  });
+
+  return grouped;
+}
+
+function buildPublisherPerformanceByProgramTable(input) {
+  const grouped = groupPublisherPerformanceRows(input, 40);
+  if (grouped.size <= 1) return null;
+
+  const scopeByProgram = programScopeMap(input);
+  const rows = Array.from(grouped.entries())
+    .map(([programId, programRows]) => {
+      const topPublisher = programRows[0];
+      if (!topPublisher) return null;
+      const scope = scopeByProgram.get(programId);
+      return {
+        sortValue: scope?.currentOv ?? topPublisher.orderValueNumber,
+        cells: [
+          scope?.programName || topPublisher.programName || programId,
+          programId,
+          topPublisher.publisher,
+          topPublisher.totalOrderValue || "-",
+          topPublisher.sales || "-",
+          topPublisher.ovYoy || "-",
+          topPublisher.salesYoy || "-"
+        ]
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => b.sortValue - a.sortValue || String(a.cells[0]).localeCompare(String(b.cells[0])))
+    .slice(0, 8)
+    .map((row) => row.cells);
+
+  if (!rows.length) return null;
+  return {
+    title: "Publisher Performance by Program",
+    columns: ["Program", "Program ID", "Top Publisher", "Publisher OV", "Sales", "OV YoY %", "Sales YoY %"],
+    rows,
+    dense: false,
+    colW: [2.45, 1.35, 2.4, 1.75, 1.2, 1.25, 1.35],
+    colAlign: ["left", "left", "left", "right", "right", "right", "right"]
+  };
+}
+
 function tableRows(table, limit = 5) {
   if (!table || !table.rows || !table.rows.length) return null;
   const columns = Array.isArray(table.columns) ? [...table.columns] : [];
@@ -2460,6 +2596,68 @@ function buildDirectionalMoversTable(table, title, columns, upCount = 5, downCou
   };
 }
 
+function buildDirectionalMoversRanking(table, options = {}) {
+  const limit = Number.isFinite(Number(options.limit)) ? Number(options.limit) : 10;
+  const valueAliases = Array.isArray(options.valueAliases) && options.valueAliases.length
+    ? options.valueAliases
+    : ["YoY Change", "Sales YoY Change", "OV YoY Change", "Clicks YoY Change"];
+  const pctAliases = Array.isArray(options.pctAliases) && options.pctAliases.length
+    ? options.pctAliases
+    : ["YoY %", "Sales YoY %", "OV YoY %", "Clicks YoY %"];
+  const rows = Array.isArray(table?.rows) ? table.rows : [];
+
+  const normalized = rows
+    .map((row) => {
+      const publisher = compactLabel(readTableCell(row, ["Publisher", "Program Name", "Program", "Name"]), 34);
+      if (!publisher || publisher === "-") return null;
+      const siteId = readTableCell(row, ["Site ID", "SiteID", "Site Id", "Program ID", "ProgramId", "ProgramID"]);
+      const segment = readTableCell(row, ["Segment", "Category", "Publisher Segment"]);
+      const rawChange = readTableCell(row, valueAliases);
+      const rawPct = readTableCell(row, pctAliases);
+      const direction = readTableCell(row, ["Direction", "Movement", "Trend"]).toLowerCase();
+      const parsedChange = parseNumber(rawChange);
+      const parsedPct = parseNumber(rawPct);
+      const sourceValue = Number.isFinite(parsedChange) ? parsedChange : parsedPct;
+      if (!Number.isFinite(sourceValue)) return null;
+
+      const isDown = /down|declin|decrease|negative|loss/.test(direction);
+      const isUp = /up|growth|increase|positive|gain/.test(direction);
+      const value = isDown && sourceValue > 0
+        ? -sourceValue
+        : isUp && sourceValue < 0
+          ? Math.abs(sourceValue)
+          : sourceValue;
+      const labelBase = rawChange || (Number.isFinite(parsedChange) ? formatSignedCount(value) : "");
+      const label = labelBase && rawPct && rawPct !== labelBase
+        ? `${labelBase} (${rawPct})`
+        : labelBase || rawPct || String(value);
+
+      return {
+        publisher,
+        siteId,
+        segment,
+        value,
+        label
+      };
+    })
+    .filter(Boolean);
+
+  const top = normalized
+    .filter((row) => row.value > 0)
+    .sort((a, b) => b.value - a.value || a.publisher.localeCompare(b.publisher))
+    .slice(0, limit);
+  const bottom = normalized
+    .filter((row) => row.value < 0)
+    .sort((a, b) => a.value - b.value || a.publisher.localeCompare(b.publisher))
+    .slice(0, limit);
+
+  return {
+    top,
+    bottom,
+    sourceCount: normalized.length
+  };
+}
+
 function formatCompactMoney(value, currencyCode, locale = "en-GB") {
   if (value === null || value === undefined || Number.isNaN(Number(value))) return "-";
   const symbol = getCurrencySymbol(currencyCode);
@@ -2500,6 +2698,11 @@ function buildOrderValueRankingFromTables(input, sourceTables, options = {}) {
       const rawOrderValue = readTableCell(row, ["Order Value", "Current OV", "Current Order Value", "Total Order Value", "Total OV"]);
       const orderValue = parseNumber(rawOrderValue);
       if (!Number.isFinite(orderValue)) return;
+      const yoyPct = readTableCell(row, ["OV YoY %", "YoY %", "% Variance", "Variance"]);
+      const valueLabel = labelFormatter(orderValue);
+      const label = yoyPct && !/%/.test(valueLabel)
+        ? `${valueLabel} (${yoyPct})`
+        : valueLabel;
 
       const key = `${publisher.toLowerCase()}|${siteId.toLowerCase()}`;
       const candidate = {
@@ -2507,7 +2710,7 @@ function buildOrderValueRankingFromTables(input, sourceTables, options = {}) {
         siteId,
         segment,
         value: orderValue,
-        label: labelFormatter(orderValue)
+        label
       };
       const existing = rowsByPublisher.get(key);
       if (!existing || candidate.value > existing.value) rowsByPublisher.set(key, candidate);
@@ -3326,7 +3529,7 @@ function columnName(index) {
   return out;
 }
 
-function buildWorksheetXml(values, indexFor) {
+function buildWorksheetXml(values, indexFor, columnWidths = null) {
   const rows = values.map((row, rowIndex) => {
     const cells = row.map((value, columnIndex) => {
       const ref = `${columnName(columnIndex)}${rowIndex + 1}`;
@@ -3338,11 +3541,17 @@ function buildWorksheetXml(values, indexFor) {
   const lastRow = Math.max(values.length, 1);
   const lastColumn = columnName(Math.max((values[0] || []).length - 1, 0));
   const sheetRef = `A1:${lastColumn}${lastRow}`;
+  const widths = Array.isArray(columnWidths) && columnWidths.length
+    ? columnWidths
+    : [18, 24, 32, 18, 58, 42, 18, 18, 18];
+  const colsXml = widths
+    .map((width, index) => `<col min="${index + 1}" max="${index + 1}" width="${width}" customWidth="1"/>`)
+    .join("");
 
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
 <sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>
-<cols><col min="1" max="1" width="18" customWidth="1"/><col min="2" max="2" width="24" customWidth="1"/><col min="3" max="3" width="32" customWidth="1"/><col min="4" max="4" width="18" customWidth="1"/><col min="5" max="5" width="58" customWidth="1"/><col min="6" max="6" width="42" customWidth="1"/><col min="7" max="9" width="18" customWidth="1"/></cols>
+<cols>${colsXml}</cols>
 <sheetData>${rows}</sheetData>
 <autoFilter ref="${sheetRef}"/>
 </worksheet>`;
@@ -3435,6 +3644,100 @@ async function buildPublisherRecommendationWorkbook(input) {
       relId: `rId${index + 1}`,
       name: uniqueExcelSheetName(programId, usedSheetNames, `Program ${index + 1}`),
       xml: buildWorksheetXml(sheetValues, sharedStrings.indexFor)
+    };
+  });
+
+  const zip = new JSZip();
+  zip.file("[Content_Types].xml", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+<Default Extension="xml" ContentType="application/xml"/>
+<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
+${sheets.map((sheet) => `<Override PartName="/xl/worksheets/sheet${sheet.id}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`).join("\n")}
+<Override PartName="/xl/sharedStrings.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sharedStrings+xml"/>
+<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>
+</Types>`);
+  zip.folder("_rels").file(".rels", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
+</Relationships>`);
+  zip.folder("xl").file("workbook.xml", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+<sheets>${sheets.map((sheet) => `<sheet name="${escapeXml(sheet.name)}" sheetId="${sheet.id}" r:id="${sheet.relId}"/>`).join("")}</sheets>
+</workbook>`);
+  const styleRelId = `rId${sheets.length + 1}`;
+  const sharedStringsRelId = `rId${sheets.length + 2}`;
+  zip.folder("xl").folder("_rels").file("workbook.xml.rels", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+${sheets.map((sheet) => `<Relationship Id="${sheet.relId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${sheet.id}.xml"/>`).join("\n")}
+<Relationship Id="${styleRelId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
+<Relationship Id="${sharedStringsRelId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/sharedStrings" Target="sharedStrings.xml"/>
+</Relationships>`);
+  sheets.forEach((sheet) => {
+    zip.folder("xl").folder("worksheets").file(`sheet${sheet.id}.xml`, sheet.xml);
+  });
+  zip.folder("xl").file("sharedStrings.xml", sharedStrings.toXml());
+  zip.folder("xl").file("styles.xml", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+<fonts count="1"><font><sz val="11"/><name val="Calibri"/></font></fonts>
+<fills count="1"><fill><patternFill patternType="none"/></fill></fills>
+<borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>
+<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
+<cellXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/></cellXfs>
+</styleSheet>`);
+
+  return zip.generateAsync({ type: "nodebuffer", compression: "DEFLATE" });
+}
+
+async function buildPublisherPerformanceWorkbook(input) {
+  const groupedRows = groupPublisherPerformanceRows(input, 40);
+  if (!groupedRows.size) return null;
+
+  const columns = [
+    "Program ID",
+    "Program Name",
+    "Publisher",
+    "Site ID",
+    "Segment",
+    "Clicks",
+    "Sales",
+    "Conversion Rate",
+    "AOV",
+    "Total Order Value",
+    "OV YoY %",
+    "Sales YoY %",
+    "Publisher Commission",
+    "CPA"
+  ];
+  const columnWidths = [16, 28, 32, 18, 18, 14, 14, 18, 14, 20, 14, 14, 22, 14];
+
+  const sharedStrings = createSharedStringIndexer();
+  const usedSheetNames = new Set();
+  const sheets = Array.from(groupedRows.entries()).map(([programId, programRows], index) => {
+    const sheetValues = [
+      columns,
+      ...programRows.map((row) => [
+        row.programId,
+        row.programName,
+        row.publisher,
+        row.siteId || "-",
+        row.segment || "-",
+        row.clicks || "-",
+        row.sales || "-",
+        row.conversionRate || "-",
+        row.aov || "-",
+        row.totalOrderValue || "-",
+        row.ovYoy || "-",
+        row.salesYoy || "-",
+        row.publisherCommission || "-",
+        row.cpa || "-"
+      ])
+    ];
+    return {
+      id: index + 1,
+      relId: `rId${index + 1}`,
+      name: uniqueExcelSheetName(programId, usedSheetNames, `Program ${index + 1}`),
+      xml: buildWorksheetXml(sheetValues, sharedStrings.indexFor, columnWidths)
     };
   });
 
@@ -3866,10 +4169,17 @@ function buildDeckSpec(input, theme) {
 
   const segmentTable = input.tables.segmentSnapshot;
   const moversSales = input.tables.moversSales;
-  const moversOrderValue = input.tables.moversOrderValue;
   const moversClicks = input.tables.moversClicks;
   const brandNew = input.tables.brandNewPublishers;
   const publisherOrderValueRanking = buildPublisherOrderValueRanking(input);
+  const publisherSalesRanking = buildDirectionalMoversRanking(moversSales, {
+    valueAliases: ["YoY Change", "Sales YoY Change"],
+    pctAliases: ["YoY %", "Sales YoY %"]
+  });
+  const publisherClickRanking = buildDirectionalMoversRanking(moversClicks, {
+    valueAliases: ["YoY Change", "Clicks YoY Change"],
+    pctAliases: ["YoY %", "Clicks YoY %"]
+  });
   const brandNewOrderValueRanking = input.brandNewPublisherRanking || buildOrderValueRankingFromTables(input, [brandNew], {
     labelFormatter: (value) => formatFullMoney(value, input.currencyCode, input.locale || "en-GB"),
     distinctBottomFromTop: true,
@@ -3881,6 +4191,7 @@ function buildDeckSpec(input, theme) {
   const salesGrowthSignals = buildSalesGrowthSignals(input);
   const programBreakdownTable = buildProgramBreakdownTable(input);
   const topPublisherPerformanceTable = buildTopPublisherPerformanceTable(input);
+  const publisherPerformanceByProgramTable = buildPublisherPerformanceByProgramTable(input);
   slides.push({
     id: "cover",
     kind: "cover",
@@ -3995,6 +4306,19 @@ function buildDeckSpec(input, theme) {
     tables: [topPublisherPerformanceTable]
   });
 
+  if (publisherPerformanceByProgramTable) {
+    slides.push({
+      id: "publisher-performance-by-program",
+      kind: "publisher-table",
+      title: "Publisher Performance by Program",
+      subtitle: `${input.reportingPeriod} vs ${input.comparisonPeriod}.`,
+      bullets: [],
+      kpis: [],
+      tables: [publisherPerformanceByProgramTable],
+      callout: "Showing top 8 programs by current OV. Full top 40 publisher detail per program is available in Excel."
+    });
+  }
+
   slides.push({
     id: "publisher-order-value-rankings",
     kind: "publisher-ov-ranking-bars",
@@ -4006,66 +4330,41 @@ function buildDeckSpec(input, theme) {
       top: "Top 10 YoY OV growth publishers",
       bottom: "Top 10 YoY OV decline publishers"
     },
-    footerNote: "Ranked by year-over-year order value change. Blue bars show largest positive OV movement; red bars show largest negative OV movement.",
+    footerNote: "Ranked by year-over-year order value change. Bar length is normalized within each panel against that panel's largest absolute YoY OV change. Blue bars show positive movement; red bars show negative movement.",
     kpis: [],
     tables: []
   });
 
   slides.push({
     id: "movers-shakers-sales",
-    kind: "publisher-table",
+    kind: "publisher-ov-ranking-bars",
     title: "Movers & Shakers: Sales",
     subtitle: "Largest YoY sales movers and decliners.",
     bullets: [],
+    ranking: publisherSalesRanking,
+    panelTitles: {
+      top: "Top 10 YoY sales growth publishers",
+      bottom: "Top 10 YoY sales decline publishers"
+    },
+    footerNote: "Ranked by year-over-year sales change. Bar length is normalized within each panel against that panel's largest absolute YoY sales change. Blue bars show positive movement; red bars show negative movement.",
     kpis: [],
-    tables: [
-      buildDirectionalMoversTable(moversSales, "Movers & Shakers - Sales", [
-        "Publisher",
-        "Site ID",
-        "Current Sales",
-        "YoY Change",
-        "YoY %"
-      ])
-    ],
-    callout: "Up = positive YoY movement; Down = negative YoY movement."
-  });
-
-  slides.push({
-    id: "movers-shakers-ov",
-    kind: "publisher-table",
-    title: "Movers & Shakers: Order Value",
-    subtitle: "Largest YoY order value movers and decliners.",
-    bullets: [],
-    kpis: [],
-    tables: [
-      buildDirectionalMoversTable(moversOrderValue, "Movers & Shakers - Order Value", [
-        "Publisher",
-        "Site ID",
-        "Current OV",
-        "YoY Change",
-        "YoY %"
-      ])
-    ],
-    callout: "Order value movers indicate where incremental revenue was won or lost YoY."
+    tables: []
   });
 
   slides.push({
     id: "movers-shakers-clicks",
-    kind: "publisher-table",
+    kind: "publisher-ov-ranking-bars",
     title: "Movers & Shakers: Clicks",
     subtitle: "Largest YoY click movers and decliners.",
     bullets: [],
+    ranking: publisherClickRanking,
+    panelTitles: {
+      top: "Top 10 YoY click growth publishers",
+      bottom: "Top 10 YoY click decline publishers"
+    },
+    footerNote: "Ranked by year-over-year click change. Bar length is normalized within each panel against that panel's largest absolute YoY click change. Blue bars show positive movement; red bars show negative movement.",
     kpis: [],
-    tables: [
-      buildDirectionalMoversTable(moversClicks, "Movers & Shakers - Clicks", [
-        "Publisher",
-        "Site ID",
-        "Current Clicks",
-        "YoY Change",
-        "YoY %"
-      ])
-    ],
-    callout: "Traffic movement helps explain volume and conversion shifts across the publisher mix."
+    tables: []
   });
 
   slides.push({
@@ -4748,7 +5047,7 @@ function addPublisherOrderValueBars(slide, deck, spec) {
   const axis = toColor("#D8DCE5");
   const track = toColor("#E7EBF3");
 
-  slide.addText(spec.footerNote || "Ranked by current-period order value. Best and worst lists are calculated from available publisher-level rows in the QBR extract.", {
+  slide.addText(spec.footerNote || "Ranked from available publisher-level rows in the QBR extract. Bar length is normalized within each panel against that panel's largest absolute value.", {
     x: 0.7,
     y: 6.92,
     w: 11.9,
@@ -4780,7 +5079,7 @@ function addPublisherOrderValueBars(slide, deck, spec) {
     });
 
     if (!rows.length) {
-      slide.addText("No publisher order value data available.", {
+      slide.addText("No publisher movement data available.", {
         x,
         y: y + 0.68,
         w,
@@ -5820,6 +6119,22 @@ function renderSlide(slide, deck, spec, pageNumber) {
         breakLine: true
       });
     }
+    if (cleanInlineText(spec.callout || "")) {
+      const calloutY = renderedTable
+        ? Math.min(7.02, tableY + renderedTable.containerH + 0.08)
+        : 6.8;
+      slide.addText(spec.callout, {
+        x: 0.52,
+        y: calloutY,
+        w: 12.2,
+        h: 0.28,
+        fontFace: deck.theme.fonts.body,
+        fontSize: 9.4,
+        color: toColor(deck.theme.colors.muted),
+        margin: 0,
+        breakLine: true
+      });
+    }
     return;
   }
 
@@ -5936,11 +6251,24 @@ async function generatePresentation(payload, options = {}) {
   const localizedDeckSpec = await localizeDeckSpec(deckSpec, normalized.languageCode);
   const buffer = await renderDeck(localizedDeckSpec);
   const excelBuffer = await buildPublisherRecommendationWorkbook(normalized);
+  const publisherPerformanceExcelBuffer = await buildPublisherPerformanceWorkbook(normalized);
   const requestedFileName = normalized.outputFileName || `${safeName(localizedDeckSpec.metadata.deckTitle)}_${crypto.randomUUID()}.pptx`;
   const fileName = sanitizeOutputFileName(requestedFileName);
   const excelFileName = excelBuffer ? "qbr_deck_publisher_recommendations.xlsx" : null;
+  const publisherPerformanceExcelFileName = publisherPerformanceExcelBuffer
+    ? "qbr_deck_publisher_performance_by_program.xlsx"
+    : null;
 
-  return { normalized, deckSpec: localizedDeckSpec, buffer, fileName, excelBuffer, excelFileName };
+  return {
+    normalized,
+    deckSpec: localizedDeckSpec,
+    buffer,
+    fileName,
+    excelBuffer,
+    excelFileName,
+    publisherPerformanceExcelBuffer,
+    publisherPerformanceExcelFileName
+  };
 }
 
 async function saveOutput(result, outputDir) {
@@ -5961,6 +6289,20 @@ async function saveOutput(result, outputDir) {
     excelFileName = savedExcel.fileName;
   }
 
+  let publisherPerformanceExcelFileName = null;
+  if (result.publisherPerformanceExcelBuffer) {
+    const preferredExcelName = cleanInlineText(result.publisherPerformanceExcelFileName || "", "")
+      || savedPptx.fileName.replace(/\.pptx$/i, "_publisher_performance_by_program.xlsx");
+    const safeExcelName = path.basename(preferredExcelName)
+      .replace(/[^a-zA-Z0-9-_. ]/g, "")
+      .replace(/\s+/g, "_")
+      .replace(/_+/g, "_")
+      .toLowerCase()
+      .replace(/\.xlsx$/i, "") || "publisher_performance_by_program";
+    const savedExcel = await writeCreateOnly(fs, outputDir, `${safeExcelName}.xlsx`, result.publisherPerformanceExcelBuffer);
+    publisherPerformanceExcelFileName = savedExcel.fileName;
+  }
+
   let deckSpecFileName = null;
   if (result.normalized.debug) {
     deckSpecFileName = savedPptx.fileName.replace(/\.pptx$/i, ".deck-spec.json");
@@ -5974,7 +6316,13 @@ async function saveOutput(result, outputDir) {
     deckSpecFileName = savedDeckSpec.fileName;
   }
 
-  return { pptxPath: savedPptx.fullPath, fileName: savedPptx.fileName, deckSpecFileName, excelFileName };
+  return {
+    pptxPath: savedPptx.fullPath,
+    fileName: savedPptx.fileName,
+    deckSpecFileName,
+    excelFileName,
+    publisherPerformanceExcelFileName
+  };
 }
 
 module.exports = {

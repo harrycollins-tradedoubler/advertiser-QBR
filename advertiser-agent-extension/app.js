@@ -3,7 +3,8 @@ const DEFAULTS = {
   impersonateUrl: "https://connect.tradedoubler.com/uaa/admin/impersonate?username=",
   advertiserBase: "https://connect.tradedoubler.com/advertiser/",
   oauthBasic: "dGRjb25uZWN0X3B1Ymxpc2hlcjoxMjM0NTY=",
-  qbrWebhookUrl: "http://127.0.0.1:5678/webhook/agency-agent-qbr-backend-auth-20260610"
+  qbrWebhookUrl: "http://127.0.0.1:5678/webhook/agency-agent-qbr-backend-auth-20260610",
+  backendApiUrl: "http://127.0.0.1:8008/api"
 };
 const STORAGE_KEYS = {
   connectionConfig: "advertiserAgentConnectionConfig"
@@ -14,6 +15,7 @@ const submitButton = document.getElementById("submitRequest");
 const adminUsernameInput = document.getElementById("adminUsername");
 const adminPasswordInput = document.getElementById("adminPassword");
 const qbrWebhookUrlInput = document.getElementById("qbrWebhookUrl");
+const backendApiUrlInput = document.getElementById("backendApiUrl");
 const oauthUrlInput = document.getElementById("oauthUrl");
 const impersonateUrlInput = document.getElementById("impersonateUrl");
 const advertiserBaseInput = document.getElementById("advertiserBase");
@@ -37,11 +39,16 @@ const resultLink = document.getElementById("resultLink");
 const batchFileInput = document.getElementById("batchFile");
 const runBatchButton = document.getElementById("runBatch");
 const batchPreview = document.getElementById("batchPreview");
+const batchResults = document.getElementById("batchResults");
+const refreshRunLogButton = document.getElementById("refreshRunLog");
+const runLogMeta = document.getElementById("runLogMeta");
+const runLogTable = document.getElementById("runLogTable");
 
 let programs = [];
 let selectedProgramIds = [];
 let impersonatedClientUsername = "";
 let batchRows = [];
+let currentBatchResultsUrl = "";
 
 function normalizeBaseUrl(value, fallback = "") {
   const trimmed = String(value || "").trim();
@@ -86,7 +93,8 @@ function getConnectionConfig() {
     impersonateUrl: impersonateUrlInput.value.trim() || DEFAULTS.impersonateUrl,
     advertiserBase: ensureTrailingSlash(advertiserBaseInput.value.trim() || DEFAULTS.advertiserBase),
     oauthBasic: oauthBasicInput.value.trim() || DEFAULTS.oauthBasic,
-    qbrWebhookUrl: normalizeBaseUrl(qbrWebhookUrlInput.value.trim(), DEFAULTS.qbrWebhookUrl)
+    qbrWebhookUrl: normalizeBaseUrl(qbrWebhookUrlInput.value.trim(), DEFAULTS.qbrWebhookUrl),
+    backendApiUrl: normalizeBaseUrl(backendApiUrlInput.value.trim(), DEFAULTS.backendApiUrl)
   };
 }
 
@@ -98,7 +106,8 @@ async function saveConnectionConfig() {
     impersonateUrl: cfg.impersonateUrl,
     advertiserBase: cfg.advertiserBase,
     oauthBasic: cfg.oauthBasic,
-    qbrWebhookUrl: cfg.qbrWebhookUrl
+    qbrWebhookUrl: cfg.qbrWebhookUrl,
+    backendApiUrl: cfg.backendApiUrl
   });
   return cfg;
 }
@@ -111,6 +120,7 @@ function applyConnectionConfig(cfg = {}) {
   advertiserBaseInput.value = cfg.advertiserBase || DEFAULTS.advertiserBase;
   oauthBasicInput.value = cfg.oauthBasic || DEFAULTS.oauthBasic;
   qbrWebhookUrlInput.value = cfg.qbrWebhookUrl || DEFAULTS.qbrWebhookUrl;
+  backendApiUrlInput.value = cfg.backendApiUrl || DEFAULTS.backendApiUrl;
 }
 
 function sendRuntimeMessage(message) {
@@ -140,6 +150,293 @@ async function sendExtensionRequest(message) {
   }
 
   return result.data;
+}
+
+function formatRunTimestamp(value) {
+  if (!value) return "Unknown";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+  return new Intl.DateTimeFormat("en-GB", {
+    dateStyle: "medium",
+    timeStyle: "short"
+  }).format(date);
+}
+
+function runLogValue(run, key, fallback = "-") {
+  const value = String(run?.[key] || "").trim();
+  return value || fallback;
+}
+
+function renderRunLog(runs) {
+  runLogTable.replaceChildren();
+  const rows = Array.isArray(runs) ? runs : [];
+  const uniquePrograms = new Set(rows.map((run) => run.programId).filter(Boolean)).size;
+  runLogMeta.textContent = `${rows.length} run${rows.length === 1 ? "" : "s"} | ${uniquePrograms} primary program${uniquePrograms === 1 ? "" : "s"}`;
+
+  if (!rows.length) {
+    const empty = document.createElement("p");
+    empty.textContent = "No program requests have been recorded yet.";
+    runLogTable.append(empty);
+    return;
+  }
+
+  const columns = [
+    ["Client", "clientUsername"],
+    ["Program IDs", "programIds"],
+    ["Program Names", "programNames"],
+    ["Date Range", "dateRange"],
+    ["Language", "languageCode"],
+    ["Currency", "currencyCode"],
+    ["Timestamp", "timestamp"]
+  ];
+
+  const table = document.createElement("table");
+  const thead = document.createElement("thead");
+  const tbody = document.createElement("tbody");
+  const headerRow = document.createElement("tr");
+
+  for (const [label] of columns) {
+    const th = document.createElement("th");
+    th.textContent = label;
+    headerRow.append(th);
+  }
+  thead.append(headerRow);
+
+  for (const run of rows) {
+    const row = document.createElement("tr");
+    for (const [, key] of columns) {
+      const cell = document.createElement("td");
+      if (key === "programIds") cell.className = "mono-cell";
+      if (key === "timestamp") {
+        cell.textContent = formatRunTimestamp(run.timestamp);
+      } else if (key === "dateRange") {
+        const startDate = runLogValue(run, "startDate", "");
+        const endDate = runLogValue(run, "endDate", "");
+        cell.textContent = startDate && endDate ? `${startDate} to ${endDate}` : "-";
+      } else if (key === "programIds") {
+        cell.textContent = runLogValue(run, "programIds", runLogValue(run, "programId"));
+      } else {
+        cell.textContent = runLogValue(run, key);
+      }
+      row.append(cell);
+    }
+    tbody.append(row);
+  }
+
+  table.append(thead, tbody);
+  runLogTable.append(table);
+}
+
+async function fetchRunLogDirect(limit = 50) {
+  const cfg = getConnectionConfig();
+  const response = await fetch(`${cfg.backendApiUrl}/program-request-runs?limit=${encodeURIComponent(limit)}`, {
+    headers: { "Accept": "application/json" }
+  });
+  if (!response.ok) throw new Error(`Run log API failed: HTTP ${response.status}`);
+  return response.json();
+}
+
+async function backendJson(path, init = {}) {
+  const cfg = getConnectionConfig();
+  const response = await fetch(`${cfg.backendApiUrl}${path}`, {
+    ...init,
+    headers: {
+      "Accept": "application/json",
+      ...(init.body ? { "Content-Type": "application/json" } : {}),
+      ...(init.headers || {})
+    }
+  });
+  const text = await response.text();
+  let data = text;
+  try {
+    data = text ? JSON.parse(text) : null;
+  } catch (_error) {
+    data = text;
+  }
+  if (!response.ok) {
+    const detail = data && typeof data === "object" ? data.detail || data.message || data.error : String(data || "");
+    throw new Error(`Batch manifest API failed: HTTP ${response.status}${detail ? ` ${detail}` : ""}`);
+  }
+  return data;
+}
+
+async function createBatchRunManifest(rowCount) {
+  const data = await backendJson("/batch-runs", {
+    method: "POST",
+    body: JSON.stringify({
+      source: "advertiser-agent-extension",
+      rowCount
+    })
+  });
+  return data.batch;
+}
+
+async function recordBatchRunManifestItem(batchId, row, payload) {
+  const data = await backendJson(`/batch-runs/${encodeURIComponent(batchId)}/items`, {
+    method: "POST",
+    body: JSON.stringify({
+      rowNumber: row.rowNumber,
+      clientUsername: payload.clientUsername,
+      programIds: payload.advertiserProgramIds,
+      startDate: payload.startDate,
+      endDate: payload.endDate,
+      status: row.status,
+      duplicate: Boolean(row.duplicate),
+      resultUrl: row.resultUrl || "",
+      error: row.error || "",
+      requestKey: buildBatchRequestKey(payload)
+    })
+  });
+  return data.batch;
+}
+
+function buildBatchRequestKey(payload) {
+  const clientUsername = String(payload.clientUsername || "").trim().toLowerCase();
+  const programIds = Array.from(new Set((payload.advertiserProgramIds || []).map((id) => String(id || "").trim()).filter(Boolean)))
+    .sort((left, right) => left.localeCompare(right, undefined, { sensitivity: "base" }));
+  if (!clientUsername || !programIds.length || !payload.startDate || !payload.endDate) return "";
+  return `${clientUsername}|${programIds.join(",")}|${payload.startDate}|${payload.endDate}`;
+}
+
+function getBatchRows(batch) {
+  return Array.isArray(batch?.rows) ? batch.rows : [];
+}
+
+function getBatchRowPrograms(row) {
+  if (Array.isArray(row.advertiserProgramIds)) return row.advertiserProgramIds.join(", ");
+  return String(row.programIds || "");
+}
+
+function csvCell(value) {
+  const text = String(value == null ? "" : value);
+  return /[",\r\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
+}
+
+function buildBatchResultsCsv(batch) {
+  const header = ["rowNumber", "clientUsername", "programIds", "startDate", "endDate", "status", "duplicate", "resultUrl", "error"];
+  const lines = [header.map(csvCell).join(",")];
+  for (const row of getBatchRows(batch)) {
+    lines.push([
+      row.rowNumber,
+      row.clientUsername,
+      getBatchRowPrograms(row),
+      row.startDate,
+      row.endDate,
+      row.status,
+      Boolean(row.duplicate),
+      row.resultUrl,
+      row.error
+    ].map(csvCell).join(","));
+  }
+  return lines.join("\r\n");
+}
+
+function createBatchResultsCsvUrl(batch) {
+  if (currentBatchResultsUrl) URL.revokeObjectURL(currentBatchResultsUrl);
+  const blob = new Blob([buildBatchResultsCsv(batch)], { type: "text/csv;charset=utf-8" });
+  currentBatchResultsUrl = URL.createObjectURL(blob);
+  return currentBatchResultsUrl;
+}
+
+function summarizeBatch(batch) {
+  const rows = getBatchRows(batch);
+  const rowCount = Number(batch?.rowCount || rows.length || 0);
+  const successCount = Number(batch?.successCount ?? rows.filter((row) => row.status === "success").length);
+  const duplicateCount = Number(batch?.duplicateCount ?? rows.filter((row) => row.duplicate || row.status === "duplicate").length);
+  const errorCount = Number(batch?.errorCount ?? rows.filter((row) => row.status === "error").length);
+  return { rowCount, successCount, duplicateCount, errorCount };
+}
+
+function renderBatchResults(batch) {
+  batchResults.replaceChildren();
+  const rows = getBatchRows(batch);
+  if (!batch || !rows.length) {
+    batchResults.textContent = "Batch results will appear here after a run.";
+    return;
+  }
+
+  const counts = summarizeBatch(batch);
+  const summary = document.createElement("p");
+  summary.textContent = `${counts.rowCount} rows | ${counts.successCount} succeeded | ${counts.duplicateCount} duplicates | ${counts.errorCount} failed`;
+  batchResults.append(summary);
+
+  const actions = document.createElement("div");
+  actions.className = "batch-actions";
+  const csvLink = document.createElement("a");
+  csvLink.href = createBatchResultsCsvUrl(batch);
+  csvLink.download = `${batch.id || "batch-results"}.csv`;
+  csvLink.textContent = "Download batch results CSV";
+  actions.append(csvLink);
+  batchResults.append(actions);
+
+  const table = document.createElement("table");
+  const thead = document.createElement("thead");
+  const tbody = document.createElement("tbody");
+  const headerRow = document.createElement("tr");
+  for (const label of ["Row", "Client", "Programs", "Date Range", "Status", "Result"] ) {
+    const th = document.createElement("th");
+    th.textContent = label;
+    headerRow.append(th);
+  }
+  thead.append(headerRow);
+
+  for (const row of rows) {
+    const tr = document.createElement("tr");
+    const resultCell = document.createElement("td");
+    if (row.resultUrl) {
+      const link = document.createElement("a");
+      link.href = resolveResultUrl(row.resultUrl);
+      link.target = "_blank";
+      link.rel = "noreferrer";
+      link.textContent = "Open PPTX";
+      resultCell.append(link);
+    } else {
+      resultCell.textContent = row.error || "-";
+    }
+
+    const values = [
+      row.rowNumber,
+      row.clientUsername || "-",
+      getBatchRowPrograms(row) || "-",
+      row.startDate && row.endDate ? `${row.startDate} to ${row.endDate}` : "-",
+      row.status || "running"
+    ];
+    for (const value of values) {
+      const td = document.createElement("td");
+      td.textContent = value;
+      if (value === row.status) td.className = `status-${row.status}`;
+      tr.append(td);
+    }
+    tr.append(resultCell);
+    tbody.append(tr);
+  }
+
+  table.append(thead, tbody);
+  batchResults.append(table);
+}
+async function refreshRunLog() {
+  refreshRunLogButton.disabled = true;
+  runLogMeta.textContent = "Loading run log...";
+
+  try {
+    let data;
+    try {
+      data = await sendExtensionRequest({ type: "LIST_PROGRAM_REQUEST_RUNS", limit: 50 });
+    } catch (error) {
+      if (!/Unknown message type: LIST_PROGRAM_REQUEST_RUNS/i.test(error.message || "")) throw error;
+      data = await fetchRunLogDirect(50);
+    }
+    renderRunLog(data.runs || []);
+  } catch (error) {
+    runLogTable.replaceChildren();
+    runLogMeta.textContent = "Run log unavailable.";
+    const message = document.createElement("p");
+    message.className = "error-text";
+    message.textContent = error.message;
+    runLogTable.append(message);
+  } finally {
+    refreshRunLogButton.disabled = false;
+  }
 }
 
 function redact(value) {
@@ -182,20 +479,12 @@ function showResultLink(label, href) {
 
 function showBatchDownloadLinks(batch) {
   clearResultLink();
-  const rows = Array.isArray(batch?.rows) ? batch.rows : [];
-  const successfulRows = rows.filter((row) => row.status === "success" && (row.resultUrl || row.download_url || row.pptx_url));
-
-  if (!successfulRows.length) return;
-
-  for (const row of successfulRows) {
-    const programLabel = Array.isArray(row.advertiserProgramIds) && row.advertiserProgramIds.length
-      ? row.advertiserProgramIds.join(", ")
-      : "unknown-program";
-    appendResultLink(
-      `Download row ${row.rowNumber} (${row.clientUsername} - ${programLabel})`,
-      resolveResultUrl(row.resultUrl || row.download_url || row.pptx_url)
-    );
-  }
+  if (!getBatchRows(batch).length) return;
+  const link = document.createElement("a");
+  link.href = createBatchResultsCsvUrl(batch);
+  link.download = `${batch.id || "batch-results"}.csv`;
+  link.textContent = "Download batch results CSV";
+  resultLink.append(link);
 }
 
 function getPrimaryProgram() {
@@ -227,6 +516,11 @@ function getFormPayload() {
     publisherProgramIds: programIds,
     analysisProgramIds: programIds,
     programNames,
+    advertiserPrograms: selectedPrograms.map((program) => ({
+      id: program.id,
+      name: program.name,
+      ...(program.countryCode ? { countryCode: program.countryCode } : {})
+    })),
     languageCode: data.get("languageCode"),
     currencyCode: data.get("currencyCode"),
     startDate: data.get("dateFrom"),
@@ -608,6 +902,7 @@ async function testApi() {
       ...response,
       qbrWebhookUrl: cfg.qbrWebhookUrl,
       advertiserBase: cfg.advertiserBase,
+      backendApiUrl: cfg.backendApiUrl,
       passwordStored: false
     });
     return true;
@@ -684,10 +979,14 @@ async function loadPrograms() {
     const items = normalizeProgramItems(response);
     programs = items
       .filter((item) => item?.active === true && item?.closedProgram !== true)
-      .map((item) => ({
-        id: String(item.programId || item.id || ""),
-        name: item.name || item.programName ? String(item.name || item.programName) : `Program ${item.programId || item.id}`
-      }))
+      .map((item) => {
+        const countryCode = item.countryCode ? String(item.countryCode).trim().toUpperCase() : "";
+        return {
+          id: String(item.programId || item.id || ""),
+          name: item.name || item.programName ? String(item.name || item.programName) : `Program ${item.programId || item.id}`,
+          ...(countryCode ? { countryCode } : {})
+        };
+      })
       .filter((item) => item.id)
       .sort((a, b) => a.name.localeCompare(b.name));
     selectedProgramIds = programs[0] ? [programs[0].id] : [];
@@ -820,11 +1119,8 @@ async function runBatch(event) {
 
   try {
     await saveConnectionConfig();
-    const batch = {
-      id: `extension-batch-${Date.now()}`,
-      status: "running",
-      rows: []
-    };
+    let batch = await createBatchRunManifest(batchRows.length);
+    renderBatchResults(batch);
 
     for (let index = 0; index < batchRows.length; index += 1) {
       const payload = buildBatchPayload(batchRows[index]);
@@ -832,10 +1128,17 @@ async function runBatch(event) {
         rowNumber: index + 1,
         clientUsername: payload.clientUsername,
         advertiserProgramIds: payload.advertiserProgramIds,
-        status: "running"
+        programIds: payload.advertiserProgramIds.join(", "),
+        startDate: payload.startDate,
+        endDate: payload.endDate,
+        status: "running",
+        duplicate: false,
+        resultUrl: "",
+        error: ""
       };
-      batch.rows.push(row);
+      batch.rows = [...getBatchRows(batch), row];
       writeStatus(`Batch row ${row.rowNumber} of ${batchRows.length}`, batch);
+      renderBatchResults(batch);
 
       try {
         const response = await sendExtensionRequest({
@@ -847,14 +1150,24 @@ async function runBatch(event) {
         row.result = response.data || response;
         row.resultUrl = getResultUrl(response.data || response);
       } catch (error) {
-        row.status = "error";
+        row.duplicate = /^Duplicate QBR request blocked/i.test(error.message || "");
+        row.status = row.duplicate ? "duplicate" : "error";
         row.error = error.message;
       }
+
+      try {
+        batch = await recordBatchRunManifestItem(batch.id, row, payload);
+      } catch (error) {
+        row.status = "error";
+        row.error = `${row.error ? `${row.error} | ` : ""}Batch manifest logging failed: ${error.message}`;
+      }
+      writeStatus(`Batch row ${row.rowNumber} of ${batchRows.length}`, batch);
+      renderBatchResults(batch);
     }
 
-    batch.status = batch.rows.some((row) => row.status === "error") ? "completed_with_errors" : "completed";
     writeStatus("Batch completed", batch);
     showBatchDownloadLinks(batch);
+    await refreshRunLog();
   } catch (error) {
     writeStatus("Batch request failed", { error: error.message });
   } finally {
@@ -903,6 +1216,7 @@ async function submitRequest() {
     if (resultUrl) {
       showResultLink("Open result", resolveResultUrl(resultUrl));
     }
+    await refreshRunLog();
   } catch (error) {
     writeStatus("Advertiser request failed", { error: error.message });
   } finally {
@@ -916,11 +1230,12 @@ async function init() {
   renderPrograms();
   updateProgramStatus();
   updateSummary();
+  refreshRunLog().catch((error) => writeStatus("Run log load failed", { error: error.message }));
 }
 
 form.addEventListener("input", updateSummary);
 form.addEventListener("change", updateSummary);
-for (const input of [adminUsernameInput, qbrWebhookUrlInput, oauthUrlInput, impersonateUrlInput, advertiserBaseInput, oauthBasicInput]) {
+for (const input of [adminUsernameInput, qbrWebhookUrlInput, backendApiUrlInput, oauthUrlInput, impersonateUrlInput, advertiserBaseInput, oauthBasicInput]) {
   input.addEventListener("blur", () => {
     saveConnectionConfig().catch((error) => writeStatus("Connection config save failed", { error: error.message }));
   });
@@ -951,6 +1266,9 @@ clearProgramsButton.addEventListener("click", () => {
 });
 batchFileInput.addEventListener("change", handleBatchFileChange);
 runBatchButton.addEventListener("click", runBatch);
+refreshRunLogButton.addEventListener("click", refreshRunLog);
 submitButton.addEventListener("click", submitRequest);
 
 init();
+
+

@@ -34,7 +34,8 @@ function normalizeCfg(cfg = {}) {
     qbrWebhookUrl: normalizeBaseUrl(
       cfg.qbrWebhookUrl,
       "http://127.0.0.1:5678/webhook/agency-agent-qbr-backend-auth-20260610"
-    )
+    ),
+    backendApiUrl: normalizeBaseUrl(cfg.backendApiUrl, "http://127.0.0.1:8008/api")
   };
 }
 
@@ -222,6 +223,23 @@ async function submitQbrRequest(cfg, payload, bearerToken) {
       tokensIncluded: false
     }
   };
+  let runLogRecorded = false;
+  let runLogError = "";
+  try {
+    const runLogResponse = await recordProgramRequestRun(cfg, requestPayload);
+    if (runLogResponse?.duplicate) {
+      const programIds = runLogResponse.programIds || requestPayload.advertiserProgramIds?.join(", ") || requestPayload.programId || "selected program";
+      const dateRange = requestPayload.startDate && requestPayload.endDate
+        ? `${requestPayload.startDate} to ${requestPayload.endDate}`
+        : "the selected date range";
+      throw new Error(`Duplicate QBR request blocked for ${programIds} (${dateRange}). Change the date range or selected programs to submit a new request.`);
+    }
+    runLogRecorded = Boolean(runLogResponse?.recorded);
+  } catch (error) {
+    runLogError = error && error.message ? error.message : String(error);
+    if (/^Duplicate QBR request blocked/i.test(runLogError)) throw error;
+  }
+
   const message = `QBR_REQUEST ${JSON.stringify(requestPayload)}`;
   const data = await fetchJson(
     cfg.qbrWebhookUrl,
@@ -245,12 +263,45 @@ async function submitQbrRequest(cfg, payload, bearerToken) {
   return {
     ok: true,
     data,
+    runLog: {
+      recorded: runLogRecorded,
+      error: runLogError
+    },
     tdSession: {
       mode: "extension_advertiser_impersonation",
       clientUsername,
       tokenStoredInExtension: true
     }
   };
+}
+
+async function recordProgramRequestRun(cfg, payload) {
+  return fetchJson(
+    `${cfg.backendApiUrl}/program-request-runs`,
+    {
+      method: "POST",
+      headers: {
+        "Accept": "application/json",
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ payload })
+    },
+    "Program request run logging"
+  );
+}
+
+async function listProgramRequestRuns(cfg, limit = 50) {
+  const safeLimit = Math.max(1, Math.min(500, Number(limit || 50)));
+  return fetchJson(
+    `${cfg.backendApiUrl}/program-request-runs?limit=${encodeURIComponent(safeLimit)}`,
+    {
+      method: "GET",
+      headers: {
+        "Accept": "application/json"
+      }
+    },
+    "Program request run log"
+  );
 }
 
 async function handleMessage(msg) {
@@ -287,6 +338,11 @@ async function handleMessage(msg) {
     return { ok: true, data };
   }
 
+  if (msg.type === "LIST_PROGRAM_REQUEST_RUNS") {
+    const data = await listProgramRequestRuns(cfg, msg.limit);
+    return { ok: true, data };
+  }
+
   return { ok: false, error: `Unknown message type: ${msg.type}` };
 }
 
@@ -302,3 +358,4 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
 
   return true;
 });
+

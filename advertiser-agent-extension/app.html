@@ -1,4 +1,4 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="en">
   <head>
     <meta charset="utf-8">
@@ -38,6 +38,11 @@
                 <label class="field field-wide" for="qbrWebhookUrl">
                   <span>QBR Webhook URL</span>
                   <input id="qbrWebhookUrl" name="qbrWebhookUrl" type="text" autocomplete="off" spellcheck="false">
+                </label>
+
+                <label class="field field-wide" for="backendApiUrl">
+                  <span>Run Log API URL</span>
+                  <input id="backendApiUrl" name="backendApiUrl" type="text" autocomplete="off" spellcheck="false">
                 </label>
               </div>
 
@@ -192,6 +197,7 @@
               </div>
 
               <div class="batch-preview" id="batchPreview">Upload a file with clientUsername, programIds, startDate, endDate, currencyCode, and languageCode.</div>
+              <div class="batch-results" id="batchResults">Batch results will appear here after a run.</div>
             </section>
 
           </form>
@@ -213,6 +219,20 @@
               <pre id="statusOutput">Ready.</pre>
               <div class="link-slot" id="resultLink"></div>
             </section>
+
+            <section class="panel run-log-panel">
+              <div class="panel-heading compact-heading">
+                <div>
+                  <h2>Run Log</h2>
+                  <p>Recorded program requests from local Postgres.</p>
+                </div>
+                <button class="mini-button" id="refreshRunLog" type="button">Refresh</button>
+              </div>
+              <div class="run-log-meta" id="runLogMeta">No records loaded.</div>
+              <div class="run-log-table" id="runLogTable">
+                <p>Refresh to load recorded requests.</p>
+              </div>
+            </section>
           </aside>
         </div>
       </section>
@@ -221,3 +241,4 @@
     <script src="app.js"></script>
   </body>
 </html>
+

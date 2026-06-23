@@ -4,6 +4,7 @@ import { Sidebar } from './components/Sidebar'
 import { HubPage } from './pages/HubPage'
 import { ChatPage } from './pages/ChatPage'
 import { OnboardingDashboard } from './pages/OnboardingDashboard'
+import { RunLogPage } from './pages/RunLogPage'
 import { fetchAgents } from './lib/api'
 import type { Agent, QbrLogItem } from './lib/types'
 
@@ -62,6 +63,7 @@ function AppLayout() {
         <Route path="/" element={<HubPage agents={agents} />} />
         <Route path="/chat/:agentId" element={<ChatPage agents={agents} onQbrLog={handleQbrLog} />} />
         <Route path="/onboarding" element={<OnboardingDashboard />} />
+        <Route path="/runs" element={<RunLogPage />} />
       </Routes>
     </div>
   )

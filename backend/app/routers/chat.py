@@ -14,6 +14,7 @@ from app.config import get_settings
 from app.routers.agents import AGENTS
 from app.routers.td_auth import get_current_td_tokens, impersonate_client_username
 from app.services.n8n_client import n8n_client
+from app.services.program_request_runs import try_record_program_request
 
 router = APIRouter()
 settings = get_settings()
@@ -381,6 +382,8 @@ async def send_message(request: Request):
                 "response": response_text,
                 "threadId": thread_id,
             }
+
+        await try_record_program_request(payload_obj)
 
         job_id = str(uuid.uuid4())
         QBR_JOBS[job_id] = {

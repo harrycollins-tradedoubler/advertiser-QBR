@@ -1,5 +1,5 @@
 import { useNavigate, useLocation } from 'react-router-dom'
-import { Plus, MessageSquare, Bot, ClipboardList } from 'lucide-react'
+import { Plus, MessageSquare, Bot, ClipboardList, Database } from 'lucide-react'
 import type { Agent, QbrLogItem } from '../lib/types'
 
 interface Thread {
@@ -105,6 +105,31 @@ export function Sidebar({ agents, threads, qbrLogs = [], onNewChat }: SidebarPro
               </p>
               <p className="text-xs text-gray-500 truncate">
                 Check program status
+              </p>
+            </div>
+          </button>
+
+          <button
+            onClick={() => navigate('/runs')}
+            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-colors ${
+              location.pathname === '/runs'
+                ? 'bg-[#F7F9FF] text-[#2A73FF]'
+                : 'hover:bg-gray-100 text-gray-700'
+            }`}
+          >
+            <div className={`flex h-8 w-8 items-center justify-center rounded-lg shrink-0 ${
+              location.pathname === '/runs'
+                ? 'bg-[#2A73FF] text-white'
+                : 'bg-[#F7F9FF] text-[#2A73FF]'
+            }`}>
+              <Database className="h-4 w-4" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-gray-900 truncate">
+                Run Log
+              </p>
+              <p className="text-xs text-gray-500 truncate">
+                Review program requests
               </p>
             </div>
           </button>

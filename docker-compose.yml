@@ -1,0 +1,56 @@
+services:
+  backend:
+    build:
+      context: ./backend
+    env_file:
+      - ./backend/.env
+    ports:
+      - "127.0.0.1:8008:8008"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8008/api/health', timeout=5).read()"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  qbr-pptx-service:
+    build:
+      context: ./qbr-pptx-service
+    environment:
+      HOST: 0.0.0.0
+      PORT: 3011
+      PUBLIC_BASE_URL: http://127.0.0.1:3011
+      QBR_PPTX_API_KEY: td-qbr-pptx-local-2026-secret
+    ports:
+      - "127.0.0.1:3011:3011"
+    volumes:
+      - qbr_pptx_outputs:/app/outputs
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3011/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  advertiser-qbr-local-runner:
+    build:
+      context: ./advertiser-qbr-local-runner
+    environment:
+      HOST: 0.0.0.0
+      PORT: 3021
+      ADVERTISER_QBR_GENERATOR_URL: http://qbr-pptx-service:3011/generate
+      QBR_PPTX_API_KEY: td-qbr-pptx-local-2026-secret
+      ADVERTISER_QBR_AGENT_MODE: deterministic
+      ALLOW_DOCKER_BRIDGE_REQUESTS: true
+    ports:
+      - "127.0.0.1:3021:3021"
+    depends_on:
+      qbr-pptx-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3021/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  qbr_pptx_outputs:
+

@@ -11,6 +11,12 @@ type TdTokens = {
   impersonate_access_token: string
 }
 
+type AdvertiserProgram = {
+  id: string
+  name: string
+  countryCode?: string
+}
+
 export interface QbrRequestPayload {
   type: 'QBR_REQUEST'
   analysisLevel: AnalysisLevel
@@ -19,6 +25,7 @@ export interface QbrRequestPayload {
   programName: string
   publisherProgramMode: PublisherProgramMode
   publisherProgramIds: string[]
+  advertiserPrograms: AdvertiserProgram[]
   languageCode: LanguageCode
   currencyCode: CurrencyCode
   startDate: string
@@ -54,7 +61,7 @@ export function QbrRequestForm({ onSubmit, disabled }: QbrRequestFormProps) {
   const [currencyCode, setCurrencyCode] = useState<CurrencyCode>('EUR')
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
-  const [programs, setPrograms] = useState<Array<{ id: string; name: string }>>([])
+  const [programs, setPrograms] = useState<AdvertiserProgram[]>([])
   const [loadingPrograms, setLoadingPrograms] = useState(false)
   const [status, setStatus] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -104,13 +111,17 @@ export function QbrRequestForm({ onSubmit, disabled }: QbrRequestFormProps) {
     try {
       setLoadingPrograms(true)
       const data = await tdGetPrograms(organizationId.trim(), 100, accessToken.trim())
-      const items = (data as { items?: Array<{ id: string | number; name?: string }> }).items || []
+      const items = (data as { items?: Array<{ id: string | number; name?: string; countryCode?: string }> }).items || []
       const tokenData = (data as { td_tokens?: Partial<TdTokens> }).td_tokens
       const normalized = items
-        .map((item) => ({
-          id: String(item.id),
-          name: item.name ? String(item.name) : `Program ${item.id}`,
-        }))
+        .map((item) => {
+          const countryCode = item.countryCode ? String(item.countryCode).trim().toUpperCase() : undefined
+          return {
+            id: String(item.id),
+            name: item.name ? String(item.name) : `Program ${item.id}`,
+            ...(countryCode ? { countryCode } : {}),
+          }
+        })
         .sort((a, b) => a.name.localeCompare(b.name))
 
       const userToken = String(tokenData?.user_access_token || '').trim()
@@ -187,6 +198,14 @@ export function QbrRequestForm({ onSubmit, disabled }: QbrRequestFormProps) {
       return
     }
 
+    const advertiserPrograms = programs
+      .filter((program) => publisherProgramIds.includes(program.id))
+      .map((program) => ({
+        id: program.id,
+        name: program.name,
+        ...(program.countryCode ? { countryCode: program.countryCode } : {}),
+      }))
+
     onSubmit({
       type: 'QBR_REQUEST',
       analysisLevel,
@@ -195,6 +214,7 @@ export function QbrRequestForm({ onSubmit, disabled }: QbrRequestFormProps) {
       programName: programName.trim(),
       publisherProgramMode,
       publisherProgramIds,
+      advertiserPrograms,
       languageCode,
       currencyCode,
       startDate: computedRange.start,

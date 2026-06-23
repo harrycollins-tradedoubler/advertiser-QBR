@@ -1,8 +1,8 @@
-from fastapi import FastAPI
+﻿from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
-from app.routers import agents, chat, onboarding, td_auth
+from app.routers import agents, batch_runs, chat, onboarding, program_request_runs, td_auth
 
 settings = get_settings()
 
@@ -22,8 +22,10 @@ app.add_middleware(
 
 # Include routers
 app.include_router(agents.router, prefix="/api", tags=["agents"])
+app.include_router(batch_runs.router, prefix="/api", tags=["batch-runs"])
 app.include_router(chat.router, prefix="/api", tags=["chat"])
 app.include_router(onboarding.router, prefix="/api", tags=["onboarding"])
+app.include_router(program_request_runs.router, prefix="/api", tags=["program-request-runs"])
 app.include_router(td_auth.router, prefix="/api", tags=["td-auth"])
 
 
@@ -40,3 +42,4 @@ async def health():
 @app.get("/api/health")
 async def api_health():
     return {"status": "healthy"}
+

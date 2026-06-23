@@ -43,6 +43,13 @@ async function embeddedImageHashesForSlide(zip, slideNumber) {
   return Promise.all(mediaFiles.map(fileHash));
 }
 
+async function decodedWorksheetText(workbook, sheetNumber) {
+  const sheetXml = await workbook.file(`xl/worksheets/sheet${sheetNumber}.xml`).async("string");
+  const sharedStrings = await workbook.file("xl/sharedStrings.xml").async("string");
+  const strings = Array.from(sharedStrings.matchAll(/<si><t[^>]*>(.*?)<\/t><\/si>/g)).map(([, value]) => value);
+  return sheetXml.replace(/<v>(\d+)<\/v>/g, (_match, index) => strings[Number(index)] || "");
+}
+
 function roundRectFrames(slideXml) {
   return Array.from(slideXml.matchAll(/<p:sp[\s\S]*?<\/p:sp>/g))
     .map(([shapeXml]) => {
@@ -847,6 +854,128 @@ test("advertiser QBR falls back to top10ByOV for top publisher performance table
   assert.equal(topPublisherSlide.tables[0].rows[0][7], "+20.0%");
 });
 
+test("multi-program publisher performance adds summary slide and top-40 workbook", async () => {
+  const programScopeTable = Array.from({ length: 10 }, (_, index) => {
+    const rank = index + 1;
+    return {
+      Program: `Program ${rank}`,
+      "Program ID": `P${rank}`,
+      "Current OV": `GBP ${rank * 100000}`,
+      "OV YoY %": `+${rank}.0%`,
+      "Current Sales": String(rank * 1000),
+      "Sales YoY %": `+${rank / 2}%`
+    };
+  });
+  const publisherRows = programScopeTable.flatMap((program) => {
+    const programNumber = Number(program["Program ID"].replace("P", ""));
+    return Array.from({ length: 45 }, (_, index) => {
+      const publisherRank = index + 1;
+      return {
+        "Program ID": program["Program ID"],
+        "Program Name": program.Program,
+        Publisher: `Publisher ${programNumber}-${publisherRank}`,
+        "Site ID": `site-${programNumber}-${publisherRank}`,
+        Segment: publisherRank % 2 ? "Content" : "Cashback",
+        Clicks: String(publisherRank * 100),
+        Sales: String(publisherRank * 10),
+        "Conversion Rate": `${publisherRank}.0%`,
+        AOV: `GBP ${publisherRank * 2}`,
+        "Total Order Value": `GBP ${publisherRank * 1000}`,
+        "OV YoY %": `+${publisherRank}.0%`,
+        "Sales YoY %": `+${publisherRank / 2}%`,
+        "Publisher Commission": `GBP ${publisherRank * 25}`,
+        CPA: `GBP ${publisherRank}`
+      };
+    });
+  });
+
+  const result = await generatePresentation({
+    ...misleadingHeadingPayload(),
+    currencyCode: "GBP",
+    programScopeTable,
+    publisherTables: {
+      ...misleadingHeadingPayload().publisherTables,
+      topPublisherPerformance: [
+        {
+          Publisher: "Aggregate Publisher",
+          "Site ID": "aggregate-site",
+          Sales: "999",
+          "Total Order Value": "GBP 999999",
+          "OV YoY %": "+9.9%"
+        }
+      ],
+      publisherPerformanceByProgram: publisherRows
+    }
+  });
+
+  const titles = result.deckSpec.slides.map((slide) => slide.title);
+  const summarySlide = result.deckSpec.slides.find((slide) => slide.id === "publisher-performance-by-program");
+  const workbook = await JSZip.loadAsync(result.publisherPerformanceExcelBuffer);
+  const workbookXml = await workbook.file("xl/workbook.xml").async("string");
+  const p10Sheet = await decodedWorksheetText(workbook, 10);
+
+  assert.equal(titles[7], "Top Publisher Performance: Volume & Conversion");
+  assert.equal(titles[8], "Publisher Performance by Program");
+  assert.equal(titles[9], "Movers and Shakers: Publisher Performance");
+  assert.equal(result.deckSpec.slides[7].tables[0].rows[0][0], "Aggregate Publisher");
+  assert.ok(summarySlide);
+  assert.equal(summarySlide.kind, "publisher-table");
+  assert.equal(summarySlide.tables[0].rows.length, 8);
+  assert.equal(summarySlide.tables[0].rows[0][0], "Program 10");
+  assert.equal(summarySlide.tables[0].rows[0][1], "P10");
+  assert.equal(summarySlide.tables[0].rows[0][2], "Publisher 10-45");
+  assert.match(summarySlide.callout, /Full top 40 publisher detail per program is available in Excel/);
+
+  assert.ok(Buffer.isBuffer(result.publisherPerformanceExcelBuffer));
+  assert.equal(result.publisherPerformanceExcelFileName, "qbr_deck_publisher_performance_by_program.xlsx");
+  assert.match(workbookXml, /name="P1"/);
+  assert.match(workbookXml, /name="P10"/);
+  assert.match(p10Sheet, /Program ID/);
+  assert.match(p10Sheet, /Publisher 10-45/);
+  assert.match(p10Sheet, /Publisher 10-6/);
+  assert.doesNotMatch(p10Sheet, /Publisher 10-5/);
+  assert.doesNotMatch(p10Sheet, /Publisher 9-45/);
+});
+
+test("multi-program publisher performance accepts alternate table and program id aliases", async () => {
+  const result = await generatePresentation({
+    ...misleadingHeadingPayload(),
+    currencyCode: "GBP",
+    programScopeTable: [
+      { Program: "Program A", "Program ID": "PA", "Current OV": "GBP 200000" },
+      { Program: "Program B", "Program ID": "PB", "Current OV": "GBP 100000" }
+    ],
+    publisherTables: {
+      publisherPerformanceByProgram: [
+        {
+          "Publisher Program ID": "PA",
+          "Program Name": "Program A",
+          Publisher: "Alias Publisher A",
+          "Total Order Value": "GBP 5000",
+          Sales: "50"
+        },
+        {
+          "Publisher Program ID": "PB",
+          "Program Name": "Program B",
+          Publisher: "Alias Publisher B",
+          "Total Order Value": "GBP 4000",
+          Sales: "40"
+        }
+      ]
+    }
+  });
+
+  const summarySlide = result.deckSpec.slides.find((slide) => slide.id === "publisher-performance-by-program");
+  const workbook = await JSZip.loadAsync(result.publisherPerformanceExcelBuffer);
+  const sheetA = await decodedWorksheetText(workbook, 1);
+
+  assert.ok(summarySlide);
+  assert.equal(summarySlide.tables[0].rows[0][2], "Alias Publisher A");
+  assert.equal(result.publisherPerformanceExcelFileName, "qbr_deck_publisher_performance_by_program.xlsx");
+  assert.match(sheetA, /Alias Publisher A/);
+  assert.doesNotMatch(sheetA, /Alias Publisher B/);
+});
+
 test("advertiser QBR uses explicit publisher best and worst order-value rankings when supplied", async () => {
   const result = await generatePresentation({
     ...misleadingHeadingPayload(),
@@ -877,6 +1006,108 @@ test("advertiser QBR uses explicit publisher best and worst order-value rankings
   assert.equal(rankingSlide.panelTitles.top, "Top 10 YoY OV growth publishers");
   assert.equal(rankingSlide.panelTitles.bottom, "Top 10 YoY OV decline publishers");
   assert.match(rankingSlide.subtitle, /YoY order value movement/i);
+});
+
+test("advertiser QBR adds YoY percentage to order-value ranking labels", async () => {
+  const result = await generatePresentation({
+    ...misleadingHeadingPayload(),
+    currencyCode: "GBP",
+    publisherTables: {
+      ...misleadingHeadingPayload().publisherTables,
+      top10ByOV: [
+        {
+          Publisher: "High Growth OV",
+          "Site ID": "ov-up",
+          "Order Value": "GBP 1000000",
+          "OV YoY %": "+42.5%"
+        },
+        {
+          Publisher: "High Decline OV",
+          "Site ID": "ov-down",
+          "Order Value": "GBP -250000",
+          "OV YoY %": "-18.0%"
+        }
+      ]
+    }
+  });
+
+  const rankingSlide = result.deckSpec.slides.find((slide) => slide.id === "publisher-order-value-rankings");
+
+  assert.ok(rankingSlide);
+  assert.equal(rankingSlide.ranking.top[0].publisher, "High Growth OV");
+  assert.equal(rankingSlide.ranking.top[0].label, "£1m (+42.5%)");
+  assert.equal(rankingSlide.ranking.bottom[0].publisher, "High Decline OV");
+  assert.equal(rankingSlide.ranking.bottom[0].label, "-£250k (-18.0%)");
+});
+
+test("advertiser QBR renders sales and click movers as ranking bars and removes order-value mover table", async () => {
+  const rows = (metric, count = 12) => ([
+    ...Array.from({ length: count }, (_, index) => {
+      const rank = index + 1;
+      return {
+        Publisher: `${metric} Growth ${rank}`,
+        "Site ID": `${metric.toLowerCase()}-up-${rank}`,
+        Direction: "Up",
+        [`Current ${metric}`]: String(rank * 100),
+        "YoY Change": `+${rank * 10}`,
+        "YoY %": `+${rank}.0%`
+      };
+    }),
+    ...Array.from({ length: count }, (_, index) => {
+      const rank = index + 1;
+      return {
+        Publisher: `${metric} Decline ${rank}`,
+        "Site ID": `${metric.toLowerCase()}-down-${rank}`,
+        Direction: "Down",
+        [`Current ${metric}`]: String(rank * 50),
+        "YoY Change": `-${rank * 20}`,
+        "YoY %": `-${rank}.0%`
+      };
+    })
+  ]);
+
+  const result = await generatePresentation({
+    ...misleadingHeadingPayload(),
+    publisherTables: {
+      ...misleadingHeadingPayload().publisherTables,
+      moversShakersSales: rows("Sales"),
+      moversShakersClicks: rows("Clicks"),
+      moversShakersOV: [
+        {
+          Publisher: "Covered By Slide 9",
+          Direction: "Down",
+          "Current OV": "GBP 100",
+          "YoY Change": "-100"
+        }
+      ]
+    }
+  });
+
+  const salesSlide = result.deckSpec.slides.find((slide) => slide.id === "movers-shakers-sales");
+  const clickSlide = result.deckSpec.slides.find((slide) => slide.id === "movers-shakers-clicks");
+  const ovSlide = result.deckSpec.slides.find((slide) => slide.id === "movers-shakers-ov");
+
+  assert.equal(result.deckSpec.slides[9].id, "movers-shakers-sales");
+  assert.equal(result.deckSpec.slides[10].id, "movers-shakers-clicks");
+  assert.equal(result.deckSpec.slides[11].id, "brand-new-publishers");
+  assert.equal(ovSlide, undefined);
+
+  assert.equal(salesSlide.kind, "publisher-ov-ranking-bars");
+  assert.deepEqual(salesSlide.tables, []);
+  assert.equal(salesSlide.ranking.top[0].publisher, "Sales Growth 12");
+  assert.equal(salesSlide.ranking.bottom[0].publisher, "Sales Decline 12");
+  assert.equal(salesSlide.panelTitles.top, "Top 10 YoY sales growth publishers");
+  assert.equal(salesSlide.panelTitles.bottom, "Top 10 YoY sales decline publishers");
+  assert.match(salesSlide.footerNote, /bar length is normalized/i);
+  assert.match(salesSlide.footerNote, /blue bars show positive/i);
+  assert.match(salesSlide.footerNote, /red bars show negative/i);
+
+  assert.equal(clickSlide.kind, "publisher-ov-ranking-bars");
+  assert.deepEqual(clickSlide.tables, []);
+  assert.equal(clickSlide.ranking.top[0].publisher, "Clicks Growth 12");
+  assert.equal(clickSlide.ranking.bottom[0].publisher, "Clicks Decline 12");
+  assert.equal(clickSlide.panelTitles.top, "Top 10 YoY click growth publishers");
+  assert.equal(clickSlide.panelTitles.bottom, "Top 10 YoY click decline publishers");
 });
 
 test("advertiser Brand New Publishers slide uses order-value bar chart and removes table", async () => {

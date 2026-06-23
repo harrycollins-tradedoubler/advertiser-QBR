@@ -63,3 +63,18 @@ export interface QbrLogItem {
   fileName?: string
   updatedAt: string
 }
+
+export interface ProgramRequestRun {
+  programId: string
+  timestamp: string
+  clientUsername: string
+  programIds: string
+  programNames: string
+  startDate: string
+  endDate: string
+  languageCode: string
+  currencyCode: string
+  analysisLevel: string
+}
+
+
