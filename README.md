@@ -1,70 +1,91 @@
-# TD QBR Agent Hub
+# Advertiser QBR Local Deck Generator
 
-This repo currently supports a Tradedoubler QBR workflow: a React frontend, FastAPI backend, n8n-powered QBR agent, TD program/auth integration, and a standalone editable PPTX renderer.
+This repository supports the current local Tradedoubler Advertiser QBR flow:
 
-The original Agentic RAG masterclass docs are no longer the best description of the active product.
+```text
+Chrome extension / TD app -> local Node.js runner -> PowerPoint service
+```
 
-## Active n8n Source
-
-- Active workflow source of truth: advertiser workflow `WpsIHbeMDD86vg5y`
-- Unless explicitly stated otherwise, use the advertiser workflow as the current implementation reference for backend and presentation behavior.
-- Do not assume publisher workflow exports are the active runtime path.
+n8n is no longer part of the active runtime. Historical workflow exports are archived under `workflows/archive/` for reference only.
 
 ## Active Applications
 
 | Area | Path | Purpose |
-|------|------|---------|
-| Frontend | `frontend/` | React UI for selecting the QBR agent, authenticating TD access, selecting programs, and requesting QBR reports |
-| Backend | `backend/` | FastAPI API for agents, chat, TD auth/program lookup, QBR job status, and report download proxying |
-| PPTX service | `qbr-pptx-service/` | Node service that renders editable PowerPoint decks from QBR payloads |
-| TD reference app | `td-app/` | Separate TD app/reference codebase, not the main local runtime |
-| Plans and docs | `agent-plans/`, `Files/` | Historical plans and current project documentation |
+| --- | --- | --- |
+| Chrome extension | `advertiser-agent-extension/` | TD login, client impersonation, program selection, batch input, and QBR submission UI |
+| Local runner | `advertiser-qbr-local-runner/` | Accepts extension requests, fetches TD data, prepares analysis payloads, and calls the PPTX service |
+| PPTX service | `qbr-pptx-service/` | Generates editable PowerPoint decks and signed download links |
+| Auxiliary backend | `backend/` | Optional run-log/API support for program request tracking |
+| Legacy frontend | `frontend/` | Older React UI; not the primary QBR interface |
+| TD reference app | `td-app/` | Nested reference repository, not the primary local runtime |
 
 ## Local URLs
 
-- Frontend: `http://localhost:5173`
-- Backend: `http://localhost:8008`
-- PPTX service: `http://localhost:3010`
+- Extension QBR endpoint: `http://127.0.0.1:3021/webhook-local/advertiser-qbr`
+- Local runner health: `http://127.0.0.1:3021/health`
+- PPTX service: `http://127.0.0.1:3011`
+- PPTX service health: `http://127.0.0.1:3011/health`
+- Optional backend API: `http://127.0.0.1:8008/api`
 
 ## Run Locally
 
-Start frontend and backend:
+Install dependencies:
 
 ```powershell
-.\scripts\start-services.ps1
+cd qbr-pptx-service
+npm install
+
+cd ..\advertiser-qbr-local-runner
+npm install
 ```
 
-Stop frontend and backend:
-
-```powershell
-.\scripts\stop-services.ps1
-```
-
-Start the PPTX service separately:
+Start the PPTX service:
 
 ```powershell
 cd qbr-pptx-service
 npm run start
 ```
 
-## QBR Workflow Summary
+Start the local runner in another terminal:
 
-1. User enters a TD access token and Organisation ID in the frontend.
-2. Backend calls TD APIs to find an eligible organisation user, impersonate them, and fetch programs.
-3. Frontend submits selected program IDs, language, currency, date range, and TD tokens as a `QBR_REQUEST`.
-4. Backend queues the job in memory and calls the configured n8n webhook.
-5. Frontend polls backend job status.
-6. If n8n returns a PPTX URL, backend proxies the PowerPoint download.
-7. The separate PPTX service can be called by n8n to generate editable decks.
+```powershell
+cd advertiser-qbr-local-runner
+npm run start
+```
+
+Load the Chrome extension:
+
+1. Open `chrome://extensions`.
+2. Enable Developer mode.
+3. Choose **Load unpacked**.
+4. Select `advertiser-agent-extension/`.
+5. Open the extension and confirm the QBR webhook URL is `http://127.0.0.1:3021/webhook-local/advertiser-qbr`.
+
+Optional run-log backend:
+
+```powershell
+cd backend
+.\.venv\Scripts\python.exe -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8008
+```
+
+## QBR Flow
+
+1. The extension authenticates with TD admin credentials or a supplied admin token.
+2. The extension impersonates the advertiser client and loads programs from TD.
+3. The user selects programs, language, currency, and date range.
+4. The extension sends the QBR request to the local runner.
+5. The runner fetches TD statistics and publisher data, builds the QBR payload, and calls the PPTX service.
+6. The PPTX service creates an editable `.pptx` file and returns signed download URLs.
+7. The extension shows the generated deck link and related output links.
 
 ## Useful Commands
 
-Frontend:
+Local runner:
 
 ```powershell
-cd frontend
-npm run build
-npm run lint
+cd advertiser-qbr-local-runner
+npm test
+npm run start
 ```
 
 PPTX service:
@@ -75,7 +96,7 @@ npm test
 npm run start
 ```
 
-Backend smoke check:
+Optional backend:
 
 ```powershell
 cd backend
@@ -84,15 +105,16 @@ cd backend
 
 ## Documentation Map
 
-- `Files/CLAUDE.md`: working agent instructions and project context
-- `Files/progress.md`: current status, recent changes, known issues, and backlog
-- `Files/PRD.md`: current product requirements for the QBR Agent Hub
-- `qbr-pptx-service/README.md`: PPTX service API and auth notes
-- `backend/.env.example`: backend configuration shape
-- `frontend/.env.example`: frontend API URL configuration
+- `AGENTS.md`: repo-level instructions for coding agents
+- `SETUP.md`: local setup and smoke test guide
+- `PRD.md`: current product requirements
+- `progress.md`: current state, known issues, and backlog
+- `advertiser-qbr-local-runner/README.md`: local runner details
+- `qbr-pptx-service/README.md`: PowerPoint generation service details
+- `workflows/archive/`: retired n8n workflow exports
 
-## Notes For Future Work
+## Notes
 
-- Do not treat the old RAG module table as current scope.
-- Keep webhook URLs, TD API URLs, and local ports explicit when changing runtime behavior.
-- Prefer small, verifiable changes with focused tests or build checks.
+- Keep generated decks, debug payloads, `node_modules`, virtualenvs, and temp folders out of commits.
+- Keep TD credentials and tokens out of docs and logs.
+- Treat n8n exports as historical reference only unless the user explicitly asks to inspect or restore that path.

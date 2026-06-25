@@ -1,14 +1,26 @@
 # QBR PPTX Service
 
-Standalone editable PowerPoint generator for the QBR workflow.
+Standalone Node.js service that generates editable Advertiser QBR PowerPoint decks.
+
+The active caller is `advertiser-qbr-local-runner`, not n8n.
+
+## Local URL
+
+```text
+http://127.0.0.1:3011
+```
 
 ## Endpoints
+
 - `GET /health`
 - `POST /generate`
 - `GET /files/:fileName`
 
 ## Auth
-Send `x-api-key` header. Default local key:
+
+Send an `x-api-key` header when calling `POST /generate`.
+
+Default local key:
 
 ```text
 td-qbr-pptx-local-2026-secret
@@ -20,49 +32,48 @@ Override with:
 QBR_PPTX_API_KEY=your-secret
 ```
 
+`API_KEY` is also accepted as a fallback environment variable.
+
 ## Run
-From this folder:
 
 ```powershell
-node server.js
+cd qbr-pptx-service
+npm install
+npm test
+npm run start
 ```
 
-Service URL:
+The service listens on port `3011` by default.
 
-```text
-http://localhost:3011
+## Generate A Deck
+
+```powershell
+curl.exe -X POST http://127.0.0.1:3011/generate `
+  -H "Content-Type: application/json" `
+  -H "Accept: application/json" `
+  -H "x-api-key: td-qbr-pptx-local-2026-secret" `
+  --data-binary "@sample-payload.json"
 ```
+
+Successful responses include signed file URLs for generated outputs.
 
 ## Docker
-The container listens on port `8080`.
+
+The Docker image should be run with the same advertiser QBR port unless a deployment explicitly overrides it:
 
 ```powershell
 docker build -f qbr-pptx-service/Dockerfile qbr-pptx-service -t qbr-pptx-service:local
-docker run --rm -p 8080:8080 -e QBR_PPTX_API_KEY=your-secret qbr-pptx-service:local
+docker run --rm -p 3011:3011 -e PORT=3011 -e QBR_PPTX_API_KEY=your-secret qbr-pptx-service:local
 ```
 
 Container URL:
 
 ```text
-http://localhost:8080
+http://127.0.0.1:3011
 ```
 
-## n8n node
-When n8n runs in the same Docker or cluster network, use the internal service URL:
+## Outputs
 
-```text
-POST http://qbr-pptx-service:8080/generate
-```
+Generated files are written under `qbr-pptx-service/outputs/`.
 
-Cloudflare temporary tunnel URLs are not needed for in-cluster n8n calls. Use a public route only if people outside the cluster need to open generated file links directly.
-
-Headers:
-- `Content-Type: application/json`
-- `Accept: application/json`
-- `x-api-key: td-qbr-pptx-local-2026-secret`
-
-Body:
-
-```text
-={{ JSON.stringify($json) }}
-```
+Do not commit generated output files.

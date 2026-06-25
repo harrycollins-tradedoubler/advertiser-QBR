@@ -3,9 +3,12 @@ const DEFAULTS = {
   impersonateUrl: "https://connect.tradedoubler.com/uaa/admin/impersonate?username=",
   advertiserBase: "https://connect.tradedoubler.com/advertiser/",
   oauthBasic: "dGRjb25uZWN0X3B1Ymxpc2hlcjoxMjM0NTY=",
-  qbrWebhookUrl: "http://127.0.0.1:5678/webhook/agency-agent-qbr-backend-auth-20260610",
+  qbrWebhookUrl: "http://127.0.0.1:3021/webhook-local/advertiser-qbr",
   backendApiUrl: "http://127.0.0.1:8008/api"
 };
+
+const LEGACY_N8N_QBR_WEBHOOK_URL = "http://127.0.0.1:5678/webhook/agency-agent-qbr-backend-auth-20260610";
+
 const STORAGE_KEYS = {
   connectionConfig: "advertiserAgentConnectionConfig"
 };
@@ -58,6 +61,11 @@ function normalizeBaseUrl(value, fallback = "") {
   return withProtocol.replace(/\/+$/, "");
 }
 
+function normalizeQbrWebhookUrl(value) {
+  const normalized = normalizeBaseUrl(value, DEFAULTS.qbrWebhookUrl);
+  return normalized === LEGACY_N8N_QBR_WEBHOOK_URL ? DEFAULTS.qbrWebhookUrl : normalized;
+}
+
 function ensureTrailingSlash(value) {
   const text = String(value || "").trim();
   return text.endsWith("/") ? text : `${text}/`;
@@ -93,7 +101,7 @@ function getConnectionConfig() {
     impersonateUrl: impersonateUrlInput.value.trim() || DEFAULTS.impersonateUrl,
     advertiserBase: ensureTrailingSlash(advertiserBaseInput.value.trim() || DEFAULTS.advertiserBase),
     oauthBasic: oauthBasicInput.value.trim() || DEFAULTS.oauthBasic,
-    qbrWebhookUrl: normalizeBaseUrl(qbrWebhookUrlInput.value.trim(), DEFAULTS.qbrWebhookUrl),
+    qbrWebhookUrl: normalizeQbrWebhookUrl(qbrWebhookUrlInput.value.trim()),
     backendApiUrl: normalizeBaseUrl(backendApiUrlInput.value.trim(), DEFAULTS.backendApiUrl)
   };
 }
@@ -119,7 +127,7 @@ function applyConnectionConfig(cfg = {}) {
   impersonateUrlInput.value = cfg.impersonateUrl || DEFAULTS.impersonateUrl;
   advertiserBaseInput.value = cfg.advertiserBase || DEFAULTS.advertiserBase;
   oauthBasicInput.value = cfg.oauthBasic || DEFAULTS.oauthBasic;
-  qbrWebhookUrlInput.value = cfg.qbrWebhookUrl || DEFAULTS.qbrWebhookUrl;
+  qbrWebhookUrlInput.value = normalizeQbrWebhookUrl(cfg.qbrWebhookUrl);
   backendApiUrlInput.value = cfg.backendApiUrl || DEFAULTS.backendApiUrl;
 }
 

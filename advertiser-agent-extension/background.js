@@ -2,6 +2,9 @@ chrome.action.onClicked.addListener(() => {
   chrome.tabs.create({ url: chrome.runtime.getURL("app.html") });
 });
 
+const DEFAULT_QBR_WEBHOOK_URL = "http://127.0.0.1:3021/webhook-local/advertiser-qbr";
+const LEGACY_N8N_QBR_WEBHOOK_URL = "http://127.0.0.1:5678/webhook/agency-agent-qbr-backend-auth-20260610";
+
 const state = {
   adminToken: null,
   advertiserToken: null,
@@ -23,6 +26,11 @@ function normalizeBaseUrl(value, fallback) {
   return withProtocol.replace(/\/+$/, "");
 }
 
+function normalizeQbrWebhookUrl(value) {
+  const normalized = normalizeBaseUrl(value, DEFAULT_QBR_WEBHOOK_URL);
+  return normalized === LEGACY_N8N_QBR_WEBHOOK_URL ? DEFAULT_QBR_WEBHOOK_URL : normalized;
+}
+
 function normalizeCfg(cfg = {}) {
   return {
     adminUsername: String(cfg.adminUsername || cfg.username || "").trim(),
@@ -31,10 +39,7 @@ function normalizeCfg(cfg = {}) {
     impersonateUrl: String(cfg.impersonateUrl || "https://connect.tradedoubler.com/uaa/admin/impersonate?username=").trim(),
     advertiserBase: ensureTrailingSlash(String(cfg.advertiserBase || "https://connect.tradedoubler.com/advertiser/").trim()),
     oauthBasic: String(cfg.oauthBasic || "dGRjb25uZWN0X3B1Ymxpc2hlcjoxMjM0NTY=").trim(),
-    qbrWebhookUrl: normalizeBaseUrl(
-      cfg.qbrWebhookUrl,
-      "http://127.0.0.1:5678/webhook/agency-agent-qbr-backend-auth-20260610"
-    ),
+    qbrWebhookUrl: normalizeQbrWebhookUrl(cfg.qbrWebhookUrl),
     backendApiUrl: normalizeBaseUrl(cfg.backendApiUrl, "http://127.0.0.1:8008/api")
   };
 }
