@@ -1,4 +1,4 @@
-﻿const fs = require("node:fs/promises");
+const fs = require("node:fs/promises");
 const fsSync = require("node:fs");
 const path = require("node:path");
 const crypto = require("node:crypto");
@@ -37,15 +37,15 @@ const HAS_KPI_ICON = Object.fromEntries(
 const PROGRAM_BREAKDOWN_ROWS_PER_SLIDE = 12;
 
 const TEXT_REPLACEMENTS = [
-  [/Ãƒâ€šÃ‚Â£|ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â£|ÃƒÂÃ¢â‚¬Å“ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÂÃ¢â‚¬â„¢ÃƒÂÃ‹â€ |ÃƒÂÃ‹â€ /g, "\u00A3"],
-  [/Ãƒâ€šÃ¢â€šÂ¬|ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬|ÃƒÂÃ¢â‚¬Å“ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÂÃ¢â‚¬â„¢Ãƒâ€šÃ‚Â¤/g, "\u20AC"],
-  [/Ãƒâ€šÃ‚Â¥/g, "\u00A5"],
-  [/Ãƒâ€š/g, ""],
-  [/Ãƒâ€šÃ‚Â /g, " "],
-  [/ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Å“|ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â/g, "-"],
-  [/ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“|ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢/g, "'"],
-  [/ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œ|ÃƒÂ¢Ã¢â€šÂ¬Ã¯Â¿Â½/g, '"'],
-  [/zÃƒâ€¦Ã¢â‚¬Å¡|zÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡/g, "z\u0142"]
+  [/Ã‚Â£|ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â£|Ãâ€œÃ¢â‚¬Å¡Ãâ€™ÃË†|ÃË†/g, "\u00A3"],
+  [/Ã‚â‚¬|ÃƒÆ’Ã‚Â¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬|Ãâ€œÃ¢â‚¬Å¡Ãâ€™Ã‚Â¤/g, "\u20AC"],
+  [/Ã‚Â¥/g, "\u00A5"],
+  [/Ã‚/g, ""],
+  [/Ã‚Â /g, " "],
+  [/Ã¢â‚¬â€œ|Ã¢â‚¬â€/g, "-"],
+  [/Ã¢â‚¬Ëœ|Ã¢â‚¬â„¢/g, "'"],
+  [/Ã¢â‚¬Å“|Ã¢â‚¬ï¿½/g, '"'],
+  [/zÃ…â€š|zÃƒÆ’Ã¢â‚¬Â¦ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡/g, "z\u0142"]
 ];
 
 const WINDOWS_1252_BYTES = new Map([
@@ -78,8 +78,8 @@ const WINDOWS_1252_BYTES = new Map([
   [0x0178, 0x9F]
 ]);
 
-const MOJIBAKE_MARKER_PATTERN = /(?:Ã|Â|â|Å[¼º›š‚]|Ä[…™‡„]|Ãƒ|Ã¢|Ã…|Ã„)/;
-const MOJIBAKE_MARKER_GLOBAL_PATTERN = /(?:Ã|Â|â|Å[¼º›š‚]|Ä[…™‡„]|Ãƒ|Ã¢|Ã…|Ã„)/g;
+const MOJIBAKE_MARKER_PATTERN = /(?:�|�|�|�[�����]|�[����]|Ã|â|Å|Ä)/;
+const MOJIBAKE_MARKER_GLOBAL_PATTERN = /(?:�|�|�|�[�����]|�[����]|Ã|â|Å|Ä)/g;
 
 function cp1252ByteForChar(char) {
   const code = char.codePointAt(0);
@@ -252,15 +252,15 @@ const UI_LABELS_BY_LANGUAGE = {
     anyQuestions: "Des questions ?",
     kpiComparisonTemplate: "{current} vs {previous} N-1",
     thankYouSubtitleTemplate: "Programme d'affiliation TD - {period} Revue trimestrielle",
-    currentPeriod: "Période actuelle",
-    comparisonPeriodYoy: "Période de comparaison (YoY)",
-    basisYoy: "Référence : glissement annuel (YoY)",
-    publisherActivityBySegment: "Activité des éditeurs par segment",
-    keyObservations: "Observations clés",
-    reportingPeriodPrefix: "Période de reporting",
-    dataAsOfPrefix: "Données au",
-    comparisonPeriodPrefix: "Période de comparaison",
-    allFiguresStatement: "Toutes les valeurs sont présentées en {currency}, sauf indication contraire. La variation YoY est calculée entre la période actuelle et la période de comparaison.",
+    currentPeriod: "P�riode actuelle",
+    comparisonPeriodYoy: "P�riode de comparaison (YoY)",
+    basisYoy: "R�f�rence : glissement annuel (YoY)",
+    publisherActivityBySegment: "Activit� des �diteurs par segment",
+    keyObservations: "Observations cl�s",
+    reportingPeriodPrefix: "P�riode de reporting",
+    dataAsOfPrefix: "Donn�es au",
+    comparisonPeriodPrefix: "P�riode de comparaison",
+    allFiguresStatement: "Toutes les valeurs sont pr�sent�es en {currency}, sauf indication contraire. La variation YoY est calcul�e entre la p�riode actuelle et la p�riode de comparaison.",
     analysisTagSuffix: "Analyse"
   },
   NL: {
@@ -282,17 +282,17 @@ const UI_LABELS_BY_LANGUAGE = {
   DE: {
     qbrReport: "QBR-Bericht",
     anyQuestions: "Fragen?",
-    kpiComparisonTemplate: "{current} ggü. {previous} VJ",
+    kpiComparisonTemplate: "{current} gg�. {previous} VJ",
     thankYouSubtitleTemplate: "TD Affiliate-Programm - {period} Quartalsbericht",
     currentPeriod: "Aktueller Zeitraum",
     comparisonPeriodYoy: "Vergleichszeitraum (YoY)",
-    basisYoy: "Basis: Jahr-über-Jahr (YoY)",
-    publisherActivityBySegment: "Publisher-Aktivität nach Segment",
+    basisYoy: "Basis: Jahr-�ber-Jahr (YoY)",
+    publisherActivityBySegment: "Publisher-Aktivit�t nach Segment",
     keyObservations: "Wichtigste Erkenntnisse",
     reportingPeriodPrefix: "Berichtszeitraum",
     dataAsOfPrefix: "Datenstand",
     comparisonPeriodPrefix: "Vergleichszeitraum",
-    allFiguresStatement: "Alle Werte werden in {currency} angegeben, sofern nicht anders vermerkt. Die YoY-Abweichung wird als aktueller Zeitraum gegenüber Vergleichszeitraum berechnet.",
+    allFiguresStatement: "Alle Werte werden in {currency} angegeben, sofern nicht anders vermerkt. Die YoY-Abweichung wird als aktueller Zeitraum gegen�ber Vergleichszeitraum berechnet.",
     analysisTagSuffix: "Analyse"
   },
   IT: {
@@ -303,24 +303,24 @@ const UI_LABELS_BY_LANGUAGE = {
     currentPeriod: "Periodo corrente",
     comparisonPeriodYoy: "Periodo di confronto (YoY)",
     basisYoy: "Base: anno su anno (YoY)",
-    publisherActivityBySegment: "Attività publisher per segmento",
+    publisherActivityBySegment: "Attivit� publisher per segmento",
     keyObservations: "Osservazioni chiave",
     reportingPeriodPrefix: "Periodo di reporting",
     dataAsOfPrefix: "Dati al",
     comparisonPeriodPrefix: "Periodo di confronto",
-    allFiguresStatement: "Tutti i valori sono riportati in {currency}, salvo diversa indicazione. La variazione YoY è calcolata come periodo corrente vs periodo di confronto.",
+    allFiguresStatement: "Tutti i valori sono riportati in {currency}, salvo diversa indicazione. La variazione YoY � calcolata come periodo corrente vs periodo di confronto.",
     analysisTagSuffix: "Analisi"
   },
   NO: {
     qbrReport: "QBR-rapport",
-    anyQuestions: "Spørsmål?",
+    anyQuestions: "Sp�rsm�l?",
     kpiComparisonTemplate: "{current} mot {previous} i fjor",
     thankYouSubtitleTemplate: "TD affiliateprogram - {period} kvartalsgjennomgang",
     currentPeriod: "Gjeldende periode",
     comparisonPeriodYoy: "Sammenligningsperiode (YoY)",
-    basisYoy: "Grunnlag: år-over-år (YoY)",
+    basisYoy: "Grunnlag: �r-over-�r (YoY)",
     publisherActivityBySegment: "Publisheraktivitet etter segment",
-    keyObservations: "Nøkkelobservasjoner",
+    keyObservations: "N�kkelobservasjoner",
     reportingPeriodPrefix: "Rapporteringsperiode",
     dataAsOfPrefix: "Data per",
     comparisonPeriodPrefix: "Sammenligningsperiode",
@@ -329,30 +329,30 @@ const UI_LABELS_BY_LANGUAGE = {
   },
   SV: {
     qbrReport: "QBR-rapport",
-    anyQuestions: "Några frågor?",
-    kpiComparisonTemplate: "{current} mot {previous} fg. år",
-    thankYouSubtitleTemplate: "TD affiliateprogram - {period} kvartalsgenomgång",
+    anyQuestions: "N�gra fr�gor?",
+    kpiComparisonTemplate: "{current} mot {previous} fg. �r",
+    thankYouSubtitleTemplate: "TD affiliateprogram - {period} kvartalsgenomg�ng",
     currentPeriod: "Aktuell period",
-    comparisonPeriodYoy: "Jämförelseperiod (YoY)",
-    basisYoy: "Grund: år över år (YoY)",
+    comparisonPeriodYoy: "J�mf�relseperiod (YoY)",
+    basisYoy: "Grund: �r �ver �r (YoY)",
     publisherActivityBySegment: "Publisheraktivitet per segment",
     keyObservations: "Viktiga observationer",
     reportingPeriodPrefix: "Rapporteringsperiod",
     dataAsOfPrefix: "Data per",
-    comparisonPeriodPrefix: "Jämförelseperiod",
-    allFiguresStatement: "Alla siffror rapporteras i {currency} om inget annat anges. YoY-variansen beräknas som aktuell period jämfört med jämförelseperiod.",
+    comparisonPeriodPrefix: "J�mf�relseperiod",
+    allFiguresStatement: "Alla siffror rapporteras i {currency} om inget annat anges. YoY-variansen ber�knas som aktuell period j�mf�rt med j�mf�relseperiod.",
     analysisTagSuffix: "Analys"
   },
   DA: {
     qbrReport: "QBR-rapport",
-    anyQuestions: "Nogen spørgsmål?",
-    kpiComparisonTemplate: "{current} mod {previous} sidste år",
+    anyQuestions: "Nogen sp�rgsm�l?",
+    kpiComparisonTemplate: "{current} mod {previous} sidste �r",
     thankYouSubtitleTemplate: "TD affiliateprogram - {period} kvartalsgennemgang",
     currentPeriod: "Aktuel periode",
     comparisonPeriodYoy: "Sammenligningsperiode (YoY)",
-    basisYoy: "Grundlag: år-til-år (YoY)",
+    basisYoy: "Grundlag: �r-til-�r (YoY)",
     publisherActivityBySegment: "Publisheraktivitet efter segment",
-    keyObservations: "Nøgleobservationer",
+    keyObservations: "N�gleobservationer",
     reportingPeriodPrefix: "Rapporteringsperiode",
     dataAsOfPrefix: "Data pr.",
     comparisonPeriodPrefix: "Sammenligningsperiode",
@@ -361,59 +361,59 @@ const UI_LABELS_BY_LANGUAGE = {
   },
   FI: {
     qbrReport: "QBR-raportti",
-    anyQuestions: "Kysymyksiä?",
+    anyQuestions: "Kysymyksi�?",
     kpiComparisonTemplate: "{current} vs {previous} ed. vuosi",
-    thankYouSubtitleTemplate: "TD-kumppanuusohjelma - {period} neljännesvuosikatsaus",
+    thankYouSubtitleTemplate: "TD-kumppanuusohjelma - {period} nelj�nnesvuosikatsaus",
     currentPeriod: "Nykyinen jakso",
     comparisonPeriodYoy: "Vertailujakso (YoY)",
     basisYoy: "Perusta: vuosi vuodelta (YoY)",
-    publisherActivityBySegment: "Julkaisija-aktiivisuus segmenteittäin",
+    publisherActivityBySegment: "Julkaisija-aktiivisuus segmenteitt�in",
     keyObservations: "Keskeiset havainnot",
     reportingPeriodPrefix: "Raportointijakso",
-    dataAsOfPrefix: "Tiedot päivältä",
+    dataAsOfPrefix: "Tiedot p�iv�lt�",
     comparisonPeriodPrefix: "Vertailujakso",
-    allFiguresStatement: "Kaikki luvut raportoidaan valuutassa {currency}, ellei toisin mainita. YoY-vaihtelu lasketaan nykyisen jakson ja vertailujakson välillä.",
+    allFiguresStatement: "Kaikki luvut raportoidaan valuutassa {currency}, ellei toisin mainita. YoY-vaihtelu lasketaan nykyisen jakson ja vertailujakson v�lill�.",
     analysisTagSuffix: "Analyysi"
   },
   ES: {
     qbrReport: "Informe QBR",
-    anyQuestions: "¿Preguntas?",
-    kpiComparisonTemplate: "{current} vs {previous} año ant.",
-    thankYouSubtitleTemplate: "Programa de afiliación TD - {period} Revisión trimestral",
-    currentPeriod: "Período actual",
-    comparisonPeriodYoy: "Período de comparación (YoY)",
+    anyQuestions: "�Preguntas?",
+    kpiComparisonTemplate: "{current} vs {previous} a�o ant.",
+    thankYouSubtitleTemplate: "Programa de afiliaci�n TD - {period} Revisi�n trimestral",
+    currentPeriod: "Per�odo actual",
+    comparisonPeriodYoy: "Per�odo de comparaci�n (YoY)",
     basisYoy: "Base: interanual (YoY)",
     publisherActivityBySegment: "Actividad de publishers por segmento",
     keyObservations: "Observaciones clave",
-    reportingPeriodPrefix: "Período del informe",
+    reportingPeriodPrefix: "Per�odo del informe",
     dataAsOfPrefix: "Datos a fecha de",
-    comparisonPeriodPrefix: "Período de comparación",
-    allFiguresStatement: "Todas las cifras se presentan en {currency}, salvo que se indique lo contrario. La variación YoY se calcula como período actual frente a período de comparación.",
-    analysisTagSuffix: "Análisis"
+    comparisonPeriodPrefix: "Per�odo de comparaci�n",
+    allFiguresStatement: "Todas las cifras se presentan en {currency}, salvo que se indique lo contrario. La variaci�n YoY se calcula como per�odo actual frente a per�odo de comparaci�n.",
+    analysisTagSuffix: "An�lisis"
   },
   PL: {
     qbrReport: "Raport QBR",
     anyQuestions: "Pytania?",
     kpiComparisonTemplate: "{current} vs {previous} r/r",
-    thankYouSubtitleTemplate: "Program partnerski TD - {period} Przegląd kwartalny",
-    currentPeriod: "Bieżący okres",
-    comparisonPeriodYoy: "Okres porównawczy (r/r)",
+    thankYouSubtitleTemplate: "Program partnerski TD - {period} Przeglad kwartalny",
+    currentPeriod: "Biezacy okres",
+    comparisonPeriodYoy: "Okres por�wnawczy (r/r)",
     basisYoy: "Podstawa: rok do roku (r/r)",
-    publisherActivityBySegment: "Aktywność wydawców według segmentu",
+    publisherActivityBySegment: "Aktywnosc wydawc�w wedlug segmentu",
     keyObservations: "Kluczowe obserwacje",
     reportingPeriodPrefix: "Okres raportowania",
-    dataAsOfPrefix: "Dane na dzień",
-    comparisonPeriodPrefix: "Okres porównawczy",
-    allFiguresStatement: "Wszystkie wartości raportowane są w walucie {currency}, o ile nie wskazano inaczej. Zmiana r/r jest liczona jako bieżący okres względem okresu porównawczego.",
+    dataAsOfPrefix: "Dane na dzien",
+    comparisonPeriodPrefix: "Okres por�wnawczy",
+    allFiguresStatement: "Wszystkie wartosci raportowane sa w walucie {currency}, o ile nie wskazano inaczej. Zmiana r/r jest liczona jako biezacy okres wzgledem okresu por�wnawczego.",
     analysisTagSuffix: "Analiza",
-    segmentSignalUnavailable: "Sygnał segmentu jest niedostępny.",
-    detailedMovementUnavailable: "Szczegółowy opis zmian nie jest dostępny w tym wyciągu.",
-    kpiSignalGeneric: "Sygnał KPI",
-    kpiDriverUnavailable: "Brak potwierdzonego czynnika na podstawie dostępnych danych KPI.",
-    kpiDetailUnavailable: "Szczególy nie sa dostepne w biezacym wyciagu.",
-    kpiTitleConversionRateImprovement: "Poprawa wspólczynnika konwersji",
-    kpiTitleSalesVolumePressure: "Presja na wolumen sprzedaży",
-    kpiTitleAovGrowthOffset: "Wzrost AOV częściowo kompensujący spadek wolumenu",
+    segmentSignalUnavailable: "Sygnal segmentu jest niedostepny.",
+    detailedMovementUnavailable: "Szczeg�lowy opis zmian nie jest dostepny w tym wyciagu.",
+    kpiSignalGeneric: "Sygnal KPI",
+    kpiDriverUnavailable: "Brak potwierdzonego czynnika na podstawie dostepnych danych KPI.",
+    kpiDetailUnavailable: "Szczeg�ly nie sa dostepne w biezacym wyciagu.",
+    kpiTitleConversionRateImprovement: "Poprawa wsp�lczynnika konwersji",
+    kpiTitleSalesVolumePressure: "Presja na wolumen sprzedazy",
+    kpiTitleAovGrowthOffset: "Wzrost AOV czesciowo kompensujacy spadek wolumenu",
     kpiTitleRisingCpa: "Wzrost CPA",
     kpiTitleRoiTrend: "Trend ROI"
   }
@@ -428,9 +428,9 @@ function cleanText(value, fallback = "") {
   const raw = String(value ?? fallback);
   const repaired = TEXT_REPLACEMENTS.reduce((text, [pattern, replacement]) => text.replace(pattern, replacement), repairMojibake(raw));
   const repairedCurrency = repaired
-    .replace(/Ã‚Â£/g, "\u00A3")
-    .replace(/Ã¢â€šÂ¬/g, "\u20AC")
-    .replace(/zÃ…â€š/g, "z\u0142");
+    .replace(/Â£/g, "\u00A3")
+    .replace(/â‚¬/g, "\u20AC")
+    .replace(/zÅ‚/g, "z\u0142");
   const xmlSafe = repairedCurrency.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, "");
   return xmlSafe.replace(/\s+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
 }
@@ -720,7 +720,6 @@ function collectDeckTextRefs(deckSpec) {
     if (Array.isArray(slide.kpis)) {
       slide.kpis.forEach((kpi) => {
         addRef(kpi, "label", 4);
-        addRef(kpi, "summary", 4);
       });
     }
 
@@ -4641,6 +4640,7 @@ function buildDeckSpec(input, theme) {
     analysisTitle: "Segment Breakdown",
     analysisMaxBullets: segmentPerformanceBlocks.length,
     summaryTable: buildPublisherOverviewSummaryTable(segmentTable),
+    treemapTable: segmentTable,
     kpis: [],
     tables: segmentTable
       ? [
@@ -5227,7 +5227,7 @@ function cellTextColor(table, column, value, deck, row = [], cellIndex = 0) {
   const varianceRow = isVarianceRow(table, row);
   const text = cleanInlineText(value);
   const labelCell = text.toLowerCase().includes("variance");
-  const signedDeltaValue = /^[+\-]/.test(text) || text.startsWith("â–²") || text.startsWith("â–¼");
+  const signedDeltaValue = /^[+\-]/.test(text) || text.startsWith("▲") || text.startsWith("▼");
   const useDeltaColor = isDeltaColumn(column) || (varianceRow && !labelCell) || (signedDeltaValue && text.includes("%"));
   if (!useDeltaColor) return toColor(deck.theme.colors.ink);
 
@@ -6344,8 +6344,9 @@ function renderSlide(slide, deck, spec, pageNumber) {
   }
 
   if (spec.kind === "publisher-overview") {
-    if (spec.tables && spec.tables[0]) {
-      addSegmentTreemap(slide, deck, spec.tables[0], { x: 0.35, y: 2.04, w: 5.55, h: 4.72 });
+    const treemapTable = spec.treemapTable || spec.tables?.[0];
+    if (treemapTable) {
+      addSegmentTreemap(slide, deck, treemapTable, { x: 0.35, y: 2.04, w: 5.55, h: 4.72 });
     }
     addPublisherOverviewSummaryTable(
       slide,
@@ -6791,4 +6792,5 @@ module.exports = {
   generatePresentation,
   saveOutput
 };
+
 

@@ -8,6 +8,8 @@ const batchBuilder = globalThis.AdvertiserBatchBuilder;
 const DEFAULT_QBR_WEBHOOK_URL = "http://127.0.0.1:3021/webhook-local/advertiser-qbr";
 const LEGACY_N8N_QBR_WEBHOOK_URL = "http://127.0.0.1:5678/webhook/agency-agent-qbr-backend-auth-20260610";
 const PROGRAMS_PAGE_LIMIT = 100;
+const DEFAULT_FETCH_TIMEOUT_MS = 45000;
+const QBR_WEBHOOK_TIMEOUT_MS = 600000;
 
 const state = {
   adminToken: null,
@@ -56,7 +58,7 @@ function toFormBody(values) {
 }
 
 function timeoutMsFor(label) {
-  return /webhook/i.test(label) ? 180000 : 45000;
+  return /webhook/i.test(label) ? QBR_WEBHOOK_TIMEOUT_MS : DEFAULT_FETCH_TIMEOUT_MS;
 }
 
 async function readJsonResponse(response, label) {
@@ -331,17 +333,9 @@ async function submitQbrRequest(cfg, payload, bearerToken) {
   let runLogError = "";
   try {
     const runLogResponse = await recordProgramRequestRun(cfg, requestPayload);
-    if (runLogResponse?.duplicate) {
-      const programIds = runLogResponse.programIds || requestPayload.advertiserProgramIds?.join(", ") || requestPayload.programId || "selected program";
-      const dateRange = requestPayload.startDate && requestPayload.endDate
-        ? `${requestPayload.startDate} to ${requestPayload.endDate}`
-        : "the selected date range";
-      throw new Error(`Duplicate QBR request blocked for ${programIds} (${dateRange}). Change the date range or selected programs to submit a new request.`);
-    }
-    runLogRecorded = Boolean(runLogResponse?.recorded);
+    runLogRecorded = Boolean(runLogResponse?.recorded || runLogResponse?.duplicate);
   } catch (error) {
     runLogError = error && error.message ? error.message : String(error);
-    if (/^Duplicate QBR request blocked/i.test(runLogError)) throw error;
   }
 
   const message = `QBR_REQUEST ${JSON.stringify(requestPayload)}`;

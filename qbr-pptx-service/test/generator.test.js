@@ -971,6 +971,38 @@ test("publisher overview treemap reads YoY percentage aliases before YoY Change"
   assert.match(tableRows, /Cashback \| \+13\.4% \| GBP 130,000 \| 1,200/);
   assert.match(tableRows, /CSS \| -2\.0% \| GBP 90,000 \| 900/);
 });
+test("publisher overview treemap uses raw segment rows when display columns omit order value", async () => {
+  const result = await generatePresentation({
+    ...misleadingHeadingPayload(),
+    currencyCode: "PLN",
+    publisherTables: {
+      ...misleadingHeadingPayload().publisherTables,
+      segmentSummary: [
+        {
+          Segment: "Cashback",
+          "Total Sales": "10",
+          "Sales YoY %": "+1.0%"
+        },
+        {
+          Segment: "CSS",
+          "Total Sales": "900",
+          "Total OV": "z\u014256,553,009",
+          "OV YoY %": "+12.0%"
+        }
+      ]
+    }
+  });
+
+  const overviewSlide = slideByTitle(result.deckSpec, "Publisher Performance Overview");
+  const zip = await openPptx(result.buffer);
+  const slideXml = await zip.file("ppt/slides/slide7.xml").async("string");
+  const tableRows = overviewSlide.summaryTable.rows.map((row) => row.join(" | ")).join("\n");
+
+  assert.doesNotMatch(slideXml, /No segment order value data available/);
+  assert.match(slideXml, /CSS/);
+  assert.match(slideXml, /<a:t>100%<\/a:t>/);
+  assert.match(tableRows, /CSS \| \+12\.0% \| z\u014256,553,009 \| 900/);
+});
 test("publisher overview omits zero-value categories from the segment breakdown table", async () => {
   const result = await generatePresentation({
     ...misleadingHeadingPayload(),
@@ -1756,6 +1788,21 @@ test("KPI summary tiles treat YoY and r/r rows as variance rows", async () => {
   assert.match(summaries, /r\/r - -13\.8%/);
 });
 
+test("localized KPI summary tiles keep signed deltas visible on slide 3", async () => {
+  const payload = misleadingHeadingPayload();
+  const result = await generatePresentation({
+    ...payload,
+    languageCode: "PL"
+  });
+  const zip = await openPptx(result.buffer);
+  const slideXml = await zip.file("ppt/slides/slide3.xml").async("string");
+
+  assert.match(slideXml, /<a:t>\+8\.2%<\/a:t>/);
+  assert.match(slideXml, /<a:t>-13\.8%<\/a:t>/);
+  assert.match(slideXml, /<a:t>-6\.7%<\/a:t>/);
+  assert.match(slideXml, /<a:t>-21\.1%<\/a:t>/);
+  assert.match(slideXml, /<a:t>\+22\.0%<\/a:t>/);
+});
 test("slide 4 and slide 5 signed percentage values render with RAG colors", async () => {
   const result = await generatePresentation({
     ...misleadingHeadingPayload(),
@@ -1835,3 +1882,4 @@ test("mojibake payload text is repaired before deck generation", async () => {
   assert.equal(result.deckSpec.metadata.client, "Bieżący klient");
   assert.equal(result.deckSpec.metadata.deckTitle, "QBR - Bieżący klient");
 });
+

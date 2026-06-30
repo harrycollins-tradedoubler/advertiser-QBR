@@ -12,16 +12,16 @@ function jsonResponse(payload, ok = true, status = 200) {
   };
 }
 
-function loadBackground(fetchMock) {
+function loadBackground(fetchMock, overrides = {}) {
   const context = {
     AbortController,
     URL,
-    clearTimeout,
+    clearTimeout: overrides.clearTimeout || clearTimeout,
     crypto: { randomUUID: () => "test-thread-id" },
     fetch: fetchMock,
     globalThis: null,
     importScripts: () => {},
-    setTimeout,
+    setTimeout: overrides.setTimeout || setTimeout,
     chrome: {
       action: {
         onClicked: {
@@ -99,4 +99,82 @@ test("lists advertiser programs across all TD pages", async () => {
     }),
     [0, 2]
   );
+});
+test("allows long-running QBR webhook generation before timing out", async () => {
+  const timeoutDelays = [];
+  const background = loadBackground(async (url) => {
+    const requestUrl = String(url);
+    if (requestUrl.includes("/uaa/admin/impersonate")) {
+      return jsonResponse({ access_token: "advertiser-token" });
+    }
+    if (requestUrl.includes("/program-request-runs")) {
+      return jsonResponse({ recorded: true });
+    }
+    if (requestUrl === "http://127.0.0.1:3021/webhook-local/advertiser-qbr") {
+      return jsonResponse({ success: true, pptx_url: "http://127.0.0.1:3011/files/test.pptx" });
+    }
+    throw new Error("Unexpected URL " + requestUrl);
+  }, {
+    setTimeout: (_callback, delay) => {
+      timeoutDelays.push(delay);
+      return { delay };
+    },
+    clearTimeout: () => {}
+  });
+
+  const result = await background.handleMessage({
+    type: "SUBMIT_QBR_REQUEST",
+    cfg: {
+      backendApiUrl: "http://127.0.0.1:8008/api",
+      qbrWebhookUrl: "http://127.0.0.1:3021/webhook-local/advertiser-qbr"
+    },
+    bearerToken: "admin-token",
+    payload: {
+      clientUsername: "client@example.com",
+      advertiserProgramIds: ["298327"],
+      startDate: "2026-04-01",
+      endDate: "2026-06-30"
+    }
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(Math.max(...timeoutDelays), 600000);
+  assert(timeoutDelays.includes(45000));
+});
+test("submits QBR webhook even when run log marks request as duplicate", async () => {
+  let runLogCalls = 0;
+  let webhookCalls = 0;
+  const background = loadBackground(async (url) => {
+    const requestUrl = String(url);
+    if (requestUrl.includes("/uaa/admin/impersonate")) {
+      return jsonResponse({ access_token: "advertiser-token" });
+    }
+    if (requestUrl.includes("/program-request-runs")) {
+      runLogCalls += 1;
+      return jsonResponse(runLogCalls === 1 ? { recorded: false, duplicate: true } : { recorded: false, updated: true });
+    }
+    if (requestUrl === "http://127.0.0.1:3021/webhook-local/advertiser-qbr") {
+      webhookCalls += 1;
+      return jsonResponse({ success: true, pptx_url: "http://127.0.0.1:3011/files/duplicate-test.pptx" });
+    }
+    throw new Error("Unexpected URL " + requestUrl);
+  });
+
+  const result = await background.handleMessage({
+    type: "SUBMIT_QBR_REQUEST",
+    cfg: {
+      backendApiUrl: "http://127.0.0.1:8008/api",
+      qbrWebhookUrl: "http://127.0.0.1:3021/webhook-local/advertiser-qbr"
+    },
+    bearerToken: "admin-token",
+    payload: {
+      clientUsername: "client@example.com",
+      advertiserProgramIds: ["273525"],
+      startDate: "2026-04-01",
+      endDate: "2026-06-30"
+    }
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(webhookCalls, 1);
 });
