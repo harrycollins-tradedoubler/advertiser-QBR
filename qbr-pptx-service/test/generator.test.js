@@ -776,7 +776,7 @@ test("publisher overview renders a segment treemap with a structured breakdown t
   const overviewSlide = slideByTitle(result.deckSpec, "Publisher Performance Overview");
 
   assert.equal(overviewSlide.summaryTable.columns.join("|"), "Segment|YoY Growth|Total OV|Sales");
-  assert.match(slideXml, /Share of Total by Segment/);
+  assert.match(slideXml, /Share of Total OV by Segment/);
   assert.match(slideXml, /Segment Breakdown/);
   assert.match(slideXml, /YoY Growth/);
   assert.match(slideXml, /Total OV/);
@@ -866,6 +866,111 @@ test("publisher overview keeps full segment labels and lists all categories in t
   assert.doesNotMatch(slideXml, /Key Insights/);
 });
 
+
+test("publisher overview suppresses unavailable YoY labels in segment treemap", async () => {
+  const result = await generatePresentation({
+    ...misleadingHeadingPayload(),
+    publisherTables: {
+      ...misleadingHeadingPayload().publisherTables,
+      segmentSummary: [
+        {
+          Segment: "Cashback",
+          "Total Sales": "1,200",
+          "Sales YoY %": "N/A",
+          "Total OV": "GBP 120,000",
+          "OV YoY %": "N/A"
+        },
+        {
+          Segment: "CSS",
+          "Total Sales": "900",
+          "Sales YoY %": "",
+          "Total OV": "GBP 80,000",
+          "OV YoY %": ""
+        }
+      ]
+    }
+  });
+
+  const overviewSlide = slideByTitle(result.deckSpec, "Publisher Performance Overview");
+  const zip = await openPptx(result.buffer);
+  const slideXml = await zip.file("ppt/slides/slide7.xml").async("string");
+  const tableRows = overviewSlide.summaryTable.rows.map((row) => row.join(" | ")).join("\n");
+
+  assert.doesNotMatch(slideXml, /N\/A OV YoY/);
+  assert.match(tableRows, /Cashback \| - \| GBP 120,000 \| 1,200/);
+  assert.match(tableRows, /CSS \| - \| GBP 80,000 \| 900/);
+});
+
+test("publisher overview treemap groups tiny segments while preserving table detail", async () => {
+  const tinySegments = Array.from({ length: 7 }, (_, index) => ({
+    Segment: `Tiny Segment ${index + 1}`,
+    "Total Sales": String(10 + index),
+    "Total OV": `GBP ${500 + index * 10}`,
+    "OV YoY %": `+${index + 1}.0%`
+  }));
+
+  const result = await generatePresentation({
+    ...misleadingHeadingPayload(),
+    publisherTables: {
+      ...misleadingHeadingPayload().publisherTables,
+      segmentSummary: [
+        {
+          Segment: "Cashback",
+          "Total Sales": "8,000",
+          "Total OV": "GBP 1,000,000",
+          "OV YoY %": "+8.0%"
+        },
+        ...tinySegments
+      ]
+    }
+  });
+
+  const overviewSlide = slideByTitle(result.deckSpec, "Publisher Performance Overview");
+  const zip = await openPptx(result.buffer);
+  const slideXml = await zip.file("ppt/slides/slide7.xml").async("string");
+  const tableRows = overviewSlide.summaryTable.rows.map((row) => row.join(" | ")).join("\n");
+
+  assert.equal(overviewSlide.summaryTable.rows.length, 8);
+  assert.match(slideXml, /Other segments/);
+  assert.match(tableRows, /Tiny Segment 7 \| \+7\.0% \| GBP 560 \| 16/);
+  assert.doesNotMatch(slideXml, /<a:t>0%<\/a:t>/);
+});
+
+test("publisher overview treemap reads YoY percentage aliases before YoY Change", async () => {
+  const result = await generatePresentation({
+    ...misleadingHeadingPayload(),
+    publisherTables: {
+      ...misleadingHeadingPayload().publisherTables,
+      segmentSummary: [
+        {
+          Segment: "Cashback",
+          "Total Sales": "1,200",
+          "Total OV": "GBP 130,000",
+          "YoY %": "+13.4%",
+          "% Variance": "",
+          "YoY Change": "GBP 15,400"
+        },
+        {
+          Segment: "CSS",
+          "Total Sales": "900",
+          "Total OV": "GBP 90,000",
+          "% Variance": "-2.0%",
+          "YoY Change": "GBP -1,800"
+        }
+      ]
+    }
+  });
+
+  const overviewSlide = slideByTitle(result.deckSpec, "Publisher Performance Overview");
+  const zip = await openPptx(result.buffer);
+  const slideXml = await zip.file("ppt/slides/slide7.xml").async("string");
+  const tableRows = overviewSlide.summaryTable.rows.map((row) => row.join(" | ")).join("\n");
+
+  assert.match(slideXml, /\+13\.4% OV YoY/);
+  assert.match(slideXml, /-2\.0% OV YoY/);
+  assert.match(tableRows, /Cashback \| \+13\.4% \| GBP 130,000 \| 1,200/);
+  assert.match(tableRows, /CSS \| -2\.0% \| GBP 90,000 \| 900/);
+});
 test("publisher overview omits zero-value categories from the segment breakdown table", async () => {
   const result = await generatePresentation({
     ...misleadingHeadingPayload(),

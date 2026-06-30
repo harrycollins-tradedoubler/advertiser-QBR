@@ -7,6 +7,7 @@ importScripts("batch-builder.js");
 const batchBuilder = globalThis.AdvertiserBatchBuilder;
 const DEFAULT_QBR_WEBHOOK_URL = "http://127.0.0.1:3021/webhook-local/advertiser-qbr";
 const LEGACY_N8N_QBR_WEBHOOK_URL = "http://127.0.0.1:5678/webhook/agency-agent-qbr-backend-auth-20260610";
+const PROGRAMS_PAGE_LIMIT = 100;
 
 const state = {
   adminToken: null,
@@ -169,6 +170,14 @@ function advertiserUrl(cfg, path) {
   return `${cfg.advertiserBase}${trimSlashes(path)}`;
 }
 
+function urlWithQueryParams(url, params) {
+  const parsed = new URL(url);
+  for (const [key, value] of Object.entries(params)) {
+    parsed.searchParams.set(key, String(value));
+  }
+  return parsed.toString();
+}
+
 function extractArray(payload) {
   if (Array.isArray(payload)) return payload;
   if (!payload || typeof payload !== "object") return [];
@@ -184,23 +193,56 @@ function extractArray(payload) {
   return [];
 }
 
+function paginationValue(payload, key) {
+  const value = payload && typeof payload === "object"
+    ? payload[key] ?? payload.data?.[key]
+    : undefined;
+  const number = Number(value);
+  return Number.isFinite(number) && number >= 0 ? number : null;
+}
+
 async function listAdvertiserPrograms(cfg) {
   if (!state.advertiserToken) throw new Error("No advertiser impersonation token available.");
-  const data = await fetchJson(
-    advertiserUrl(cfg, "programs"),
-    {
-      method: "GET",
-      headers: {
-        "Accept": "application/json",
-        "Authorization": `Bearer ${state.advertiserToken}`
-      }
-    },
-    "Advertiser programs"
-  );
+  const baseUrl = advertiserUrl(cfg, "programs");
+  const items = [];
+  const pages = [];
+  let offset = 0;
+
+  while (true) {
+    const data = await fetchJson(
+      urlWithQueryParams(baseUrl, { offset, limit: PROGRAMS_PAGE_LIMIT }),
+      {
+        method: "GET",
+        headers: {
+          "Accept": "application/json",
+          "Authorization": `Bearer ${state.advertiserToken}`
+        }
+      },
+      "Advertiser programs"
+    );
+    const pageItems = extractArray(data);
+    const responseOffset = paginationValue(data, "offset") ?? offset;
+    const responseLimit = paginationValue(data, "limit") ?? PROGRAMS_PAGE_LIMIT;
+    const responseTotal = paginationValue(data, "total");
+
+    items.push(...pageItems);
+    pages.push({ offset: responseOffset, limit: responseLimit, count: pageItems.length });
+
+    const nextOffset = responseOffset + pageItems.length;
+    const reachedTotal = responseTotal == null || nextOffset >= responseTotal;
+    const emptyPage = pageItems.length === 0;
+    const noProgress = nextOffset <= offset;
+    if (reachedTotal || emptyPage || noProgress) break;
+
+    offset = nextOffset;
+  }
 
   return {
-    items: extractArray(data),
-    raw: data,
+    items,
+    raw: {
+      pages,
+      total: items.length
+    },
     td_tokens: currentTokens()
   };
 }

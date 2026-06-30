@@ -5517,6 +5517,36 @@ function addPublisherOrderValueBars(slide, deck, spec) {
   drawPanel(panelTitles.bottom || "Top 10 YoY OV decline publishers", bottomRows, 6.92, 1.95, 5.72, bottomColor);
 }
 
+function isUnavailableSegmentValue(value) {
+  const text = cleanInlineText(value || "").trim();
+  return !text || text === "-" || /^(n\/?a|not available|unavailable|none|null)$/i.test(text);
+}
+
+function normalizeSegmentYoyPercent(value, options = {}) {
+  const text = cleanInlineText(value || "").trim();
+  if (isUnavailableSegmentValue(text)) return "";
+  if (/%/.test(text)) return text;
+  if (options.allowBareNumber && /^[+-]?\d+(?:[,.]\d+)?$/.test(text)) {
+    const numeric = parseNumber(text);
+    if (Number.isFinite(numeric)) return `${numeric}%`;
+  }
+  return "";
+}
+
+function readSegmentYoy(row, cell) {
+  const firstUsable = (aliases, options = {}) => {
+    for (const alias of aliases) {
+      const normalized = normalizeSegmentYoyPercent(cell(row, [alias]), options);
+      if (normalized) return normalized;
+    }
+    return "";
+  };
+
+  return firstUsable(["OV YoY %", "Order Value YoY %", "YoY %", "% Variance"], { allowBareNumber: true })
+    || firstUsable(["Variance"])
+    || firstUsable(["YoY Change"]);
+}
+
 function segmentSnapshotRows(table) {
   const rows = Array.isArray(table?.rows) ? table.rows : [];
   const columns = Array.isArray(table?.columns) ? table.columns : [];
@@ -5540,7 +5570,7 @@ function segmentSnapshotRows(table) {
         segment,
         totalOv,
         value: Number.isFinite(value) ? value : 0,
-        ovYoy: cleanInlineText(cell(row, ["OV YoY %", "YoY Change", "Order Value YoY %"]) || "N/A"),
+        ovYoy: readSegmentYoy(row, cell),
         sales,
         salesValue: Number.isFinite(salesValue) ? salesValue : 0,
         salesYoy: cleanInlineText(cell(row, ["Sales YoY %"]) || ""),
@@ -5562,24 +5592,38 @@ function segmentTreemapRows(table, deck) {
     }))
     .sort((a, b) => b.value - a.value);
 
-  if (mapped.length <= 8) return mapped;
+  const total = mapped.reduce((sum, row) => sum + row.value, 0);
+  if (!mapped.length || total <= 0) return mapped;
 
-  const top = mapped.slice(0, 7);
-  const rest = mapped.slice(7);
-  const otherValue = rest.reduce((sum, row) => sum + row.value, 0);
-  if (otherValue <= 0) return top;
+  const maxVisibleSegments = 6;
+  const minReadableShare = 0.03;
+  const visible = [];
+  const grouped = [];
+
+  mapped.forEach((row, index) => {
+    const share = row.value / total;
+    if (index < maxVisibleSegments && share >= minReadableShare) {
+      visible.push(row);
+    } else {
+      grouped.push(row);
+    }
+  });
+
+  if (!grouped.length) return visible;
+
+  const otherValue = grouped.reduce((sum, row) => sum + row.value, 0);
+  if (otherValue <= 0) return visible;
 
   return [
-    ...top,
+    ...visible,
     {
       segment: "Other segments",
       value: otherValue,
-      yoy: "Mixed",
+      yoy: grouped.length === 1 ? grouped[0].yoy : "Mixed",
       sales: ""
     }
   ];
 }
-
 function splitTreemapItems(items, box) {
   if (!items.length) return [];
   if (items.length === 1) return [{ ...items[0], ...box }];
@@ -5625,8 +5669,9 @@ function addSegmentTreemap(slide, deck, table, box) {
   const border = toColor("#FFFFFF");
   const total = rows.reduce((sum, row) => sum + row.value, 0);
   const colors = ["#74C8DC", "#069FC5", "#2BA68D", "#F2D35C", "#43C0A6", "#81DCCB", "#9AA3A4", "#2F6FF2"];
+  const shareLabel = (share) => (share > 0 && share < 1 ? "<1%" : `${Math.round(share)}%`);
 
-  slide.addText("Share of Total by Segment", {
+  slide.addText("Share of Total OV by Segment", {
     x: box.x,
     y: box.y,
     w: box.w,
@@ -5658,6 +5703,20 @@ function addSegmentTreemap(slide, deck, table, box) {
     return;
   }
 
+  if (rows.some((row) => row.segment === "Other segments")) {
+    slide.addText("Other segments grouped; full detail in table.", {
+      x: chartBox.x,
+      y: chartBox.y + chartBox.h + 0.05,
+      w: chartBox.w,
+      h: 0.18,
+      fontFace: deck.theme.fonts.body,
+      fontSize: 7.6,
+      color: muted,
+      margin: 0,
+      fit: "shrink"
+    });
+  }
+
   const tiles = splitTreemapItems(rows, chartBox);
   tiles.forEach((tile, index) => {
     const gap = 0.012;
@@ -5666,14 +5725,11 @@ function addSegmentTreemap(slide, deck, table, box) {
     const w = Math.max(0.02, tile.w - gap * 2);
     const h = Math.max(0.02, tile.h - gap * 2);
     const share = total > 0 ? (tile.value / total) * 100 : 0;
-    const canShowName = w >= 0.76 && h >= 0.34;
-    const canShowYoy = w >= 1.05 && h >= 0.7;
-    const fontSize = w < 1.2 || h < 0.62 ? 7.2 : 8.9;
+    const canShowCoreLabel = w >= 0.86 && h >= 0.65;
+    const canShowYoy = canShowCoreLabel && w >= 1.15 && h >= 0.95 && !isUnavailableSegmentValue(tile.yoy);
+    const fontSize = w < 1.2 || h < 0.85 ? 7.3 : 8.9;
     const label = cleanInlineText(tile.segment);
-    const titleFontSize = label.length > 22 ? Math.max(6.2, fontSize - 0.9) : fontSize;
-    const titleHeight = canShowYoy
-      ? Math.min(0.36, Math.max(0.24, h * 0.42))
-      : Math.min(0.5, Math.max(0.24, h - 0.18));
+    const titleFontSize = label.length > 22 ? Math.max(6.4, fontSize - 0.8) : fontSize;
     const fill = colors[index % colors.length];
 
     slide.addShape("rect", {
@@ -5685,12 +5741,12 @@ function addSegmentTreemap(slide, deck, table, box) {
       fill: { color: toColor(fill) }
     });
 
-    if (canShowName) {
+    if (canShowCoreLabel) {
       slide.addText(label, {
         x: x + 0.08,
         y: y + 0.08,
         w: Math.max(0.1, w - 0.16),
-        h: titleHeight,
+        h: canShowYoy ? 0.24 : 0.28,
         fontFace: deck.theme.fonts.heading,
         fontSize: titleFontSize,
         bold: true,
@@ -5703,7 +5759,7 @@ function addSegmentTreemap(slide, deck, table, box) {
     if (canShowYoy) {
       slide.addText(`${tile.yoy} OV YoY`, {
         x: x + 0.08,
-        y: y + 0.33,
+        y: y + 0.34,
         w: Math.max(0.1, w - 0.16),
         h: 0.18,
         fontFace: deck.theme.fonts.body,
@@ -5714,21 +5770,22 @@ function addSegmentTreemap(slide, deck, table, box) {
       });
     }
 
-    slide.addText(`${Math.round(share)}%`, {
-      x: x + 0.08,
-      y: y + h - 0.29,
-      w: Math.max(0.25, w - 0.16),
-      h: 0.22,
-      fontFace: deck.theme.fonts.heading,
-      fontSize: Math.max(8, fontSize + 0.8),
-      bold: true,
-      color: toColor("#FFFFFF"),
-      margin: 0,
-      fit: "shrink"
-    });
+    if (canShowCoreLabel) {
+      slide.addText(shareLabel(share), {
+        x: x + 0.08,
+        y: y + h - 0.29,
+        w: Math.max(0.25, w - 0.16),
+        h: 0.22,
+        fontFace: deck.theme.fonts.heading,
+        fontSize: Math.max(8, fontSize + 0.8),
+        bold: true,
+        color: toColor("#FFFFFF"),
+        margin: 0,
+        fit: "shrink"
+      });
+    }
   });
 }
-
 function buildPublisherOverviewSummaryTable(table) {
   const rows = segmentSnapshotRows(table);
   if (!rows.length) {
