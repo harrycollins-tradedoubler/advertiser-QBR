@@ -34,6 +34,8 @@ const HAS_KPI_ICON = Object.fromEntries(
   Object.entries(KPI_ICON_PATHS).map(([key, filePath]) => [key, fsSync.existsSync(filePath)])
 );
 
+const PROGRAM_BREAKDOWN_ROWS_PER_SLIDE = 12;
+
 const TEXT_REPLACEMENTS = [
   [/Ãƒâ€šÃ‚Â£|ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â£|ÃƒÂÃ¢â‚¬Å“ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÂÃ¢â‚¬â„¢ÃƒÂÃ‹â€ |ÃƒÂÃ‹â€ /g, "\u00A3"],
   [/Ãƒâ€šÃ¢â€šÂ¬|ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬|ÃƒÂÃ¢â‚¬Å“ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÂÃ¢â‚¬â„¢Ãƒâ€šÃ‚Â¤/g, "\u20AC"],
@@ -408,8 +410,8 @@ const UI_LABELS_BY_LANGUAGE = {
     detailedMovementUnavailable: "Szczegółowy opis zmian nie jest dostępny w tym wyciągu.",
     kpiSignalGeneric: "Sygnał KPI",
     kpiDriverUnavailable: "Brak potwierdzonego czynnika na podstawie dostępnych danych KPI.",
-    kpiDetailUnavailable: "Szczegóły nie są dostępne w bieżącym wyciągu.",
-    kpiTitleConversionRateImprovement: "Poprawa współczynnika konwersji",
+    kpiDetailUnavailable: "Szczególy nie sa dostepne w biezacym wyciagu.",
+    kpiTitleConversionRateImprovement: "Poprawa wspólczynnika konwersji",
     kpiTitleSalesVolumePressure: "Presja na wolumen sprzedaży",
     kpiTitleAovGrowthOffset: "Wzrost AOV częściowo kompensujący spadek wolumenu",
     kpiTitleRisingCpa: "Wzrost CPA",
@@ -943,9 +945,17 @@ function normalizePublisherCategorySlides(input) {
           : [];
       const rows = normalizeRows(recommendedPublishers);
       if (!category || !rows.length) return null;
+      const publisherCount = parseNumber(
+        slide.publisherCount
+        ?? slide.totalPublishers
+        ?? slide.totalPublisherCount
+        ?? slide.sourcePublisherCount
+        ?? slide.sourceMetadataRows
+      );
       return {
         programId: cleanInlineText(slide.programId || slide["Program ID"] || ""),
         category,
+        publisherCount: Number.isFinite(publisherCount) ? publisherCount : rows.length,
         recommendation: cleanInlineText(slide.recommendation || ""),
         evidence: normalizeStringList(slide.evidence),
         recommendedPublishers: rows
@@ -989,10 +999,12 @@ function normalizeProgramScopeTable(input) {
 function normalizeMetrics(programYoYTable) {
   const rows = normalizeRows(programYoYTable);
   if (!rows.length) return { metrics: [], metricMap: {} };
-  const recent = rows.find((row) => String(row.Row || "").toLowerCase().includes("recent")) || rows[0];
-  const previous = rows.find((row) => String(row.Row || "").toLowerCase().includes("previous")) || rows[1];
-  const difference = rows.find((row) => String(row.Row || "").toLowerCase().includes("difference")) || rows[2];
-  const variance = rows.find((row) => String(row.Row || "").toLowerCase().includes("variance")) || rows[3];
+  const rowLabel = (row) => String(row.Row || row.Metric || "").toLowerCase();
+  const isVarianceLabel = (row) => /variance|yoy|year\s*over\s*year|r\s*\/\s*r|%|percent|percentage|increase|decrease|growth/.test(rowLabel(row));
+  const recent = rows.find((row) => /recent|current/.test(rowLabel(row))) || rows[0];
+  const previous = rows.find((row) => /previous|prior|last\s*year/.test(rowLabel(row))) || rows[1];
+  const difference = rows.find((row) => /difference|delta|change/.test(rowLabel(row)) && !isVarianceLabel(row)) || rows[2];
+  const variance = rows.find(isVarianceLabel) || rows[3];
 
   const columns = Object.keys(recent || {}).filter((column) => !["row", "metric"].includes(column.toLowerCase()));
   const metrics = columns.map((column) => {
@@ -1639,7 +1651,7 @@ function buildProgramBreakdownTable(input) {
           programId = selectedProgramIdSingle;
         }
         const programName = firstObjectValue(row, ["Program", "Program Name", "ProgramName", "Name"]);
-        const marketSource = firstObjectValue(row, ["Market", "Country", "Region"]);
+        const marketSource = firstObjectValue(row, ["Market", "Country", "Country Code", "CountryCode", "countryCode", "Region"]);
         const market = resolveProgramMarket(programName, marketSource);
         const clicks = firstObjectValue(row, ["Clicks", "Current Clicks"]);
         const impressions = firstObjectValue(row, ["Impressions"]);
@@ -1688,7 +1700,7 @@ function buildProgramBreakdownTable(input) {
           programId = selectedProgramIdSingle;
         }
         const programName = firstRowCell(row, idx, ["program", "program name", "programname", "name"]);
-        const marketSource = firstRowCell(row, idx, ["market", "country", "region"]);
+        const marketSource = firstRowCell(row, idx, ["market", "country", "country code", "countrycode", "region"]);
         const market = resolveProgramMarket(programName, marketSource);
         const clicks = firstRowCell(row, idx, ["clicks", "current clicks"]);
         const impressions = firstRowCell(row, idx, ["impressions"]);
@@ -1743,6 +1755,34 @@ function buildProgramBreakdownTable(input) {
     rows: [["-", "-", "-", "-", "-", "-", "-", "-", "-"]],
     dense: false
   };
+}
+
+function paginateProgramBreakdownSlide(slideSpec, rowsPerSlide = PROGRAM_BREAKDOWN_ROWS_PER_SLIDE) {
+  const table = slideSpec?.tables?.[0];
+  const rows = Array.isArray(table?.rows) ? table.rows : [];
+  const pageSize = Math.max(1, Number(rowsPerSlide) || PROGRAM_BREAKDOWN_ROWS_PER_SLIDE);
+  if (rows.length <= pageSize) return [slideSpec];
+
+  const pageCount = Math.ceil(rows.length / pageSize);
+  const baseTitle = cleanInlineText(slideSpec.title || "Program-Level Breakdown");
+  const baseSubtitle = cleanInlineText(slideSpec.subtitle || "");
+
+  return Array.from({ length: pageCount }, (_, pageIndex) => {
+    const pageNumber = pageIndex + 1;
+    const startIndex = pageIndex * pageSize;
+    const endIndex = Math.min(rows.length, startIndex + pageSize);
+    const pageRange = startIndex + 1 === endIndex
+      ? `Program ${endIndex} of ${rows.length}`
+      : `Programs ${startIndex + 1}-${endIndex} of ${rows.length}`;
+    return {
+      ...slideSpec,
+      id: pageNumber === 1 ? slideSpec.id : `${slideSpec.id}-page-${pageNumber}`,
+      title: `${baseTitle} (${pageNumber}/${pageCount})`,
+      subtitle: baseSubtitle ? `${baseSubtitle} ${pageRange}.` : pageRange,
+      tables: [{ ...table, rows: rows.slice(startIndex, endIndex) }],
+      callout: pageRange
+    };
+  });
 }
 
 function buildTopPublisherPerformanceTable(input) {
@@ -3444,7 +3484,14 @@ function buildPublisherRecommendationWorkbookRows(input) {
     });
 }
 
-function buildPublisherRecommendationSummaryTable(rows) {
+function buildPublisherRecommendationSummaryTable(rows, categorySlides = []) {
+  const publisherCountByType = new Map();
+  for (const slide of categorySlides) {
+    const type = cleanInlineText(slide.category || "Unclassified", "Unclassified");
+    const count = Number.isFinite(slide.publisherCount) ? slide.publisherCount : (slide.recommendedPublishers || []).length;
+    publisherCountByType.set(type, (publisherCountByType.get(type) || 0) + count);
+  }
+
   const groups = new Map();
   for (const row of rows) {
     const type = cleanInlineText(row.publisherType || "Unclassified", "Unclassified");
@@ -3477,7 +3524,7 @@ function buildPublisherRecommendationSummaryTable(rows) {
     .slice(0, 10)
     .map((group) => [
       group.type,
-      String(group.publishers),
+      String(Math.round(publisherCountByType.get(group.type) || group.publishers)),
       Math.round(group.acceptedConnections).toLocaleString("en-GB"),
       publisherAcceptanceRatioLabel(
         group.acceptanceRatioCount ? group.acceptanceRatioTotal / group.acceptanceRatioCount : NaN
@@ -3504,7 +3551,7 @@ function buildPublisherRecommendationSlides(input) {
     subtitle: "Gap-analysis publisher prospects from advertiser/sources for AM review.",
     bullets: [],
     kpis: [],
-    tables: [buildPublisherRecommendationSummaryTable(rows)],
+    tables: [buildPublisherRecommendationSummaryTable(rows, input.publisherCategorySlides || [])],
     callout: "Full publisher recommendation detail is supplied in the Excel workbook, ranked by Accepted Connections then Acceptance Ratio."
   }];
 }
@@ -3518,6 +3565,319 @@ function escapeXml(value) {
     .replace(/'/g, "&apos;");
 }
 
+function noteLine(value, maxLength = 260) {
+  let text = cleanInlineText(value || "");
+  if (!text) return "";
+  if (text.length > maxLength) text = `${text.slice(0, maxLength - 3).trim()}...`;
+  return text;
+}
+
+function pushUniqueNote(lines, value, limit = 8) {
+  if (lines.length >= limit) return;
+  const text = noteLine(value);
+  if (!text) return;
+  const key = text.toLowerCase();
+  if (lines.some((line) => line.toLowerCase() === key)) return;
+  lines.push(text);
+}
+
+function rowCellByColumn(row, columns, aliases) {
+  const normalizedAliases = aliases.map((alias) => cleanInlineText(alias).toLowerCase());
+  const idx = columns.findIndex((column) => normalizedAliases.includes(cleanInlineText(column).toLowerCase()));
+  return idx >= 0 ? cleanInlineText(row[idx] || "") : "";
+}
+
+function tableHasRows(table) {
+  return Array.isArray(table?.rows) && table.rows.length > 0;
+}
+
+function firstTableRow(table) {
+  return tableHasRows(table) ? table.rows[0] : null;
+}
+
+function presenterMetricLine(label, metric) {
+  if (!metric) return "";
+  const parts = [label];
+  if (metric.current) parts.push(metric.current);
+  if (metric.previous) parts.push(`vs ${metric.previous}`);
+  if (metric.variance) parts.push(`(${metric.variance})`);
+  return parts.join(" ");
+}
+
+function buildExecutiveDiagnosisLines(input) {
+  const m = input.metricMap || {};
+  const lines = [];
+  const clicks = m.clicks;
+  const sales = m.sales;
+  const ov = m.ordervalue;
+  const conv = m.convrate;
+  const roi = m.roi;
+
+  if (clicks?.varianceValue > 0 && (ov?.varianceValue < 0 || sales?.varianceValue < 0 || conv?.varianceValue < 0)) {
+    lines.push(`Overall diagnosis: traffic scaled (${clicks.variance || "positive click movement"}) but value or conversion softened, so the presenter should frame the issue as growth quality rather than pure reach.`);
+  } else if (sales?.varianceValue > 0 && ov?.varianceValue > 0) {
+    lines.push(`Overall diagnosis: sales and order value both improved (${sales.variance || "sales up"}; ${ov.variance || "order value up"}), so the main question is how repeatable and publisher-diversified the growth is.`);
+  } else if (roi?.varianceValue > 0 && (sales?.varianceValue < 0 || ov?.varianceValue < 0)) {
+    lines.push(`Overall diagnosis: ROI improved (${roi.variance || "positive ROI movement"}) while volume/value softened, suggesting tighter cost efficiency but a need to rebuild scalable demand.`);
+  } else {
+    lines.push("Overall diagnosis: use the KPI and publisher sections to separate scale, efficiency, and partner-mix effects before recommending budget or commission changes.");
+  }
+
+  const currentPerformers = input.tables.topCurrentPerformers;
+  const segment = input.tables.segmentSnapshot;
+  if (tableHasRows(currentPerformers) && tableHasRows(segment)) {
+    const topTwo = currentPerformers.rows.slice(0, 2);
+    const topTwoValue = topTwo.reduce((sum, row) => sum + (parseNumber(readTableCell(row, ["Order Value", "Current OV", "Total OV", "Total Order Value"])) || 0), 0);
+    const totalValue = segment.rows.reduce((sum, row) => sum + (parseNumber(readTableCell(row, ["Total OV", "Current OV", "Order Value", "Total Order Value"])) || 0), 0);
+    if (topTwo.length >= 2 && totalValue > 0 && topTwoValue > 0) {
+      const share = ((topTwoValue / totalValue) * 100).toFixed(1);
+      lines.push(`Publisher concentration watch: ${readTableCell(topTwo[0], ["Publisher"])} and ${readTableCell(topTwo[1], ["Publisher"])} account for about ${share}% of tracked order value.`);
+    }
+  }
+
+  return lines.slice(0, 3);
+}
+
+function buildPerformanceSnapshotLines(input) {
+  const m = input.metricMap || {};
+  const metrics = [
+    ["Clicks", m.clicks],
+    ["Sales", m.sales],
+    ["Order value", m.ordervalue],
+    ["Conversion rate", m.convrate],
+    ["AOV", m.aov],
+    ["CPA", m.cpa],
+    ["ROI", m.roi]
+  ].map(([label, metric]) => presenterMetricLine(label, metric)).filter(Boolean);
+  if (metrics.length) return metrics.slice(0, 7);
+  return ["Performance snapshot was not available from the current KPI table."];
+}
+
+function buildKeyRiskNoteLines(input) {
+  const rows = buildRiskRows(input);
+  const lines = [];
+  for (const row of rows.slice(0, 5)) {
+    const [risk, impact, evidence] = row;
+    pushUniqueNote(lines, `${risk} (${impact}): ${evidence}`, 5);
+  }
+  return lines.length ? lines : ["Risk view needs confirmation once publisher quality, validation, and commission fields are available."];
+}
+
+function buildPublisherOpportunityLines(input) {
+  const lines = [];
+  const growth = firstTableRow(input.tables.topGrowthPublishers);
+  if (growth) {
+    const publisher = readTableCell(growth, ["Publisher"]);
+    const segment = readTableCell(growth, ["Segment", "Category", "Publisher Segment"]);
+    const ovDelta = readTableCell(growth, ["OV YoY Change", "YoY Change", "Order Value YoY Change"]);
+    const ovPct = readTableCell(growth, ["OV YoY %", "YoY %", "Order Value YoY %"]);
+    pushUniqueNote(lines, `${publisher || "Top growth publisher"}${segment ? ` (${segment})` : ""}: protect or scale exposure; observed growth ${[ovDelta, ovPct].filter(Boolean).join(" / ") || "is positive"}.`, 6);
+  }
+
+  const currentRows = input.tables.topCurrentPerformers?.rows || [];
+  for (const row of currentRows.slice(0, 3)) {
+    const publisher = readTableCell(row, ["Publisher"]);
+    const orderValue = readTableCell(row, ["Order Value", "Current OV", "Total Order Value"]);
+    const sales = readTableCell(row, ["Current Sales", "Sales"]);
+    if (publisher) pushUniqueNote(lines, `${publisher}: review ranking, offer depth, and exposure options${orderValue ? `; current OV ${orderValue}` : ""}${sales ? `; sales ${sales}` : ""}.`, 6);
+  }
+
+  const brandNew = firstTableRow(input.tables.brandNewPublishers);
+  if (brandNew) {
+    pushUniqueNote(lines, `${readTableCell(brandNew, ["Publisher"]) || "Brand-new publisher"}: check whether new activity is incremental before increasing exposure.`, 6);
+  }
+
+  return lines.length ? lines : ["No clear publisher opportunity was confirmed from current growth/current-performer tables."];
+}
+
+function buildCommissionHypothesisLines(input) {
+  const lines = [
+    "Treat commission changes as hypotheses until publisher commission, validation rate, margin, tenancy spend, and new-customer mix are available.",
+    "Avoid flat increases across all partner types; compare events or sales per click, order value per click, AOV, CPA, and ROI by publisher class.",
+    "For high-click publishers with weak conversion density, cap, tier, or restructure economics until validated value improves."
+  ];
+  const cpa = input.metricMap?.cpa;
+  const roi = input.metricMap?.roi;
+  if (cpa?.varianceValue < 0 || roi?.varianceValue > 0) {
+    lines.push("Cost efficiency appears better in the KPI table; use that as a negotiation anchor, not as permission for broad payout increases.");
+  }
+  return lines.slice(0, 4);
+}
+
+function buildRecruitmentGapLines(input) {
+  const lines = [];
+  const segmentRows = input.tables.segmentSnapshot?.rows || [];
+  const segmentNames = segmentRows.map((row) => readTableCell(row, ["Segment", "Category", "Publisher Segment"]).toLowerCase()).filter(Boolean);
+  const hasContent = segmentNames.some((name) => /content|editorial|blog|creator|influencer/.test(name));
+  const hasCashback = segmentNames.some((name) => /cashback|loyalty|reward/.test(name));
+  const hasVoucher = segmentNames.some((name) => /voucher|coupon|deal/.test(name));
+
+  if (!hasContent) lines.push("Grocery/content/editorial recruitment gap: add recipe, family-budget, meal-planning, and seasonal shopping publishers to diversify demand generation.");
+  if (!hasCashback) lines.push("Cashback/loyalty gap: test controlled exposure with partners that can forecast incremental value and basket-size impact.");
+  if (!hasVoucher) lines.push("Voucher/deal gap: recruit or deepen editorial deal partners for seasonal campaigns and offer governance.");
+  lines.push("Comparison and shopping-list opportunity: target grocery comparison, price-alert, and basket-planning partners where relevant to the advertiser category.");
+  lines.push("Affinity opportunity: test student, workplace, community, charity, or closed-user-group partners when the product fit supports controlled offers.");
+  return lines.slice(0, 5);
+}
+
+function buildActionPlanLines(input) {
+  const lines = [
+    "Days 1-15: Build a publisher scorecard separating clicks, sales/events, order value, AOV, conversion rate, CPA, ROI, commission, validation, and new-customer share.",
+    "Days 1-15: Audit tracking anomalies and missing data before changing rates or suppressing partners.",
+    "Days 16-30: Create top-account plans for protect, scale, test, cap, and renegotiate publisher groups.",
+    "Days 16-30: Run controlled exposure tests with the strongest value-density publishers and define expected outcome before committing spend.",
+    "Days 31-60: Review test results and decide which partners get long-term placement investment, rate changes, or deactivation."
+  ];
+  if (tableHasRows(input.tables.newPublisherProspects)) {
+    lines.splice(4, 0, "Days 16-30: Prioritize outreach to publisher prospects already surfaced in the recommendations workbook.");
+  }
+  return lines.slice(0, 6);
+}
+
+function buildQuickWinLines(input) {
+  const lines = [];
+  const growth = firstTableRow(input.tables.topGrowthPublishers);
+  if (growth) pushUniqueNote(lines, `Ask ${readTableCell(growth, ["Publisher"]) || "the top growth publisher"} for incremental exposure options, expected cost, and forecasted value before approving a boost.`, 5);
+  const decline = firstTableRow(input.tables.topDecliningPublishers);
+  if (decline) pushUniqueNote(lines, `Contact ${readTableCell(decline, ["Publisher"]) || "the largest declining publisher"} to confirm the reason for the drop and whether it is recoverable.`, 5);
+  lines.push("Pause broad commission increases until publishers are scored on validated sales quality, not click volume alone.");
+  lines.push("Pull a missing-data cut before the meeting: commission, tenancy spend, validation rate, new vs returning customer, promo-code usage, and device or placement where available.");
+  return lines.slice(0, 5);
+}
+
+function buildDataGapLines(input) {
+  const gaps = [
+    "Publisher commission and total commission by publisher.",
+    "Validation or cancellation rate by publisher and campaign.",
+    "New vs returning customer split and promo-code usage.",
+    "Tenancy or placement spend connected to publisher outcomes.",
+    "Publisher category taxonomy confirmed by the network, not inferred from names."
+  ];
+  if (!tableHasRows(input.tables.publisherPerformanceByProgram)) gaps.unshift("Publisher-by-program performance detail was missing or single-program only.");
+  return gaps.slice(0, 6);
+}
+
+function buildPresenterNotesSections(input, deckSpec) {
+  const metadata = [
+    `Client: ${input.displayClient || input.client || deckSpec?.metadata?.client || "Client"}`,
+    `Reporting period: ${input.reportingPeriod || "Not provided"}`,
+    `Comparison period: ${input.comparisonPeriod || "Not provided"}`,
+    `Currency: ${input.currencyCode || "Not provided"}`
+  ].map((line) => noteLine(line)).filter(Boolean);
+
+  const kpiLines = [];
+  const executiveSlide = (deckSpec?.slides || []).find((slide) => slide.kind === "program-executive-summary");
+  for (const kpi of executiveSlide?.kpis || []) {
+    pushUniqueNote(kpiLines, `${kpi.label}: ${kpi.summary || kpi.value}`, 5);
+  }
+  for (const bullet of buildKpiAnalysisBullets(input)) {
+    pushUniqueNote(kpiLines, bullet, 8);
+  }
+  if (!kpiLines.length) {
+    pushUniqueNote(kpiLines, "Program KPI movement was not available from the current extract.");
+  }
+
+  const publisherLines = [];
+  const hasPublisherSource = [
+    input.tables.topGrowthPublishers,
+    input.tables.topDecliningPublishers,
+    input.tables.topCurrentPerformers,
+    input.tables.publisherPerformanceByProgram,
+    input.tables.topPublisherPerformance,
+    input.tables.segmentSnapshot
+  ].some((table) => Array.isArray(table?.rows) && table.rows.length);
+
+  if (hasPublisherSource) {
+    for (const bullet of buildPublisherOverviewBullets(input)) {
+      pushUniqueNote(publisherLines, bullet, 6);
+    }
+
+    const byProgramTable = buildPublisherPerformanceByProgramTable(input);
+    const byProgramRows = byProgramTable?.rows || [];
+    for (const row of byProgramRows.slice(0, 4)) {
+      const program = rowCellByColumn(row, byProgramTable.columns, ["Program"]);
+      const publisher = rowCellByColumn(row, byProgramTable.columns, ["Top Publisher"]);
+      const ov = rowCellByColumn(row, byProgramTable.columns, ["Publisher OV"]);
+      const sales = rowCellByColumn(row, byProgramTable.columns, ["Sales"]);
+      const ovYoy = rowCellByColumn(row, byProgramTable.columns, ["OV YoY %"]);
+      const salesYoy = rowCellByColumn(row, byProgramTable.columns, ["Sales YoY %"]);
+      const movement = [ovYoy ? `${ovYoy} OV YoY` : "", salesYoy ? `${salesYoy} sales YoY` : ""].filter(Boolean).join(", ");
+      pushUniqueNote(
+        publisherLines,
+        `${program || "Program"}: ${publisher || "Top publisher"} led publisher performance${ov ? ` with ${ov} OV` : ""}${sales ? ` and ${sales} sales` : ""}${movement ? ` (${movement})` : ""}.`,
+        10
+      );
+    }
+  }
+
+  if (!publisherLines.length) {
+    publisherLines.push("Publisher performance detail was not available from the current extract; use the deck tables to confirm drivers before presenting.");
+  }
+
+  return [
+    { title: "QBR Presenter Notes", lines: metadata, heading: 1 },
+    { title: "Executive Diagnosis", lines: buildExecutiveDiagnosisLines(input), heading: 2 },
+    { title: "Performance Snapshot", lines: buildPerformanceSnapshotLines(input), heading: 2 },
+    { title: "Program KPI Highlights", lines: kpiLines.slice(0, 8), heading: 2 },
+    { title: "Key Risks", lines: buildKeyRiskNoteLines(input), heading: 2 },
+    { title: "Publisher Performance Notes", lines: publisherLines.slice(0, 10), heading: 2 },
+    { title: "Publisher Opportunities", lines: buildPublisherOpportunityLines(input), heading: 2 },
+    { title: "Commission And Payout Hypotheses", lines: buildCommissionHypothesisLines(input), heading: 2 },
+    { title: "Recruitment Gaps", lines: buildRecruitmentGapLines(input), heading: 2 },
+    { title: "Prioritized 60-Day Action Plan", lines: buildActionPlanLines(input), heading: 2 },
+    { title: "Quick Wins", lines: buildQuickWinLines(input), heading: 2 },
+    { title: "Data Gaps And Presenter Checks", lines: buildDataGapLines(input), heading: 2 }
+  ];
+}
+
+function docxTextRun(text, bold = false) {
+  const runProps = bold ? "<w:rPr><w:b/></w:rPr>" : "";
+  return `<w:r>${runProps}<w:t xml:space="preserve">${escapeXml(text)}</w:t></w:r>`;
+}
+
+function docxParagraph(text, options = {}) {
+  const style = options.heading === 1
+    ? '<w:pPr><w:pStyle w:val="Heading1"/></w:pPr>'
+    : options.heading === 2
+      ? '<w:pPr><w:pStyle w:val="Heading2"/></w:pPr>'
+      : "";
+  const prefix = options.list ? "- " : "";
+  return `<w:p>${style}${docxTextRun(`${prefix}${text}`, options.bold)}</w:p>`;
+}
+
+async function buildPresenterNotesDocx(input, deckSpec) {
+  const sections = buildPresenterNotesSections(input, deckSpec);
+  const body = sections.flatMap((section) => [
+    docxParagraph(section.title, { heading: section.heading, bold: true }),
+    ...section.lines.map((line) => docxParagraph(line, { list: section.heading !== 1 }))
+  ]).join("\n");
+
+  const zip = new JSZip();
+  zip.file("[Content_Types].xml", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+<Default Extension="xml" ContentType="application/xml"/>
+<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
+<Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/>
+</Types>`);
+  zip.file("_rels/.rels", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>
+</Relationships>`);
+  zip.file("word/document.xml", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+<w:body>
+${body}
+<w:sectPr><w:pgSz w:w="12240" w:h="15840"/><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440" w:header="720" w:footer="720" w:gutter="0"/></w:sectPr>
+</w:body>
+</w:document>`);
+  zip.file("word/styles.xml", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+<w:style w:type="paragraph" w:styleId="Heading1"><w:name w:val="heading 1"/><w:rPr><w:b/><w:sz w:val="32"/></w:rPr></w:style>
+<w:style w:type="paragraph" w:styleId="Heading2"><w:name w:val="heading 2"/><w:rPr><w:b/><w:sz w:val="26"/></w:rPr></w:style>
+</w:styles>`);
+  return zip.generateAsync({ type: "nodebuffer", compression: "DEFLATE" });
+}
 function columnName(index) {
   let n = index + 1;
   let out = "";
@@ -3958,7 +4318,7 @@ function buildPublisherProgramDeckSpec(input, theme) {
     }
 
     if (key === "program_level_analysis") {
-      slides.push({
+      slides.push(...paginateProgramBreakdownSlide({
         id: "program-level-analysis",
         kind: "program-breakdown",
         title: customTitle || "Program Level Analysis",
@@ -3966,7 +4326,7 @@ function buildPublisherProgramDeckSpec(input, theme) {
         bullets: [],
         kpis: [],
         tables: [programBreakdownTable]
-      });
+      }));
       continue;
     }
 
@@ -4252,7 +4612,7 @@ function buildDeckSpec(input, theme) {
     footerNote: "Conversion rate = Sales \u00F7 Clicks. AOV = Total Order Value \u00F7 Sales. ROI = Total Order Value \u00F7 Total Commission."
   });
 
-  slides.push({
+  slides.push(...paginateProgramBreakdownSlide({
     id: "kpi-cost-roi",
     kind: "program-breakdown",
     title: "Program-Level Breakdown: Volume & Conversion",
@@ -4260,7 +4620,7 @@ function buildDeckSpec(input, theme) {
     bullets: [],
     kpis: [],
     tables: [programBreakdownTable]
-  });
+  }));
 
   slides.push({
     id: "kpi-highlights",
@@ -5172,9 +5532,9 @@ function segmentSnapshotRows(table) {
   return rows
     .map((row) => {
       const segment = cleanInlineText(cell(row, ["Segment", "Category", "Publisher Segment"]) || "Segment");
-      const totalOv = cleanInlineText(cell(row, ["Total OV", "Order Value", "Sales Order Value", "Total Order Value"]) || "-");
+      const totalOv = cleanInlineText(cell(row, ["Total OV", "Current OV", "OV", "Order Value", "Sales Order Value", "Total Order Value", "Current Order Value"]) || "-");
       const value = parseNumber(totalOv);
-      const sales = cleanInlineText(cell(row, ["Total Sales", "Sales"]) || "-");
+      const sales = cleanInlineText(cell(row, ["Total Sales", "Current Sales", "Sales"]) || "-");
       const salesValue = parseNumber(sales);
       return {
         segment,
@@ -6219,6 +6579,15 @@ function normalizeOutputFileName(value, fallback = "qbr_deck") {
   return `${safeName(withoutExtension)}.pptx`;
 }
 
+function removeTrailingUuidSuffix(value) {
+  return cleanInlineText(value || "").replace(/_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i, "");
+}
+
+function bundleEntryStem(fileName) {
+  const stem = path.basename(cleanInlineText(fileName || "qbr_deck"), path.extname(fileName || ""));
+  return removeTrailingUuidSuffix(stem) || stem || "qbr_deck";
+}
+
 async function writeUniqueFile(outputDir, preferredFileName, data, options) {
   const normalizedFileName = normalizeOutputFileName(preferredFileName);
   const extension = path.extname(normalizedFileName) || ".pptx";
@@ -6244,6 +6613,7 @@ async function writeUniqueFile(outputDir, preferredFileName, data, options) {
   return { fileName, filePath };
 }
 
+
 async function generatePresentation(payload, options = {}) {
   const normalized = normalizePayload(payload || {});
   const theme = resolveTheme(normalized.themeName, normalized.themeOverrides);
@@ -6258,7 +6628,8 @@ async function generatePresentation(payload, options = {}) {
   const publisherPerformanceExcelFileName = publisherPerformanceExcelBuffer
     ? "qbr_deck_publisher_performance_by_program.xlsx"
     : null;
-
+  const presenterNotesBuffer = await buildPresenterNotesDocx(normalized, localizedDeckSpec);
+  const presenterNotesFileName = "qbr_deck_presenter_notes.docx";
   return {
     normalized,
     deckSpec: localizedDeckSpec,
@@ -6267,7 +6638,10 @@ async function generatePresentation(payload, options = {}) {
     excelBuffer,
     excelFileName,
     publisherPerformanceExcelBuffer,
-    publisherPerformanceExcelFileName
+    publisherPerformanceExcelFileName,
+    presenterNotesBuffer,
+    presenterNotesFileName,
+    presenterNotesWarning: null
   };
 }
 
@@ -6316,12 +6690,43 @@ async function saveOutput(result, outputDir) {
     deckSpecFileName = savedDeckSpec.fileName;
   }
 
+  let presenterNotesFileName = null;
+  const presenterNotesWarning = result.presenterNotesWarning || null;
+  if (result.presenterNotesBuffer) {
+    const preferredNotesName = savedPptx.fileName.replace(/\.pptx$/i, "_presenter_notes.docx");
+    const savedPresenterNotes = await writeCreateOnly(fs, outputDir, preferredNotesName, result.presenterNotesBuffer);
+    presenterNotesFileName = savedPresenterNotes.fileName;
+  }
+
+  let bundleFileName = null;
+  if (result.buffer) {
+    const bundleStem = bundleEntryStem(savedPptx.fileName);
+    const bundle = new JSZip();
+    bundle.file(`${bundleStem}.pptx`, result.buffer);
+    if (result.excelBuffer && excelFileName) {
+      bundle.file(`${bundleStem}_publisher_recommendations.xlsx`, result.excelBuffer);
+    }
+    if (result.publisherPerformanceExcelBuffer && publisherPerformanceExcelFileName) {
+      bundle.file(`${bundleStem}_publisher_performance_by_program.xlsx`, result.publisherPerformanceExcelBuffer);
+    }
+    if (result.presenterNotesBuffer && presenterNotesFileName) {
+      bundle.file(`${bundleStem}_presenter_notes.docx`, result.presenterNotesBuffer);
+    }
+    const bundleBuffer = await bundle.generateAsync({ type: "nodebuffer", compression: "DEFLATE" });
+    const bundleBaseName = path.basename(savedPptx.fileName, path.extname(savedPptx.fileName));
+    const savedBundle = await writeCreateOnly(fs, outputDir, `${bundleBaseName}_bundle.zip`, bundleBuffer);
+    bundleFileName = savedBundle.fileName;
+  }
+
   return {
     pptxPath: savedPptx.fullPath,
     fileName: savedPptx.fileName,
     deckSpecFileName,
     excelFileName,
-    publisherPerformanceExcelFileName
+    publisherPerformanceExcelFileName,
+    presenterNotesFileName,
+    presenterNotesWarning,
+    bundleFileName
   };
 }
 

@@ -200,6 +200,39 @@
               <div class="batch-results" id="batchResults">Batch results will appear here after a run.</div>
             </section>
 
+            <section class="panel">
+              <div class="panel-heading">
+                <h2>Organisation Batch Builder</h2>
+                <p>Resolve organisation IDs to owner/admin usernames, select active programs, and generate the simple batch CSV template.</p>
+              </div>
+
+              <div class="form-grid">
+                <label class="field" for="organizationId">
+                  <span>Organisation ID</span>
+                  <input id="organizationId" name="organizationId" type="text" autocomplete="off" placeholder="2384712">
+                </label>
+
+                <label class="field" for="organizationIdsFile">
+                  <span>Bulk ID File</span>
+                  <input id="organizationIdsFile" name="organizationIdsFile" type="file" accept=".csv,.txt,text/csv,text/plain">
+                </label>
+              </div>
+
+              <label class="field" for="organizationIdsText">
+                <span>Bulk Organisation IDs</span>
+                <textarea id="organizationIdsText" name="organizationIdsText" spellcheck="false" placeholder="One ID, TD users URL, or CSV row per line"></textarea>
+              </label>
+
+              <div class="action-row org-builder-actions">
+                <button class="button button-secondary" id="resolveOrganizations" type="button">Resolve Organisations</button>
+                <button class="button button-secondary" id="generateOrganizationBatchCsv" type="button" disabled>Generate CSV</button>
+                <a class="button button-ghost org-builder-download is-disabled" id="downloadOrganizationBatchCsv" href="#" download="advertiser-batch.csv" aria-disabled="true">Download CSV</a>
+                <span class="inline-status" id="organizationBatchStatus">No organisations resolved.</span>
+              </div>
+
+              <div class="organization-results" id="organizationBatchResults">Resolved organisations will appear here.</div>
+            </section>
+
           </form>
 
           <aside class="side-stack">
@@ -238,6 +271,7 @@
       </section>
     </main>
 
+    <script src="batch-builder.js"></script>
     <script src="app.js"></script>
   </body>
 </html>

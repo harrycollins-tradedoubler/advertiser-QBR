@@ -32,5 +32,24 @@ class ProgramRequestRunsRouterTest(unittest.IsolatedAsyncioTestCase):
         recorder.assert_awaited_once_with({"programId": "310990"})
 
 
+    async def test_create_program_request_run_passes_wrapped_build_duration(self):
+        result = {
+            "recorded": False,
+            "duplicate": False,
+            "updated": True,
+            "reason": "",
+            "requestKey": "client@example.com|310990|2026-01-01|2026-03-31",
+        }
+        recorder = AsyncMock(return_value=result)
+
+        with patch("app.routers.program_request_runs.record_program_request_result", new=recorder):
+            response = await create_program_request_run(
+                {"payload": {"programId": "310990"}, "buildDurationMs": 1532}
+            )
+
+        self.assertEqual(response, result)
+        recorder.assert_awaited_once_with({"programId": "310990"}, build_duration_ms=1532)
+
+
 if __name__ == "__main__":
     unittest.main()

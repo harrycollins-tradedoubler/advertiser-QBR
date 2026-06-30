@@ -1,7 +1,9 @@
 services:
   backend:
+    profiles: ["backend"]
     build:
       context: ./backend
+    restart: unless-stopped
     env_file:
       - ./backend/.env
     ports:
@@ -15,6 +17,7 @@ services:
   qbr-pptx-service:
     build:
       context: ./qbr-pptx-service
+    restart: unless-stopped
     environment:
       HOST: 0.0.0.0
       PORT: 3011
@@ -33,6 +36,7 @@ services:
   advertiser-qbr-local-runner:
     build:
       context: ./advertiser-qbr-local-runner
+    restart: unless-stopped
     environment:
       HOST: 0.0.0.0
       PORT: 3021

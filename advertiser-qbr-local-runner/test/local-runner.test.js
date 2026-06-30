@@ -195,6 +195,8 @@ test("route accepts local webhook requests and returns the n8n-compatible projec
         message: "Editable QBR PowerPoint generated successfully.",
         presentation_id: "deck-1",
         pptx_url: "http://127.0.0.1:3011/files/deck.pptx",
+        bundle_url: "http://127.0.0.1:3011/files/deck_bundle.zip",
+        presenter_notes_url: "http://127.0.0.1:3011/files/presenter-notes.docx",
         publisher_performance_excel_url: "http://127.0.0.1:3011/files/publisher-performance.xlsx",
         publisher_performance_excel_file_name: "publisher-performance.xlsx",
         file_name: "deck.pptx",
@@ -222,12 +224,16 @@ test("route accepts local webhook requests and returns the n8n-compatible projec
     assert.equal(response.status, 200);
     const body = await response.json();
     assert.equal(body.pptx_url, "http://127.0.0.1:3011/files/deck.pptx");
+    assert.equal(body.qbr_bundle_url, "http://127.0.0.1:3011/files/deck_bundle.zip");
+    assert.equal(body.presenter_notes_url, "http://127.0.0.1:3011/files/presenter-notes.docx");
     assert.equal(body.gap_analysis_report_url, null);
     assert.equal(body.publisher_program_performance_excel_url, "http://127.0.0.1:3011/files/publisher-performance.xlsx");
     assert.deepEqual(Object.keys(body).sort(), [
       "gap_analysis_report_url",
       "pptx_url",
-      "publisher_program_performance_excel_url"
+      "presenter_notes_url",
+      "publisher_program_performance_excel_url",
+      "qbr_bundle_url"
     ].sort());
 
     const debugFiles = await fs.readdir(debugDir);
@@ -263,6 +269,7 @@ test("publisher narrative stays deterministic when program agent uses OpenAI", a
       return mockJsonResponse({
         success: true,
         pptx_url: "http://127.0.0.1:3011/files/deck.pptx",
+        bundle_url: "http://127.0.0.1:3011/files/deck_bundle.zip",
         publisher_recommendations_excel_url: "http://127.0.0.1:3011/files/recommendations.xlsx",
         publisher_performance_excel_url: "http://127.0.0.1:3011/files/performance.xlsx"
       });
@@ -278,6 +285,7 @@ test("publisher narrative stays deterministic when program agent uses OpenAI", a
 
   const result = await runner.run(sampleRequest());
   assert.equal(result.pptx_url, "http://127.0.0.1:3011/files/deck.pptx");
+  assert.equal(result.qbr_bundle_url, "http://127.0.0.1:3011/files/deck_bundle.zip");
   assert.equal(openAiCalls, 1);
 });
 
@@ -327,6 +335,7 @@ test("optional source metadata failures do not abort multi-program requests", as
         return mockJsonResponse({
           success: true,
           pptx_url: "http://127.0.0.1:3011/files/deck.pptx",
+          bundle_url: "http://127.0.0.1:3011/files/deck_bundle.zip",
           publisher_recommendations_excel_url: "http://127.0.0.1:3011/files/recommendations.xlsx",
           publisher_performance_excel_url: "http://127.0.0.1:3011/files/performance.xlsx"
         });
@@ -342,6 +351,7 @@ test("optional source metadata failures do not abort multi-program requests", as
 
   const result = await runner.run(request);
   assert.equal(result.pptx_url, "http://127.0.0.1:3011/files/deck.pptx");
+  assert.equal(result.qbr_bundle_url, "http://127.0.0.1:3011/files/deck_bundle.zip");
   assert.equal(result.gap_analysis_report_url, "http://127.0.0.1:3011/files/recommendations.xlsx");
   assert.equal(result.publisher_program_performance_excel_url, "http://127.0.0.1:3011/files/performance.xlsx");
   assert(seenUrls.some((url) => url.includes("programId=222")));
@@ -472,6 +482,81 @@ test("publisher recommendations preserve all submitted program ids and brand-new
   assert.equal(pack.publisherCategorySlides.length, 20);
   assert.equal(pack.brandNewPublisherRanking.top[0].label.includes("N/A"), false);
   assert.equal(typeof pack.brandNewPublisherRanking.top[0].value, "number");
+});
+
+test("publisher recommendation category slides retain total publisher counts beyond top 10", () => {
+  const { processPublisherPack } = require("../lib/advertiserQbrRunner");
+  const payload = {
+    currencyCode: "EUR",
+    reportingPeriod: "2026-01-01 to 2026-06-22",
+    comparisonPeriod: "2025-01-01 to 2025-06-22"
+  };
+  const sourceRows = Array.from({ length: 12 }, (_, index) => ({
+    programId: "246020",
+    sourceId: `src-${index + 1}`,
+    sourceName: `Content Prospect ${index + 1}`,
+    promotionTypeName: "Content",
+    totalConnections: 100 - index,
+    acceptedConnections: 50 - index,
+    rejectedConnections: index,
+    acceptanceRatio: 90 - index
+  }));
+
+  const pack = processPublisherPack([], [], [], [], sourceRows, payload);
+
+  assert.equal(pack.publisherCategorySlides[0].category, "Content");
+  assert.equal(pack.publisherCategorySlides[0].publisherCount, 12);
+  assert.equal(pack.publisherCategorySlides[0].recommendedPublishers.length, 10);
+});
+
+test("publisher source metadata uses per publisher-type totals instead of fetched row caps", async () => {
+  let generatorPayload = null;
+  const contentRows = Array.from({ length: 30 }, (_, index) => ({
+    id: `content-${index + 1}`,
+    name: `Content Prospect ${index + 1}`,
+    promotionTypeId: 4,
+    promotionTypeName: "Content",
+    acceptedConnections: 60 - index,
+    rejectedConnections: index,
+    totalConnections: 60,
+    acceptanceRatio: 80 - index / 10
+  }));
+  const cashbackRows = Array.from({ length: 2 }, (_, index) => ({
+    id: `cashback-${index + 1}`,
+    name: `Cashback Prospect ${index + 1}`,
+    promotionTypeId: 2,
+    promotionTypeName: "Cashback & Loyalty sites",
+    acceptedConnections: 20 - index,
+    rejectedConnections: index,
+    totalConnections: 20,
+    acceptanceRatio: 70 - index
+  }));
+
+  const fetchImpl = async (url, init = {}) => {
+    const target = new URL(String(url));
+    if (String(url) === "http://127.0.0.1:3011/generate") {
+      generatorPayload = JSON.parse(init.body);
+      return mockJsonResponse({ success: true, pptx_url: "http://127.0.0.1:3011/files/deck.pptx" });
+    }
+    if (target.pathname.endsWith("/advertiser/sources")) {
+      const promotionTypeId = target.searchParams.get("promotionTypeId");
+      if (promotionTypeId === "4") return mockJsonResponse({ total: 123, items: [contentRows[0]] });
+      if (promotionTypeId === "2") return mockJsonResponse({ total: 2, items: [cashbackRows[0]] });
+      return mockJsonResponse({ total: 32, items: [...contentRows, ...cashbackRows] });
+    }
+    return mockJsonResponse({ total: 0, items: [] });
+  };
+
+  const runner = createAdvertiserQbrRunner({ fetchImpl, agentMode: "deterministic" });
+  const result = await runner.run(sampleRequest());
+
+  assert.equal(result.pptx_url, "http://127.0.0.1:3011/files/deck.pptx");
+  const contentSlide = generatorPayload.publisherCategorySlides.find((slide) => slide.category === "Content");
+  const cashbackSlide = generatorPayload.publisherCategorySlides.find((slide) => slide.category === "Cashback & Loyalty sites");
+  assert.equal(contentSlide.publisherCount, 123);
+  assert.equal(contentSlide.totalPublishers, 123);
+  assert.equal(contentSlide.recommendedPublishers.length, 10);
+  assert.equal(cashbackSlide.publisherCount, 2);
 });
 
 test("publisher movers keep top 10 up and top 10 down for each movement metric", () => {

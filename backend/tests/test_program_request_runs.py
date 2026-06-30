@@ -17,11 +17,18 @@ class FakeSqlDb:
     def __init__(self):
         self.queries = []
         self.existing_keys = set()
+        self.duration_by_key = {}
 
     async def query(self, sql, params=None):
         self.queries.append((sql, params))
         if "SELECT 1 FROM program_request_runs WHERE request_key" in sql:
             return [{"exists": 1}] if params and params[0] in self.existing_keys else []
+        if "UPDATE program_request_runs" in sql and "build_duration_ms" in sql:
+            build_duration_ms, request_key = params
+            if request_key in self.existing_keys:
+                self.duration_by_key[request_key] = build_duration_ms
+                return [{"request_key": request_key, "build_duration_ms": build_duration_ms}]
+            return []
         if "INSERT INTO program_request_runs" in sql:
             request_key = params[-1]
             if request_key and request_key in self.existing_keys:
@@ -162,8 +169,36 @@ class ProgramRequestRunsTest(unittest.IsolatedAsyncioTestCase):
                 "EN",
                 "GBP",
                 "program",
+                None,
                 "client@example.com|310990|2026-01-01|2026-03-31",
             ],
+        )
+
+    async def test_updates_existing_request_with_build_duration(self):
+        db = FakeSqlDb()
+        payload = {
+            "clientUsername": "client@example.com",
+            "programId": "310990",
+            "startDate": "2026-01-01",
+            "endDate": "2026-03-31",
+        }
+
+        await record_program_request_result(payload, db=db)
+        result = await record_program_request_result(payload, build_duration_ms=1532, db=db)
+
+        self.assertEqual(
+            result,
+            {
+                "recorded": False,
+                "duplicate": False,
+                "updated": True,
+                "reason": "",
+                "requestKey": "client@example.com|310990|2026-01-01|2026-03-31",
+            },
+        )
+        self.assertEqual(
+            db.duration_by_key["client@example.com|310990|2026-01-01|2026-03-31"],
+            1532,
         )
 
     async def test_duplicate_same_client_program_and_date_range_is_not_recorded(self):
@@ -254,6 +289,7 @@ class ProgramRequestRunsTest(unittest.IsolatedAsyncioTestCase):
                         "language_code": "",
                         "currency_code": "EUR",
                         "analysis_level": "",
+                        "build_duration_ms": None,
                         "request_key": "",
                         "timestamp": "2026-04-09T10:30:00+00:00",
                     },
@@ -288,6 +324,7 @@ class ProgramRequestRunsTest(unittest.IsolatedAsyncioTestCase):
                             "language_code": "EN",
                             "currency_code": "GBP",
                             "analysis_level": "program",
+                            "build_duration_ms": 1532,
                             "request_key": "client@example.com|123456,310990|2026-01-01|2026-03-31",
                         }
                     ]
@@ -311,6 +348,7 @@ class ProgramRequestRunsTest(unittest.IsolatedAsyncioTestCase):
                     "languageCode": "EN",
                     "currencyCode": "GBP",
                     "analysisLevel": "program",
+                    "buildDurationMs": 1532,
                     "requestKey": "client@example.com|123456,310990|2026-01-01|2026-03-31",
                 }
             ],

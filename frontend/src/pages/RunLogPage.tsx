@@ -25,6 +25,18 @@ function text(value: string | undefined, fallback = '-') {
   return value?.trim() || fallback
 }
 
+function formatBuildDuration(value: number | null | undefined) {
+  if (value === null || value === undefined) return '-'
+  const ms = Number(value)
+  if (!Number.isFinite(ms) || ms < 0) return '-'
+  if (ms < 1000) return `${Math.round(ms)} ms`
+  const seconds = ms / 1000
+  if (seconds < 60) return `${seconds.toFixed(1)}s`
+  const minutes = Math.floor(seconds / 60)
+  const remainingSeconds = Math.round(seconds % 60)
+  return `${minutes}m ${remainingSeconds}s`
+}
+
 function dateRange(run: ProgramRequestRun) {
   return run.startDate && run.endDate ? `${run.startDate} to ${run.endDate}` : '-'
 }
@@ -134,7 +146,7 @@ export function RunLogPage() {
             </div>
           ) : (
             <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
-              <table className="min-w-[1080px] w-full border-collapse text-left text-sm">
+              <table className="min-w-[1180px] w-full border-collapse text-left text-sm">
                 <thead className="bg-slate-50 text-xs uppercase tracking-wider text-slate-500">
                   <tr>
                     <th className="border-b border-slate-200 px-4 py-3 font-semibold">Client</th>
@@ -143,6 +155,7 @@ export function RunLogPage() {
                     <th className="border-b border-slate-200 px-4 py-3 font-semibold">Date Range</th>
                     <th className="border-b border-slate-200 px-4 py-3 font-semibold">Language</th>
                     <th className="border-b border-slate-200 px-4 py-3 font-semibold">Currency</th>
+                    <th className="border-b border-slate-200 px-4 py-3 font-semibold">Build Time</th>
                     <th className="border-b border-slate-200 px-4 py-3 font-semibold">Timestamp</th>
                   </tr>
                 </thead>
@@ -157,6 +170,7 @@ export function RunLogPage() {
                       <td className="px-4 py-3 text-slate-600">{dateRange(run)}</td>
                       <td className="px-4 py-3 text-slate-600">{text(run.languageCode)}</td>
                       <td className="px-4 py-3 text-slate-600">{text(run.currencyCode)}</td>
+                      <td className="px-4 py-3 font-mono text-sm text-slate-700">{formatBuildDuration(run.buildDurationMs)}</td>
                       <td className="px-4 py-3 text-slate-600">{formatTimestamp(run.timestamp)}</td>
                     </tr>
                   ))}

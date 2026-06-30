@@ -29,12 +29,24 @@ CREATE TABLE IF NOT EXISTS batch_run_items (
     status TEXT NOT NULL DEFAULT 'running',
     duplicate BOOLEAN NOT NULL DEFAULT false,
     result_url TEXT NOT NULL DEFAULT '',
+    bundle_url TEXT NOT NULL DEFAULT '',
+    presenter_notes_url TEXT NOT NULL DEFAULT '',
+    publisher_recommendations_excel_url TEXT NOT NULL DEFAULT '',
+    publisher_performance_excel_url TEXT NOT NULL DEFAULT '',
     error TEXT NOT NULL DEFAULT '',
     request_key TEXT NOT NULL DEFAULT '',
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     PRIMARY KEY (batch_id, row_number)
 )
+"""
+
+ALTER_BATCH_RUN_ITEMS_EXCEL_URLS_SQL = """
+ALTER TABLE batch_run_items
+    ADD COLUMN IF NOT EXISTS bundle_url TEXT NOT NULL DEFAULT '',
+    ADD COLUMN IF NOT EXISTS presenter_notes_url TEXT NOT NULL DEFAULT '',
+    ADD COLUMN IF NOT EXISTS publisher_recommendations_excel_url TEXT NOT NULL DEFAULT '',
+    ADD COLUMN IF NOT EXISTS publisher_performance_excel_url TEXT NOT NULL DEFAULT ''
 """
 
 CREATE_BATCH_RUN_ITEMS_INDEX_SQL = """
@@ -71,12 +83,16 @@ INSERT INTO batch_run_items (
     status,
     duplicate,
     result_url,
+    bundle_url,
+    presenter_notes_url,
+    publisher_recommendations_excel_url,
+    publisher_performance_excel_url,
     error,
     request_key,
     created_at,
     updated_at
 )
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::timestamptz, $12::timestamptz)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16::timestamptz, $16::timestamptz)
 ON CONFLICT (batch_id, row_number) DO UPDATE SET
     client_username = EXCLUDED.client_username,
     program_ids = EXCLUDED.program_ids,
@@ -85,6 +101,10 @@ ON CONFLICT (batch_id, row_number) DO UPDATE SET
     status = EXCLUDED.status,
     duplicate = EXCLUDED.duplicate,
     result_url = EXCLUDED.result_url,
+    bundle_url = EXCLUDED.bundle_url,
+    presenter_notes_url = EXCLUDED.presenter_notes_url,
+    publisher_recommendations_excel_url = EXCLUDED.publisher_recommendations_excel_url,
+    publisher_performance_excel_url = EXCLUDED.publisher_performance_excel_url,
     error = EXCLUDED.error,
     request_key = EXCLUDED.request_key,
     updated_at = EXCLUDED.updated_at
@@ -194,6 +214,10 @@ def _serialize_item(row: dict[str, Any]) -> dict[str, Any]:
         "status": _clean_text(row.get("status")),
         "duplicate": bool(row.get("duplicate")),
         "resultUrl": _clean_text(row.get("result_url")),
+        "bundleUrl": _clean_text(row.get("bundle_url")),
+        "presenterNotesUrl": _clean_text(row.get("presenter_notes_url")),
+        "publisherRecommendationsExcelUrl": _clean_text(row.get("publisher_recommendations_excel_url")),
+        "publisherPerformanceExcelUrl": _clean_text(row.get("publisher_performance_excel_url")),
         "error": _clean_text(row.get("error")),
         "requestKey": _clean_text(row.get("request_key")),
         "createdAt": _serialize_timestamp(row.get("created_at")),
@@ -204,6 +228,7 @@ def _serialize_item(row: dict[str, Any]) -> dict[str, Any]:
 async def ensure_batch_run_tables(db=neon_db) -> None:
     await db.query(CREATE_BATCH_RUNS_TABLE_SQL)
     await db.query(CREATE_BATCH_RUN_ITEMS_TABLE_SQL)
+    await db.query(ALTER_BATCH_RUN_ITEMS_EXCEL_URLS_SQL)
     await db.query(CREATE_BATCH_RUN_ITEMS_INDEX_SQL)
 
 
@@ -252,6 +277,10 @@ async def record_batch_run_item(batch_id: str, payload: dict[str, Any], db=neon_
             status,
             duplicate,
             _clean_text(payload.get("resultUrl", payload.get("result_url"))),
+            _clean_text(payload.get("bundleUrl", payload.get("bundle_url"))),
+            _clean_text(payload.get("presenterNotesUrl", payload.get("presenter_notes_url"))),
+            _clean_text(payload.get("publisherRecommendationsExcelUrl", payload.get("publisher_recommendations_excel_url"))),
+            _clean_text(payload.get("publisherPerformanceExcelUrl", payload.get("publisher_performance_excel_url"))),
             _clean_text(payload.get("error")),
             _clean_text(payload.get("requestKey", payload.get("request_key"))),
             now,

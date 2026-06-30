@@ -411,6 +411,66 @@ async function fetchCategoryRows(context, period, programIds) {
   return all;
 }
 
+function sourcePromotionTypeName(row) {
+  return asText(row.promotionTypeName || row.publisherType || row.category || "Unclassified", "Unclassified");
+}
+
+function sourcePromotionTypeId(row) {
+  return asText(row.promotionTypeId || row.publisherTypeId || row.promotionType?.id || row.publisherType?.id);
+}
+
+function sourceTypeKey(row) {
+  const typeId = sourcePromotionTypeId(row);
+  return typeId ? `id:${typeId}` : `name:${sourcePromotionTypeName(row).toLowerCase()}`;
+}
+
+function sourceTypeMatches(row, sourceType) {
+  const typeId = sourcePromotionTypeId(row);
+  if (sourceType.typeId && typeId) return typeId === sourceType.typeId;
+  return sourcePromotionTypeName(row).toLowerCase() === sourceType.typeName.toLowerCase();
+}
+
+function responseTotal(data) {
+  const total = Number(data?.total ?? data?.totalCount ?? data?.count);
+  return Number.isFinite(total) && total >= 0 ? total : null;
+}
+
+async function fetchPublisherSourceTypeCounts(context, sourceRows) {
+  const sourceTypes = new Map();
+  for (const row of sourceRows) {
+    const programId = asText(row.programId || row.publisherProgramId || row["Program ID"]);
+    const typeName = sourcePromotionTypeName(row);
+    if (!programId || !typeName) continue;
+    const typeId = sourcePromotionTypeId(row);
+    const key = `${programId}|${typeId ? `id:${typeId}` : `name:${typeName.toLowerCase()}`}`;
+    if (!sourceTypes.has(key)) sourceTypes.set(key, { programId, typeId, typeName });
+  }
+
+  const counts = new Map();
+  for (const [key, sourceType] of sourceTypes.entries()) {
+    const base = asText(context.payload.publisherMetadataEndpoint || `${TD_BASE_URL}/sources`).replace(/\?+$/, "");
+    const url = new URL(base);
+    url.searchParams.set("limit", "100");
+    url.searchParams.set("offset", "0");
+    url.searchParams.set("programId", sourceType.programId);
+    if (sourceType.typeId) {
+      url.searchParams.set("promotionTypeId", sourceType.typeId);
+    } else {
+      url.searchParams.set("promotionTypeName", sourceType.typeName);
+    }
+
+    const data = await fetchOptionalJson(context.fetchImpl, url.toString(), {
+      method: "GET",
+      headers: tdHeaders(context.tdTokens)
+    }, "TD publisher source metadata count");
+    const total = responseTotal(data);
+    const sampleRows = rowsFromResponse(data);
+    const filterLooksSupported = !sampleRows.length || sampleRows.every((row) => sourceTypeMatches(row, sourceType));
+    if (total !== null && filterLooksSupported) counts.set(key, total);
+  }
+  return counts;
+}
+
 async function fetchPublisherSourceMetadata(context, programIds) {
   const limit = Math.max(1, Math.min(100, Number(context.payload.publisherSourceLimit || 100)));
   const maxPages = Math.max(1, Math.min(25, Number(context.payload.publisherSourceMaxPages || 10)));
@@ -432,9 +492,16 @@ async function fetchPublisherSourceMetadata(context, programIds) {
       if (!rows.length || (total && (pageIndex + 1) * limit >= total)) break;
     }
   }
-  return dedupeSources(all);
-}
 
+  const deduped = dedupeSources(all);
+  const typeCounts = await fetchPublisherSourceTypeCounts(context, deduped);
+  return deduped.map((row) => {
+    const programId = asText(row.programId || row.publisherProgramId || row["Program ID"]);
+    const key = `${programId}|${sourceTypeKey(row)}`;
+    const count = typeCounts.get(key);
+    return Number.isFinite(count) ? { ...row, publisherTypeAvailableCount: count } : row;
+  });
+}
 function pickProgramIdentity(item) {
   const id = asText(item.programId ?? item.id ?? item.program?.id ?? item.programID);
   const name = asText(item.programName || item.name || item.program?.name || item.programDisplayName || item.programTitle, id ? `Program ${id}` : "Unknown program");
@@ -995,47 +1062,72 @@ function dedupeSources(rows) {
   return Array.from(map.values());
 }
 
+function sourceAvailablePublisherCount(row) {
+  const candidates = [
+    row.publisherTypeAvailableCount,
+    row.availablePublisherCount,
+    row.availablePublishers,
+    row.sourcePublisherCount,
+    row.totalPublisherCount,
+    row.totalPublishers,
+    row.publisherCount
+  ];
+  for (const value of candidates) {
+    if (value === null || value === undefined || value === "") continue;
+    const count = Number(value);
+    if (Number.isFinite(count) && count >= 0) return count;
+  }
+  return null;
+}
+
 function buildPublisherCategorySlides(sourceRows) {
   const groups = new Map();
   for (const row of sourceRows || []) {
-    const category = asText(row.promotionTypeName || row.publisherType || row.category || "Unclassified");
+    const category = sourcePromotionTypeName(row);
     const programId = asText(row.programId || row.publisherProgramId || row["Program ID"] || "Publisher Recommendations");
     const key = `${programId}|${category}`;
-    if (!groups.has(key)) groups.set(key, { programId, category, rows: [] });
-    groups.get(key).rows.push(row);
+    if (!groups.has(key)) groups.set(key, { programId, category, rows: [], publisherCount: 0 });
+    const group = groups.get(key);
+    group.rows.push(row);
+    const availableCount = sourceAvailablePublisherCount(row);
+    if (availableCount !== null) group.publisherCount = Math.max(group.publisherCount, availableCount);
   }
   return Array.from(groups.values())
-    .map((group) => ({
-      programId: group.programId,
-      category: group.category,
-      recommendation: `Review the top 10 unconnected ${group.category} publishers ranked by total connections and acceptance ratio to identify expansion targets for the programme.`,
-      evidence: [`${group.rows.length} source metadata rows available.`],
-      recommendedPublishers: group.rows
-        .sort((a, b) => {
-          const aTotal = safeNum(a.totalConnections) || safeNum(a.acceptedConnections) + safeNum(a.rejectedConnections);
-          const bTotal = safeNum(b.totalConnections) || safeNum(b.acceptedConnections) + safeNum(b.rejectedConnections);
-          return bTotal - aTotal
-            || safeNum(b.acceptanceRatio) - safeNum(a.acceptanceRatio)
-            || safeNum(b.acceptedConnections) - safeNum(a.acceptedConnections);
-        })
-        .slice(0, 10)
-        .map((row) => ({
-          "Program ID": asText(row.programId || group.programId),
-          "Publisher Type": group.category,
-          "Promotion Type": group.category,
-          "Publisher Name": asText(row.sourceName || row.name || row.publisher?.name, "Unknown Publisher"),
-          "Source ID": asText(row.sourceId || row.sourceID || row.id || row.source?.id),
-          Description: asText(row.description),
-          URL: asText(row.url),
-          "Total Connections": fmtInt(safeNum(row.totalConnections) || safeNum(row.acceptedConnections) + safeNum(row.rejectedConnections)),
-          "Acceptance Ratio": row.acceptanceRatio === null || row.acceptanceRatio === undefined ? "N/A" : `${safeNum(row.acceptanceRatio).toFixed(1)}%`,
-          "Accepted Connections": fmtInt(row.acceptedConnections),
-          "Rejected Connections": fmtInt(row.rejectedConnections)
-        }))
-    }))
+    .map((group) => {
+      const publisherCount = Math.max(group.publisherCount || 0, group.rows.length);
+      return {
+        programId: group.programId,
+        category: group.category,
+        publisherCount,
+        totalPublishers: publisherCount,
+        recommendation: `Review the top 10 unconnected ${group.category} publishers ranked by total connections and acceptance ratio to identify expansion targets for the programme.`,
+        evidence: [`${publisherCount} available publisher source(s); ${Math.min(10, group.rows.length)} included in the ranked recommendation detail.`],
+        recommendedPublishers: group.rows
+          .sort((a, b) => {
+            const aTotal = safeNum(a.totalConnections) || safeNum(a.acceptedConnections) + safeNum(a.rejectedConnections);
+            const bTotal = safeNum(b.totalConnections) || safeNum(b.acceptedConnections) + safeNum(b.rejectedConnections);
+            return bTotal - aTotal
+              || safeNum(b.acceptanceRatio) - safeNum(a.acceptanceRatio)
+              || safeNum(b.acceptedConnections) - safeNum(a.acceptedConnections);
+          })
+          .slice(0, 10)
+          .map((row) => ({
+            "Program ID": asText(row.programId || group.programId),
+            "Publisher Type": group.category,
+            "Promotion Type": group.category,
+            "Publisher Name": asText(row.sourceName || row.name || row.publisher?.name, "Unknown Publisher"),
+            "Source ID": asText(row.sourceId || row.sourceID || row.id || row.source?.id),
+            Description: asText(row.description),
+            URL: asText(row.url),
+            "Total Connections": fmtInt(safeNum(row.totalConnections) || safeNum(row.acceptedConnections) + safeNum(row.rejectedConnections)),
+            "Acceptance Ratio": row.acceptanceRatio === null || row.acceptanceRatio === undefined ? "N/A" : `${safeNum(row.acceptanceRatio).toFixed(1)}%`,
+            "Accepted Connections": fmtInt(row.acceptedConnections),
+            "Rejected Connections": fmtInt(row.rejectedConnections)
+          }))
+      };
+    })
     .filter((slide) => slide.recommendedPublishers.length);
 }
-
 function slideBlueprint(hasCategorySlides, requestedSlides) {
   const core = [
     { key: "cover", title: "Quarterly Business Review Cover" },
@@ -1135,17 +1227,27 @@ function projectGeneratorResponse(data) {
     || data?.publisher_program_performance_excel_url
     || data?.publisher_performance_by_program_url
     || null;
+  const bundleUrl = data?.bundle_url
+    || data?.qbr_bundle_url
+    || null;
+  const presenterNotesUrl = data?.presenter_notes_url
+    || data?.presenterNotesUrl
+    || null;
   if (!ok) {
     return {
       success: false,
       error: data?.error || data?.message || "PPTX generation failed"
     };
   }
-  return {
+  const projected = {
     pptx_url: pptxUrl,
+    qbr_bundle_url: bundleUrl,
+    presenter_notes_url: presenterNotesUrl,
     gap_analysis_report_url: data?.gap_analysis_report_url || data?.publisher_recommendations_excel_url || null,
     publisher_program_performance_excel_url: publisherPerformanceExcelUrl
   };
+  if (data?.presenter_notes_warning) projected.presenter_notes_warning = data.presenter_notes_warning;
+  return projected;
 }
 
 function tableRowCounts(pptxPayload) {
@@ -1280,6 +1382,8 @@ function createAdvertiserQbrRunner(options = {}) {
         presentation_url: null,
         edit_url: null,
         pptx_url: null,
+        qbr_bundle_url: null,
+        presenter_notes_url: null,
         gap_analysis_report_url: null,
         gap_analysis_report_file_name: null,
         publisher_performance_excel_url: null,

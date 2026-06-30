@@ -119,7 +119,11 @@ async function serveFile(req, res, parsed, config) {
       ? "application/json"
       : fileName.endsWith(".xlsx")
         ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        : "application/vnd.openxmlformats-officedocument.presentationml.presentation";
+        : fileName.endsWith(".docx")
+          ? "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+          : fileName.endsWith(".zip")
+            ? "application/zip"
+            : "application/vnd.openxmlformats-officedocument.presentationml.presentation";
     res.writeHead(200, {
       "Content-Type": contentType,
       "Access-Control-Allow-Origin": "*",
@@ -228,6 +232,21 @@ function createServer(options = {}) {
             now: config.now
           })
           : null;
+        const presenterNotesUrl = saved.presenterNotesFileName
+          ? createSignedFileUrl(root, saved.presenterNotesFileName, {
+            apiKey: config.apiKey,
+            secret: config.downloadTokenSecret,
+            ttlSeconds: config.downloadTtlSeconds,
+            now: config.now
+          })
+          : null;        const bundleUrl = saved.bundleFileName
+          ? createSignedFileUrl(root, saved.bundleFileName, {
+            apiKey: config.apiKey,
+            secret: config.downloadTokenSecret,
+            ttlSeconds: config.downloadTtlSeconds,
+            now: config.now
+          })
+          : null;
 
         if (config.scheduleDeletion) {
           scheduleOutputDeletion(config.outputDir, savedFileName, config.downloadTtlSeconds);
@@ -240,6 +259,11 @@ function createServer(options = {}) {
           if (saved.publisherPerformanceExcelFileName) {
             scheduleOutputDeletion(config.outputDir, saved.publisherPerformanceExcelFileName, config.downloadTtlSeconds);
           }
+          if (saved.presenterNotesFileName) {
+            scheduleOutputDeletion(config.outputDir, saved.presenterNotesFileName, config.downloadTtlSeconds);
+          }          if (saved.bundleFileName) {
+            scheduleOutputDeletion(config.outputDir, saved.bundleFileName, config.downloadTtlSeconds);
+          }
         }
 
         json(res, 200, {
@@ -248,15 +272,21 @@ function createServer(options = {}) {
           message: "Editable QBR PowerPoint generated successfully.",
           presentation_id: result.deckSpec.metadata.requestId,
           pptx_url: pptxUrl,
+          presentation_url: pptxUrl,
           deck_spec_url: deckSpecUrl,
           excel_url: excelUrl,
           publisher_recommendations_excel_url: publisherRecommendationsExcelUrl,
           publisher_performance_excel_url: publisherPerformanceExcelUrl,
+          presenter_notes_url: presenterNotesUrl,
+          bundle_url: bundleUrl,
           download_expires_at: new Date(config.now() + config.downloadTtlSeconds * 1000).toISOString(),
           file_name: savedFileName,
           excel_file_name: legacyExcelFileName,
           publisher_recommendations_excel_file_name: saved.excelFileName || null,
           publisher_performance_excel_file_name: saved.publisherPerformanceExcelFileName || null,
+          presenter_notes_file_name: saved.presenterNotesFileName || null,
+          presenter_notes_warning: saved.presenterNotesWarning || null,
+          bundle_file_name: saved.bundleFileName || null,
           slide_count: result.deckSpec.slides.length,
           theme: result.deckSpec.theme.name
         });

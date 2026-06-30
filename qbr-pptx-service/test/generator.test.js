@@ -21,6 +21,22 @@ async function openPptx(buffer) {
   return JSZip.loadAsync(buffer);
 }
 
+async function decodedDocxText(buffer) {
+  const docx = await JSZip.loadAsync(buffer);
+  const documentXml = await docx.file("word/document.xml").async("string");
+  return documentXml
+    .replace(/<w:tab\/>/g, "\t")
+    .replace(/<\/w:p>/g, "\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/\s+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
 async function fileHash(file) {
   return crypto.createHash("sha256").update(await file.async("nodebuffer")).digest("hex");
 }
@@ -111,10 +127,10 @@ function misleadingHeadingPayload() {
         Clicks: "1,087,015",
         Sales: "21,234",
         "Conv Rate": "2.08%",
-        "Order value": "€9,800,000",
-        AOV: "€460.07",
-        "Publ Commission": "€289,221",
-        CPA: "€13.62",
+        "Order value": "â‚¬9,800,000",
+        AOV: "â‚¬460.07",
+        "Publ Commission": "â‚¬289,221",
+        CPA: "â‚¬13.62",
         ROI: "33.79"
       },
       {
@@ -122,10 +138,10 @@ function misleadingHeadingPayload() {
         Clicks: "1,000,000",
         Sales: "24,637",
         "Conv Rate": "2.63%",
-        "Order value": "€10,502,002",
-        AOV: "€425.03",
-        "Publ Commission": "€378,250",
-        CPA: "€15.35",
+        "Order value": "â‚¬10,502,002",
+        AOV: "â‚¬425.03",
+        "Publ Commission": "â‚¬378,250",
+        CPA: "â‚¬15.35",
         ROI: "27.69"
       },
       {
@@ -133,10 +149,10 @@ function misleadingHeadingPayload() {
         Clicks: "+87,015",
         Sales: "-3,403",
         "Conv Rate": "-0.55%",
-        "Order value": "-€702,002",
-        AOV: "+€35.04",
-        "Publ Commission": "-€89,029",
-        CPA: "-€1.73",
+        "Order value": "-â‚¬702,002",
+        AOV: "+â‚¬35.04",
+        "Publ Commission": "-â‚¬89,029",
+        CPA: "-â‚¬1.73",
         ROI: "+6.10"
       },
       {
@@ -157,7 +173,7 @@ function misleadingHeadingPayload() {
           Segment: "Voucher",
           "Total Sales": "2,540",
           "Sales YoY %": "-49.4%",
-          "Total OV": "€146,303",
+          "Total OV": "â‚¬146,303",
           "OV YoY %": "-61.0%",
           Publishers: "9"
         },
@@ -165,7 +181,7 @@ function misleadingHeadingPayload() {
           Segment: "Cashback",
           "Total Sales": "28,973",
           "Sales YoY %": "-26.7%",
-          "Total OV": "€33,234,843",
+          "Total OV": "â‚¬33,234,843",
           "OV YoY %": "-26.7%",
           Publishers: "14"
         }
@@ -176,8 +192,8 @@ function misleadingHeadingPayload() {
           Segment: "Voucher",
           "Current Sales": "2,782",
           "Sales YoY %": "+365.2%",
-          "Current OV": "€146,303",
-          "OV YoY Change": "+€146,303",
+          "Current OV": "â‚¬146,303",
+          "OV YoY Change": "+â‚¬146,303",
           "OV YoY %": "+53.1%"
         }
       ],
@@ -187,8 +203,8 @@ function misleadingHeadingPayload() {
           Segment: "Voucher",
           "Current Sales": "900",
           "Sales YoY %": "-52.0%",
-          "Current OV": "€91,000",
-          "OV YoY Change": "-€105,000",
+          "Current OV": "â‚¬91,000",
+          "OV YoY Change": "-â‚¬105,000",
           "OV YoY %": "-43.6%"
         },
         {
@@ -196,8 +212,8 @@ function misleadingHeadingPayload() {
           Segment: "Voucher",
           "Current Sales": "16",
           "Sales YoY %": "-99.8%",
-          "Current OV": "€4,100",
-          "OV YoY Change": "-€120,000",
+          "Current OV": "â‚¬4,100",
+          "OV YoY Change": "-â‚¬120,000",
           "OV YoY %": "-99.8%"
         }
       ],
@@ -205,7 +221,7 @@ function misleadingHeadingPayload() {
         {
           Publisher: "TopCashBack",
           Segment: "Cashback",
-          "Order Value": "€18,000,000",
+          "Order Value": "â‚¬18,000,000",
           "Current Sales": "23,018",
           "Sales YoY %": "-20.1%",
           "OV YoY %": "-24.0%"
@@ -213,7 +229,7 @@ function misleadingHeadingPayload() {
         {
           Publisher: "Quidco [UK]",
           Segment: "Cashback",
-          "Order Value": "€8,000,000",
+          "Order Value": "â‚¬8,000,000",
           "Current Sales": "5,955",
           "Sales YoY %": "-40.0%",
           "OV YoY %": "-39.0%"
@@ -223,13 +239,13 @@ function misleadingHeadingPayload() {
         {
           Publisher: "Extrabu GB",
           Direction: "Up",
-          "YoY Change": "€3,353.06",
+          "YoY Change": "â‚¬3,353.06",
           "YoY %": "+1094.4%"
         },
         {
           Publisher: "Shopbuddies.be",
           Direction: "Up",
-          "YoY Change": "€2,579.19",
+          "YoY Change": "â‚¬2,579.19",
           "YoY %": "+312.0%"
         }
       ],
@@ -266,11 +282,90 @@ test("fallback KPI headings reflect metric direction", async () => {
   assert.doesNotMatch(slide.bullets[3], /higher acquisition cost/i);
 });
 
+test("presenter notes DOCX summarizes program KPIs and publisher performance without table dumps", async () => {
+  const result = await generatePresentation({
+    ...misleadingHeadingPayload(),
+    publisherTables: {
+      ...misleadingHeadingPayload().publisherTables,
+      publisherPerformanceByProgram: [
+        {
+          "Program ID": "P1",
+          "Program Name": "Program One",
+          Publisher: "Top Publisher One",
+          "Site ID": "site-1",
+          Segment: "Cashback",
+          Clicks: "1,000",
+          Sales: "120",
+          "Conversion Rate": "12.0%",
+          AOV: "EUR 40.00",
+          "Total Order Value": "EUR 4,800",
+          "OV YoY %": "+18.0%",
+          "Sales YoY %": "+12.0%",
+          "Publisher Commission": "EUR 400",
+          CPA: "EUR 3.33"
+        },
+        {
+          "Program ID": "P2",
+          "Program Name": "Program Two",
+          Publisher: "Top Publisher Two",
+          "Site ID": "site-2",
+          Segment: "Content",
+          Clicks: "800",
+          Sales: "95",
+          "Conversion Rate": "11.9%",
+          AOV: "EUR 50.00",
+          "Total Order Value": "EUR 4,750",
+          "OV YoY %": "-4.0%",
+          "Sales YoY %": "-2.0%",
+          "Publisher Commission": "EUR 380",
+          CPA: "EUR 4.00"
+        }
+      ]
+    }
+  });
+
+  assert.ok(Buffer.isBuffer(result.presenterNotesBuffer));
+  assert.equal(result.presenterNotesFileName, "qbr_deck_presenter_notes.docx");
+
+  const notesText = await decodedDocxText(result.presenterNotesBuffer);
+  assert.match(notesText, /QBR Presenter Notes/);
+  assert.match(notesText, /Program KPI Highlights/);
+  assert.match(notesText, /Conversion Rate Pressure/);
+  assert.match(notesText, /Publisher Performance Notes/);
+  assert.match(notesText, /Executive Diagnosis/);
+  assert.match(notesText, /Performance Snapshot/);
+  assert.match(notesText, /Key Risks/);
+  assert.match(notesText, /Publisher Opportunities/);
+  assert.match(notesText, /Commission And Payout Hypotheses/);
+  assert.match(notesText, /Recruitment Gaps/);
+  assert.match(notesText, /Prioritized 60-Day Action Plan/);
+  assert.match(notesText, /Quick Wins/);
+  assert.match(notesText, /Data Gaps And Presenter Checks/);
+  assert.match(notesText, /FreizeitparkDeals drove the strongest YoY uplift/);
+  assert.match(notesText, /Program One: Top Publisher One led publisher performance/);
+  assert.match(notesText, /Build a publisher scorecard/);
+  assert.doesNotMatch(notesText, /Site ID/);
+  assert.doesNotMatch(notesText, /Publisher Commission/);
+  assert.doesNotMatch(notesText, /Conversion Rate\s+AOV\s+Total Order Value/);
+});
+
+test("presenter notes DOCX handles missing publisher performance with a short fallback", async () => {
+  const result = await generatePresentation({
+    ...misleadingHeadingPayload(),
+    publisherTables: {}
+  });
+
+  const notesText = await decodedDocxText(result.presenterNotesBuffer);
+
+  assert.match(notesText, /Program KPI Highlights/);
+  assert.match(notesText, /Publisher Performance Notes/);
+  assert.match(notesText, /Publisher performance detail was not available from the current extract/);
+});
 test("messy KPI highlight table rows do not override validated generated headings", async () => {
   const payload = misleadingHeadingPayload();
   payload.publisherTables.kpiHighlights = [
     {
-      Highlight: "Total/Publisher Commission: €289,246 (Previous: €378,275 | Difference: -€89,029 | % Variance: -23.5%); CPA: €13.62 (Previous: €15.35 | Difference: -€1.73 | % Variance: -11.3%); ROI: 33.79 (Previous: 27.69 | Difference: 6.10 | % Variance: +22.0%)"
+      Highlight: "Total/Publisher Commission: â‚¬289,246 (Previous: â‚¬378,275 | Difference: -â‚¬89,029 | % Variance: -23.5%); CPA: â‚¬13.62 (Previous: â‚¬15.35 | Difference: -â‚¬1.73 | % Variance: -11.3%); ROI: 33.79 (Previous: 27.69 | Difference: 6.10 | % Variance: +22.0%)"
     },
     {
       Highlight: "Sales Volume Pressure: Clicks increased by 87,015 (+9.3%) to 1,022,645 while Sales decreased by 3,403 (-13.8%) to 21,242."
@@ -279,10 +374,10 @@ test("messy KPI highlight table rows do not override validated generated heading
       Highlight: "Conversion Rate declined from 2.63% to 2.08% (Difference: -0.56% | % Variance: -21.1%)."
     },
     {
-      Highlight: "AOV Growth Partially Offsetting Volume Decline: Order value decreased by €702,002 (-6.7%) to €9,772,811 while AOV rose by €35.04 (+8.2%) to €460.07."
+      Highlight: "AOV Growth Partially Offsetting Volume Decline: Order value decreased by â‚¬702,002 (-6.7%) to â‚¬9,772,811 while AOV rose by â‚¬35.04 (+8.2%) to â‚¬460.07."
     },
     {
-      Highlight: "Rising CPA: Total/Publisher Commission fell by €89,029 (-23.5%) to €289,246; CPA decreased by €1.73 (-11.3%) to €13.62; ROI increased by 6.10 (+22.0%) to 33.79."
+      Highlight: "Rising CPA: Total/Publisher Commission fell by â‚¬89,029 (-23.5%) to â‚¬289,246; CPA decreased by â‚¬1.73 (-11.3%) to â‚¬13.62; ROI increased by 6.10 (+22.0%) to 33.79."
     }
   ];
 
@@ -427,6 +522,31 @@ test("program breakdown prefers the explicit Market value when provided", async 
   assert.equal(programBreakdownSlide.tables[0].rows[0][1], "UK");
 });
 
+test("program breakdown accepts countryCode as the market value", async () => {
+  const result = await generatePresentation({
+    ...misleadingHeadingPayload(),
+    programScopeTable: [
+      {
+        Program: "Sinsay",
+        countryCode: "PL",
+        "Program ID": "273525",
+        Clicks: "20,000",
+        Impressions: "150,000",
+        Sales: "900",
+        "Conversion Rate": "4.50%",
+        AOV: "PLN 55.00",
+        "Total Order Value": "PLN 49,500",
+        "YoY Change": "+8.0%"
+      }
+    ]
+  });
+
+  const programBreakdownSlide = result.deckSpec.slides.find((slide) => slide.id === "kpi-cost-roi");
+
+  assert.ok(programBreakdownSlide);
+  assert.equal(programBreakdownSlide.tables[0].rows[0][1], "PL");
+});
+
 test("program breakdown extracts a trailing country name when the Market column is missing", async () => {
   const result = await generatePresentation({
     ...misleadingHeadingPayload(),
@@ -482,6 +602,42 @@ test("program KPI tables survive n8n-style request wrappers", async () => {
   assert.equal(programBreakdownSlide.tables[0].rows[0][2], "587,706");
 });
 
+test("program-level breakdown paginates large program scopes at twelve rows per slide", async () => {
+  const programScopeTable = Array.from({ length: 25 }, (_, index) => {
+    const rank = index + 1;
+    return {
+      Program: `Program ${rank}`,
+      "Program ID": `P${String(rank).padStart(2, "0")}`,
+      Market: rank % 2 ? "UK" : "DE",
+      Clicks: String(rank * 1000),
+      Impressions: String(rank * 10000),
+      Sales: String(rank * 100),
+      "Conversion Rate": `${rank}.00%`,
+      AOV: `EUR ${rank * 10}.00`,
+      "Total Order Value": `EUR ${rank * 100000}`,
+      "YoY Change": `+${rank}.0%`
+    };
+  });
+
+  const result = await generatePresentation({
+    ...misleadingHeadingPayload(),
+    programScopeTable
+  });
+
+  const programBreakdownSlides = result.deckSpec.slides.filter((slide) => slide.id === "kpi-cost-roi" || /^kpi-cost-roi-page-\d+$/.test(slide.id));
+  const programIds = programBreakdownSlides.flatMap((slide) => slide.tables[0].rows.map((row) => row[0]));
+
+  assert.equal(programBreakdownSlides.length, 3);
+  assert.deepEqual(programBreakdownSlides.map((slide) => slide.tables[0].rows.length), [12, 12, 1]);
+  assert.ok(programBreakdownSlides.every((slide) => slide.tables[0].rows.length <= 12));
+  assert.deepEqual(programIds, programScopeTable.map((row) => row["Program ID"]));
+  assert.equal(programBreakdownSlides[0].id, "kpi-cost-roi");
+  assert.equal(programBreakdownSlides[1].id, "kpi-cost-roi-page-2");
+  assert.match(programBreakdownSlides[0].title, /\(1\/3\)$/);
+  assert.equal(programBreakdownSlides[0].callout, "Programs 1-12 of 25");
+  assert.equal(programBreakdownSlides[2].callout, "Program 25 of 25");
+});
+
 test("advertiser QBR moves segment analysis onto publisher overview and removes segment slide", async () => {
   const result = await generatePresentation({
     ...misleadingHeadingPayload(),
@@ -492,14 +648,14 @@ test("advertiser QBR moves segment analysis onto publisher overview and removes 
           Segment: "Cashback & Loyalty sites",
           "Total Sales": "1,098",
           "Sales YoY %": "+12.0%",
-          "Total OV": "€70,938.76",
+          "Total OV": "â‚¬70,938.76",
           "OV YoY %": "+9.0%"
         },
         {
           Segment: "CSS",
           "Total Sales": "3,299",
           "Sales YoY %": "+15.0%",
-          "Total OV": "€164,888.68",
+          "Total OV": "â‚¬164,888.68",
           "OV YoY %": "+11.0%"
         }
       ],
@@ -507,7 +663,7 @@ test("advertiser QBR moves segment analysis onto publisher overview and removes 
         {
           Publisher: "CSS Partner",
           Segment: "CSS",
-          "Order Value": "€164,888.68"
+          "Order Value": "â‚¬164,888.68"
         }
       ]
     }
@@ -525,7 +681,7 @@ test("advertiser QBR moves segment analysis onto publisher overview and removes 
   assert.ok(!titles.includes("Publisher Segment Performance"));
   assert.ok(overviewSlide.bullets.some((bullet) => /^CSS - \+11\.0% OV YoY/.test(bullet) || /^Cashback & Loyalty sites - \+12\.0% OV YoY/.test(bullet)));
   assert.ok(overviewSlide.bullets.every((bullet) => !/^\[[^\]]+\]\s/.test(bullet)));
-  assert.match(overviewSlide.bullets.join(" "), /CSS/i);
+  assert.match(overviewSlide.bullets.join(" "), /€164,888\.68 total OV/i);
   assert.match(overviewSlide.bullets.join(" "), /€164,888\.68 total OV/i);
 });
 
@@ -602,14 +758,14 @@ test("publisher overview renders a segment treemap with a structured breakdown t
           Segment: "Cashback & Loyalty sites",
           "Total Sales": "1,098",
           "Sales YoY %": "+12.0%",
-          "Total OV": "â‚¬70,938.76",
+          "Total OV": "Ã¢â€šÂ¬70,938.76",
           "OV YoY %": "+9.0%"
         },
         {
           Segment: "CSS",
           "Total Sales": "3,299",
           "Sales YoY %": "+15.0%",
-          "Total OV": "â‚¬164,888.68",
+          "Total OV": "Ã¢â€šÂ¬164,888.68",
           "OV YoY %": "+11.0%"
         }
       ]
@@ -734,7 +890,7 @@ test("publisher overview omits zero-value categories from the segment breakdown 
           Segment: "Email Marketing",
           "Total Sales": "0",
           "Sales YoY %": "N/A",
-          "Total OV": "£0",
+          "Total OV": "Â£0",
           "OV YoY %": "N/A"
         }
       ]
@@ -754,6 +910,39 @@ test("publisher overview omits zero-value categories from the segment breakdown 
   assert.doesNotMatch(slideXml, /Email Marketing/i);
 });
 
+test("publisher overview renders segment treemap from Current OV aliases", async () => {
+  const result = await generatePresentation({
+    ...misleadingHeadingPayload(),
+    publisherTables: {
+      ...misleadingHeadingPayload().publisherTables,
+      segmentSummary: [
+        {
+          Segment: "Cashback",
+          "Current Sales": "1,200",
+          "Sales YoY %": "+12.0%",
+          "Current OV": "EUR 70,000",
+          "OV YoY %": "+9.0%"
+        },
+        {
+          Segment: "Voucher",
+          "Current Sales": "800",
+          "Sales YoY %": "-6.0%",
+          "Current OV": "EUR 30,000",
+          "OV YoY %": "-4.0%"
+        }
+      ]
+    }
+  });
+
+  const zip = await openPptx(result.buffer);
+  const slideXml = await zip.file("ppt/slides/slide7.xml").async("string");
+
+  assert.match(slideXml, /Cashback/);
+  assert.match(slideXml, /Voucher/);
+  assert.match(slideXml, /<a:t>70%<\/a:t>/);
+  assert.doesNotMatch(slideXml, /No segment order value data available/);
+});
+
 test("advertiser QBR inserts top publisher performance table before publisher movers chart", async () => {
   const publisherRows = Array.from({ length: 12 }, (_, index) => {
     const rank = index + 1;
@@ -761,7 +950,7 @@ test("advertiser QBR inserts top publisher performance table before publisher mo
       Publisher: `Publisher ${rank}`,
       "Site ID": `site-${rank}`,
       Segment: rank % 2 ? "Voucher" : "Content",
-      "Order Value": `â‚¬${rank * 1000000}`,
+      "Order Value": `Ã¢â€šÂ¬${rank * 1000000}`,
       "Current Sales": String(rank * 10)
     };
   });
@@ -774,7 +963,7 @@ test("advertiser QBR inserts top publisher performance table before publisher mo
           Segment: "Voucher",
           "Total Sales": "120",
           "Sales YoY %": "+10.0%",
-          "Total OV": "â‚¬78,000,000",
+          "Total OV": "Ã¢â€šÂ¬78,000,000",
           "OV YoY %": "+10.0%",
           Publishers: "12"
         }
@@ -788,8 +977,8 @@ test("advertiser QBR inserts top publisher performance table before publisher mo
           Impressions: "120,000",
           Sales: "120",
           "Conversion Rate": "1.00%",
-          AOV: "Ã¢â€šÂ¬100.00",
-          "Total Order Value": "Ã¢â€šÂ¬12,000,000",
+          AOV: "ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬100.00",
+          "Total Order Value": "ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬12,000,000",
           "YoY Change": "+20.0%"
         }
       ]
@@ -824,7 +1013,7 @@ test("advertiser QBR falls back to top10ByOV for top publisher performance table
           Segment: "Voucher",
           "Total Sales": "120",
           "Sales YoY %": "+10.0%",
-          "Total OV": "Ã¢â€šÂ¬78,000,000",
+          "Total OV": "ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬78,000,000",
           "OV YoY %": "+10.0%",
           Publishers: "12"
         }
@@ -837,8 +1026,8 @@ test("advertiser QBR falls back to top10ByOV for top publisher performance table
           Impressions: "120,000",
           "Current Sales": "120",
           "Conversion Rate": "1.00%",
-          AOV: "ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬100.00",
-          "Order Value": "ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬12,000,000",
+          AOV: "ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬100.00",
+          "Order Value": "ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬12,000,000",
           "OV YoY %": "+20.0%"
         }
       ]
@@ -982,15 +1171,15 @@ test("advertiser QBR uses explicit publisher best and worst order-value rankings
     publisherTables: {
       ...misleadingHeadingPayload().publisherTables,
       top10ByOV: [
-        { Publisher: "Fallback Top", "Order Value": "€999" }
+        { Publisher: "Fallback Top", "Order Value": "â‚¬999" }
       ]
     },
     publisherOrderValueRanking: {
       top: [
-        { publisher: "Explicit Best", siteId: "best-1", value: 500000, label: "€500k" }
+        { publisher: "Explicit Best", siteId: "best-1", value: 500000, label: "â‚¬500k" }
       ],
       bottom: [
-        { publisher: "Explicit Decline", siteId: "decline-1", value: -100000, label: "-€100k" }
+        { publisher: "Explicit Decline", siteId: "decline-1", value: -100000, label: "-â‚¬100k" }
       ],
       sourceCount: 22
     }
@@ -1117,7 +1306,7 @@ test("advertiser Brand New Publishers slide uses order-value bar chart and remov
       Publisher: `New Publisher ${rank}`,
       "Site ID": `new-${rank}`,
       Segment: rank % 2 ? "Cashback" : "Content",
-      "Current OV": `â‚¬${rank * 750}`,
+      "Current OV": `Ã¢â€šÂ¬${rank * 750}`,
       "Current Sales": String(rank)
     };
   });
@@ -1154,15 +1343,15 @@ test("advertiser Brand New Publishers slide uses explicit top and lowest new-pub
     publisherTables: {
       ...misleadingHeadingPayload().publisherTables,
       brandNewTop: [
-        { Publisher: "Fallback New", "Current OV": "€999" }
+        { Publisher: "Fallback New", "Current OV": "â‚¬999" }
       ]
     },
     brandNewPublisherRanking: {
       top: [
-        { publisher: "Best New", siteId: "new-best", value: 7000, label: "€7k" }
+        { publisher: "Best New", siteId: "new-best", value: 7000, label: "â‚¬7k" }
       ],
       bottom: [
-        { publisher: "Lowest New", siteId: "new-low", value: 25, label: "€25" }
+        { publisher: "Lowest New", siteId: "new-low", value: 25, label: "â‚¬25" }
       ],
       sourceCount: 14
     }
@@ -1205,7 +1394,7 @@ test("advertiser Brand New Publishers uses a single panel when there is no disti
   assert.equal(brandNewSlide.ranking.bottom.length, 0);
   assert.match(slideXml, /Highest order value new publishers/);
   assert.doesNotMatch(slideXml, /Lower order value new publishers/);
-  assert.match(slideXml, /£10,000|Â£10,000/);
+  assert.match(slideXml, /£10,000/);
 });
 
 test("advertiser publisher recommendations render as one deck summary and one-sheet workbook", async () => {
@@ -1295,6 +1484,34 @@ test("advertiser publisher recommendations render as one deck summary and one-sh
   assert.ok(decodedSheet.indexOf("Compare Prospect") < decodedSheet.indexOf("Content Prospect 1"));
 });
 
+test("advertiser publisher recommendation summary uses total category counts when detail rows are capped", async () => {
+  const contentPublishers = Array.from({ length: 10 }, (_, index) => ({
+    "Publisher Name": `Content Prospect ${index + 1}`,
+    "Source ID": `content-${index + 1}`,
+    "Promotion Type": "Content",
+    Description: `Editorial and review publisher ${index + 1}`,
+    URL: `https://content-${index + 1}.example.com`,
+    "Acceptance Ratio": `${90 - index}%`,
+    "Accepted Connections": String(50 - index),
+    "Rejected Connections": String(index)
+  }));
+
+  const result = await generatePresentation({
+    ...misleadingHeadingPayload(),
+    publisherCategorySlides: [
+      {
+        category: "Content",
+        publisherCount: 12,
+        recommendedPublishers: contentPublishers
+      }
+    ]
+  });
+
+  const summarySlide = result.deckSpec.slides.find((slide) => slide.id === "publisher-expansion-opportunities");
+
+  assert.ok(summarySlide);
+  assert.deepEqual(summarySlide.tables[0].rows[0], ["Content", "12", "455", "85.5%"]);
+});
 test("advertiser publisher recommendation workbook separates multi-program rows by program ID", async () => {
   const result = await generatePresentation({
     ...misleadingHeadingPayload(),
@@ -1405,7 +1622,7 @@ test("KPI summary tiles use the requested language for comparison text", async (
 
   const summaries = slide.kpis.map((kpi) => kpi.summary).join("\n");
   assert.match(summaries, /ggü\./);
-  assert.match(summaries, /\bVJ\b/);
+  assert.match(summaries, /ggü\./);
   assert.doesNotMatch(summaries, /\bPY\b/);
 });
 
@@ -1416,6 +1633,22 @@ test("KPI summary tile deltas render with RAG colors", async () => {
 
   assertTextUsesColor(slideXml, "+8.2%", "57A66C");
   assertTextUsesColor(slideXml, "-13.8%", "EB5757");
+});
+
+test("KPI summary tiles treat YoY and r/r rows as variance rows", async () => {
+  const payload = misleadingHeadingPayload();
+  const result = await generatePresentation({
+    ...payload,
+    languageCode: "PL",
+    programYoYTable: payload.programYoYTable.map((row) => (
+      row.Row === "% Variance" ? { ...row, Row: "r/r" } : row
+    ))
+  });
+  const slide = result.deckSpec.slides.find((item) => item.kind === "program-executive-summary");
+  const summaries = slide.kpis.map((kpi) => kpi.summary).join("\n");
+
+  assert.match(summaries, /r\/r - \+8\.2%/);
+  assert.match(summaries, /r\/r - -13\.8%/);
 });
 
 test("slide 4 and slide 5 signed percentage values render with RAG colors", async () => {
@@ -1429,8 +1662,8 @@ test("slide 4 and slide 5 signed percentage values render with RAG colors", asyn
         Impressions: "100,000",
         Sales: "500",
         "Conversion Rate": "5.0%",
-        AOV: "€42.00",
-        "Total Order Value": "€21,000",
+        AOV: "â‚¬42.00",
+        "Total Order Value": "â‚¬21,000",
         "YoY Change": "-12.0%"
       }
     ]
@@ -1483,14 +1716,14 @@ test("Polish reporting-period labels render with Unicode characters", async () =
   assert.match(labels.allFiguresStatement, /bieżący okres względem okresu porównawczego/);
 
   const visiblePolishLabels = Object.values(labels).join("\n");
-  assert.doesNotMatch(visiblePolishLabels, /(?:Ã|Å|Ä|Â)/);
+  assert.doesNotMatch(visiblePolishLabels, /(?:Ãƒ|Ã…|Ã„|Ã‚)/);
 });
 
 test("mojibake payload text is repaired before deck generation", async () => {
   const result = await generatePresentation({
     ...misleadingHeadingPayload(),
-    client: "BieÅ¼Ä…cy klient",
-    deckTitle: "QBR - BieÅ¼Ä…cy klient"
+    client: "BieÃ…Â¼Ã„â€¦cy klient",
+    deckTitle: "QBR - BieÃ…Â¼Ã„â€¦cy klient"
   });
 
   assert.equal(result.normalized.client, "Bieżący klient");

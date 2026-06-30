@@ -45,6 +45,10 @@ class FakeBatchDb:
                 status,
                 duplicate,
                 result_url,
+                bundle_url,
+                presenter_notes_url,
+                publisher_recommendations_excel_url,
+                publisher_performance_excel_url,
                 error,
                 request_key,
                 now,
@@ -59,6 +63,10 @@ class FakeBatchDb:
                 "status": status,
                 "duplicate": duplicate,
                 "result_url": result_url,
+                "bundle_url": bundle_url,
+                "presenter_notes_url": presenter_notes_url,
+                "publisher_recommendations_excel_url": publisher_recommendations_excel_url,
+                "publisher_performance_excel_url": publisher_performance_excel_url,
                 "error": error,
                 "request_key": request_key,
                 "created_at": self.items.get((batch_id, row_number), {}).get("created_at", now),
@@ -115,6 +123,10 @@ class BatchRunsServiceTest(unittest.IsolatedAsyncioTestCase):
                 "endDate": "2026-03-31",
                 "status": "success",
                 "resultUrl": "http://127.0.0.1/report.pptx",
+                "bundleUrl": "http://127.0.0.1/report_bundle.zip",
+                "presenterNotesUrl": "http://127.0.0.1/presenter-notes.docx",
+                "publisherRecommendationsExcelUrl": "http://127.0.0.1/recommendations.xlsx",
+                "publisherPerformanceExcelUrl": "http://127.0.0.1/performance.xlsx",
             },
             db=db,
         )
@@ -123,6 +135,10 @@ class BatchRunsServiceTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(updated["successCount"], 1)
         self.assertEqual(updated["rows"][0]["programIds"], "310990, 297463")
         self.assertEqual(updated["rows"][0]["resultUrl"], "http://127.0.0.1/report.pptx")
+        self.assertEqual(updated["rows"][0]["bundleUrl"], "http://127.0.0.1/report_bundle.zip")
+        self.assertEqual(updated["rows"][0]["presenterNotesUrl"], "http://127.0.0.1/presenter-notes.docx")
+        self.assertEqual(updated["rows"][0]["publisherRecommendationsExcelUrl"], "http://127.0.0.1/recommendations.xlsx")
+        self.assertEqual(updated["rows"][0]["publisherPerformanceExcelUrl"], "http://127.0.0.1/performance.xlsx")
 
         completed = await record_batch_run_item(
             "batch-1",

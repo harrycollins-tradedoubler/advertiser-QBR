@@ -75,6 +75,7 @@ export interface ProgramRequestRun {
   languageCode: string
   currencyCode: string
   analysisLevel: string
+  buildDurationMs?: number | null
 }
 
 

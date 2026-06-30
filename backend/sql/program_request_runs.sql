@@ -8,6 +8,7 @@
     language_code TEXT NOT NULL DEFAULT '',
     currency_code TEXT NOT NULL DEFAULT '',
     analysis_level TEXT NOT NULL DEFAULT '',
+    build_duration_ms BIGINT,
     request_key TEXT NOT NULL DEFAULT '',
     "timestamp" TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -21,6 +22,7 @@ ALTER TABLE program_request_runs
     ADD COLUMN IF NOT EXISTS language_code TEXT NOT NULL DEFAULT '',
     ADD COLUMN IF NOT EXISTS currency_code TEXT NOT NULL DEFAULT '',
     ADD COLUMN IF NOT EXISTS analysis_level TEXT NOT NULL DEFAULT '',
+    ADD COLUMN IF NOT EXISTS build_duration_ms BIGINT,
     ADD COLUMN IF NOT EXISTS request_key TEXT NOT NULL DEFAULT '';
 
 UPDATE program_request_runs

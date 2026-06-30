@@ -2,6 +2,9 @@ chrome.action.onClicked.addListener(() => {
   chrome.tabs.create({ url: chrome.runtime.getURL("app.html") });
 });
 
+importScripts("batch-builder.js");
+
+const batchBuilder = globalThis.AdvertiserBatchBuilder;
 const DEFAULT_QBR_WEBHOOK_URL = "http://127.0.0.1:3021/webhook-local/advertiser-qbr";
 const LEGACY_N8N_QBR_WEBHOOK_URL = "http://127.0.0.1:5678/webhook/agency-agent-qbr-backend-auth-20260610";
 
@@ -38,6 +41,7 @@ function normalizeCfg(cfg = {}) {
     oauthUrl: String(cfg.oauthUrl || "https://connect.tradedoubler.com/uaa/oauth/token").trim(),
     impersonateUrl: String(cfg.impersonateUrl || "https://connect.tradedoubler.com/uaa/admin/impersonate?username=").trim(),
     advertiserBase: ensureTrailingSlash(String(cfg.advertiserBase || "https://connect.tradedoubler.com/advertiser/").trim()),
+    userManagementBase: ensureTrailingSlash(String(cfg.userManagementBase || "https://connect.tradedoubler.com/usermanagement/").trim()),
     oauthBasic: String(cfg.oauthBasic || "dGRjb25uZWN0X3B1Ymxpc2hlcjoxMjM0NTY=").trim(),
     qbrWebhookUrl: normalizeQbrWebhookUrl(cfg.qbrWebhookUrl),
     backendApiUrl: normalizeBaseUrl(cfg.backendApiUrl, "http://127.0.0.1:8008/api")
@@ -180,11 +184,10 @@ function extractArray(payload) {
   return [];
 }
 
-async function listAdvertiserPrograms(cfg, limit = 100) {
+async function listAdvertiserPrograms(cfg) {
   if (!state.advertiserToken) throw new Error("No advertiser impersonation token available.");
-  const safeLimit = Math.max(1, Math.min(100, Number(limit || 100)));
   const data = await fetchJson(
-    advertiserUrl(cfg, `programs?limit=${encodeURIComponent(safeLimit)}`),
+    advertiserUrl(cfg, "programs"),
     {
       method: "GET",
       headers: {
@@ -202,6 +205,60 @@ async function listAdvertiserPrograms(cfg, limit = 100) {
   };
 }
 
+function userManagementUrl(cfg, path) {
+  return `${cfg.userManagementBase}${trimSlashes(path)}`;
+}
+
+async function fetchOrganizationUsers(cfg, organizationId, bearerToken) {
+  const adminToken = await ensureAdminToken(cfg, bearerToken);
+  return fetchJson(
+    `${userManagementUrl(cfg, "internal/users")}?organizationId=${encodeURIComponent(organizationId)}&deleted=false&limit=100`,
+    {
+      method: "GET",
+      headers: {
+        "Accept": "application/json",
+        "Authorization": `Bearer ${adminToken}`
+      }
+    },
+    `Organisation ${organizationId} users`
+  );
+}
+
+async function resolveOrganizationBatch(cfg, rawOrganizationIds, bearerToken) {
+  const organizationIds = batchBuilder.parseOrganizationIds(rawOrganizationIds);
+  if (!organizationIds.length) throw new Error("Enter at least one organisation ID.");
+
+  const items = [];
+  for (const organizationId of organizationIds) {
+    try {
+      const usersData = await fetchOrganizationUsers(cfg, organizationId, bearerToken);
+      const user = batchBuilder.selectOwnerOrAdminUser(usersData);
+      await impersonate(cfg, user.username, bearerToken);
+      const programsData = await listAdvertiserPrograms(cfg);
+      const programs = batchBuilder.normalizeProgramItems(programsData);
+      items.push({
+        organizationId,
+        clientUsername: user.username,
+        roleId: user.roleId,
+        programs,
+        selectedProgramIds: programs.map((program) => program.id)
+      });
+    } catch (error) {
+      items.push({
+        organizationId,
+        error: error && error.message ? error.message : String(error),
+        programs: [],
+        selectedProgramIds: []
+      });
+    }
+  }
+
+  return {
+    items,
+    resolvedCount: items.filter((item) => !item.error).length,
+    errorCount: items.filter((item) => item.error).length
+  };
+}
 function currentTokens() {
   if (!state.adminToken || !state.advertiserToken) return null;
   return {
@@ -246,31 +303,54 @@ async function submitQbrRequest(cfg, payload, bearerToken) {
   }
 
   const message = `QBR_REQUEST ${JSON.stringify(requestPayload)}`;
-  const data = await fetchJson(
-    cfg.qbrWebhookUrl,
-    {
-      method: "POST",
-      headers: {
-        "Accept": "application/json",
-        "Content-Type": "application/json"
+  const buildStartedAt = Date.now();
+  let buildDurationMs = null;
+  let data;
+
+  try {
+    data = await fetchJson(
+      cfg.qbrWebhookUrl,
+      {
+        method: "POST",
+        headers: {
+          "Accept": "application/json",
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          message,
+          thread_id: crypto.randomUUID(),
+          payload: requestPayload,
+          qbr_payload: requestPayload,
+          td_tokens: tokens
+        })
       },
-      body: JSON.stringify({
-        message,
-        thread_id: crypto.randomUUID(),
-        payload: requestPayload,
-        qbr_payload: requestPayload,
-        td_tokens: tokens
-      })
-    },
-    "QBR webhook"
-  );
+      "QBR webhook"
+    );
+    buildDurationMs = Math.max(0, Date.now() - buildStartedAt);
+  } catch (error) {
+    buildDurationMs = Math.max(0, Date.now() - buildStartedAt);
+    try {
+      await recordProgramRequestRun(cfg, requestPayload, { buildDurationMs });
+    } catch (logError) {
+      runLogError = logError && logError.message ? logError.message : String(logError);
+    }
+    throw error;
+  }
+
+  try {
+    const runLogResponse = await recordProgramRequestRun(cfg, requestPayload, { buildDurationMs });
+    runLogRecorded = runLogRecorded || Boolean(runLogResponse?.recorded || runLogResponse?.updated);
+  } catch (error) {
+    runLogError = error && error.message ? error.message : String(error);
+  }
 
   return {
     ok: true,
     data,
     runLog: {
       recorded: runLogRecorded,
-      error: runLogError
+      error: runLogError,
+      buildDurationMs
     },
     tdSession: {
       mode: "extension_advertiser_impersonation",
@@ -280,7 +360,13 @@ async function submitQbrRequest(cfg, payload, bearerToken) {
   };
 }
 
-async function recordProgramRequestRun(cfg, payload) {
+async function recordProgramRequestRun(cfg, payload, options = {}) {
+  const body = { payload };
+  const buildDurationMs = Number(options.buildDurationMs);
+  if (Number.isFinite(buildDurationMs) && buildDurationMs >= 0) {
+    body.buildDurationMs = Math.round(buildDurationMs);
+  }
+
   return fetchJson(
     `${cfg.backendApiUrl}/program-request-runs`,
     {
@@ -289,7 +375,7 @@ async function recordProgramRequestRun(cfg, payload) {
         "Accept": "application/json",
         "Content-Type": "application/json"
       },
-      body: JSON.stringify({ payload })
+      body: JSON.stringify(body)
     },
     "Program request run logging"
   );
@@ -334,7 +420,12 @@ async function handleMessage(msg) {
   }
 
   if (msg.type === "LIST_ADVERTISER_PROGRAMS") {
-    const data = await listAdvertiserPrograms(cfg, msg.limit);
+    const data = await listAdvertiserPrograms(cfg);
+    return { ok: true, data };
+  }
+
+  if (msg.type === "RESOLVE_ORGANIZATION_BATCH") {
+    const data = await resolveOrganizationBatch(cfg, msg.organizationIds || [], bearerToken);
     return { ok: true, data };
   }
 

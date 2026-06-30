@@ -1,5 +1,6 @@
 ﻿import logging
 from datetime import datetime, timezone
+from math import isfinite
 from typing import Any
 
 from app.services.db import neon_db
@@ -17,6 +18,7 @@ CREATE TABLE IF NOT EXISTS program_request_runs (
     language_code TEXT NOT NULL DEFAULT '',
     currency_code TEXT NOT NULL DEFAULT '',
     analysis_level TEXT NOT NULL DEFAULT '',
+    build_duration_ms BIGINT,
     request_key TEXT NOT NULL DEFAULT '',
     "timestamp" TIMESTAMPTZ NOT NULL DEFAULT now()
 )
@@ -32,6 +34,7 @@ ALTER TABLE program_request_runs
     ADD COLUMN IF NOT EXISTS language_code TEXT NOT NULL DEFAULT '',
     ADD COLUMN IF NOT EXISTS currency_code TEXT NOT NULL DEFAULT '',
     ADD COLUMN IF NOT EXISTS analysis_level TEXT NOT NULL DEFAULT '',
+    ADD COLUMN IF NOT EXISTS build_duration_ms BIGINT,
     ADD COLUMN IF NOT EXISTS request_key TEXT NOT NULL DEFAULT ''
 """
 
@@ -58,6 +61,13 @@ ON program_request_runs (request_key)
 WHERE request_key <> ''
 """
 
+UPDATE_PROGRAM_REQUEST_RUN_DURATION_SQL = """
+UPDATE program_request_runs
+SET build_duration_ms = $1
+WHERE request_key = $2
+RETURNING request_key, build_duration_ms
+"""
+
 INSERT_PROGRAM_REQUEST_RUN_SQL = """
 INSERT INTO program_request_runs (
     program_id,
@@ -70,9 +80,10 @@ INSERT INTO program_request_runs (
     language_code,
     currency_code,
     analysis_level,
+    build_duration_ms,
     request_key
 )
-VALUES ($1, $2::timestamptz, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+VALUES ($1, $2::timestamptz, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
 RETURNING program_id, "timestamp"
 """
 
@@ -88,6 +99,7 @@ SELECT
     language_code,
     currency_code,
     analysis_level,
+    build_duration_ms,
     request_key
 FROM program_request_runs
 ORDER BY "timestamp" DESC
@@ -96,7 +108,8 @@ LIMIT $1
 
 POSTGREST_SELECT_COLUMNS = (
     "program_id,timestamp,client_username,program_ids,program_names,"
-    "start_date,end_date,language_code,currency_code,analysis_level,request_key"
+    "start_date,end_date,language_code,currency_code,analysis_level,"
+    "build_duration_ms,request_key"
 )
 
 
@@ -119,6 +132,18 @@ def _first_text(payload: dict[str, Any], keys: tuple[str, ...]) -> str:
         if value:
             return value
     return ""
+
+
+def _clean_build_duration_ms(value: Any) -> int | None:
+    if value is None or value == "":
+        return None
+    try:
+        number = float(str(value).strip())
+    except (TypeError, ValueError):
+        return None
+    if not isfinite(number) or number < 0:
+        return None
+    return int(round(number))
 
 
 def _canonical_program_ids(program_ids: str) -> list[str]:
@@ -203,17 +228,42 @@ async def _ensure_program_request_runs_table(db=neon_db) -> None:
     await db.query(CREATE_PROGRAM_REQUEST_RUNS_DEDUPE_INDEX_SQL)
 
 
+async def _update_program_request_duration(
+    request_key: str,
+    build_duration_ms: int | None,
+    db=neon_db,
+) -> bool:
+    if not request_key or build_duration_ms is None:
+        return False
+
+    if getattr(db, "is_postgrest", False):
+        rows = await db.update_postgrest(
+            table="program_request_runs",
+            payload={"build_duration_ms": build_duration_ms},
+            filters={"request_key": f"eq.{request_key}"},
+        )
+        return bool(rows)
+
+    rows = await db.query(
+        UPDATE_PROGRAM_REQUEST_RUN_DURATION_SQL,
+        [build_duration_ms, request_key],
+    )
+    return bool(rows)
+
+
 async def record_program_request_result(
     payload: Any,
     requested_at: datetime | None = None,
+    build_duration_ms: Any = None,
     db=neon_db,
-) -> dict[str, bool | str]:
+) -> dict[str, Any]:
     summary = summarize_program_request(payload)
     if not summary:
         return {"recorded": False, "duplicate": False, "reason": "missing_program_id", "requestKey": ""}
 
     timestamp = requested_at or datetime.now(timezone.utc)
     timestamp_iso = timestamp.astimezone(timezone.utc).isoformat()
+    duration_ms = _clean_build_duration_ms(build_duration_ms)
 
     if getattr(db, "is_postgrest", False):
         if summary["request_key"]:
@@ -224,6 +274,14 @@ async def record_program_request_result(
                 limit=1,
             )
             if existing:
+                if duration_ms is not None and await _update_program_request_duration(summary["request_key"], duration_ms, db=db):
+                    return {
+                        "recorded": False,
+                        "duplicate": False,
+                        "updated": True,
+                        "reason": "",
+                        "requestKey": summary["request_key"],
+                    }
                 return {
                     "recorded": False,
                     "duplicate": True,
@@ -235,6 +293,7 @@ async def record_program_request_result(
             "program_request_runs",
             {
                 **summary,
+                "build_duration_ms": duration_ms,
                 "timestamp": timestamp_iso,
             },
         )
@@ -247,6 +306,14 @@ async def record_program_request_result(
             [summary["request_key"]],
         )
         if existing:
+            if duration_ms is not None and await _update_program_request_duration(summary["request_key"], duration_ms, db=db):
+                return {
+                    "recorded": False,
+                    "duplicate": False,
+                    "updated": True,
+                    "reason": "",
+                    "requestKey": summary["request_key"],
+                }
             return {
                 "recorded": False,
                 "duplicate": True,
@@ -267,6 +334,7 @@ async def record_program_request_result(
             summary["language_code"],
             summary["currency_code"],
             summary["analysis_level"],
+            duration_ms,
             summary["request_key"],
         ],
     )
@@ -290,7 +358,7 @@ async def try_record_program_request(payload: Any) -> bool:
         return False
 
 
-def _serialize_run(row: dict[str, Any]) -> dict[str, str]:
+def _serialize_run(row: dict[str, Any]) -> dict[str, Any]:
     timestamp = row.get("timestamp")
     if isinstance(timestamp, datetime):
         timestamp_value = timestamp.astimezone(timezone.utc).isoformat()
@@ -308,11 +376,12 @@ def _serialize_run(row: dict[str, Any]) -> dict[str, str]:
         "languageCode": _clean_text(row.get("language_code")),
         "currencyCode": _clean_text(row.get("currency_code")),
         "analysisLevel": _clean_text(row.get("analysis_level")),
+        "buildDurationMs": _clean_build_duration_ms(row.get("build_duration_ms")),
         "requestKey": _clean_text(row.get("request_key")),
     }
 
 
-async def list_program_request_runs(limit: int = 100, db=neon_db) -> list[dict[str, str]]:
+async def list_program_request_runs(limit: int = 100, db=neon_db) -> list[dict[str, Any]]:
     safe_limit = min(max(int(limit or 100), 1), 500)
 
     if getattr(db, "is_postgrest", False):

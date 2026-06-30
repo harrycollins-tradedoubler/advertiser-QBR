@@ -8,6 +8,7 @@ const DEFAULTS = {
 };
 
 const LEGACY_N8N_QBR_WEBHOOK_URL = "http://127.0.0.1:5678/webhook/agency-agent-qbr-backend-auth-20260610";
+const batchBuilder = globalThis.AdvertiserBatchBuilder;
 
 const STORAGE_KEYS = {
   connectionConfig: "advertiserAgentConnectionConfig"
@@ -46,12 +47,22 @@ const batchResults = document.getElementById("batchResults");
 const refreshRunLogButton = document.getElementById("refreshRunLog");
 const runLogMeta = document.getElementById("runLogMeta");
 const runLogTable = document.getElementById("runLogTable");
+const organizationIdInput = document.getElementById("organizationId");
+const organizationIdsTextInput = document.getElementById("organizationIdsText");
+const organizationIdsFileInput = document.getElementById("organizationIdsFile");
+const resolveOrganizationsButton = document.getElementById("resolveOrganizations");
+const generateOrganizationBatchCsvButton = document.getElementById("generateOrganizationBatchCsv");
+const downloadOrganizationBatchCsvLink = document.getElementById("downloadOrganizationBatchCsv");
+const organizationBatchStatus = document.getElementById("organizationBatchStatus");
+const organizationBatchResults = document.getElementById("organizationBatchResults");
 
 let programs = [];
 let selectedProgramIds = [];
 let impersonatedClientUsername = "";
 let batchRows = [];
 let currentBatchResultsUrl = "";
+let organizationResolvedItems = [];
+let currentOrganizationBatchCsvUrl = "";
 
 function normalizeBaseUrl(value, fallback = "") {
   const trimmed = String(value || "").trim();
@@ -175,6 +186,18 @@ function runLogValue(run, key, fallback = "-") {
   return value || fallback;
 }
 
+function formatBuildDuration(value) {
+  if (value === null || value === undefined || value === "") return "-";
+  const ms = Number(value);
+  if (!Number.isFinite(ms) || ms < 0) return "-";
+  if (ms < 1000) return `${Math.round(ms)} ms`;
+  const seconds = ms / 1000;
+  if (seconds < 60) return `${seconds.toFixed(1)}s`;
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = Math.round(seconds % 60);
+  return `${minutes}m ${remainingSeconds}s`;
+}
+
 function renderRunLog(runs) {
   runLogTable.replaceChildren();
   const rows = Array.isArray(runs) ? runs : [];
@@ -195,6 +218,7 @@ function renderRunLog(runs) {
     ["Date Range", "dateRange"],
     ["Language", "languageCode"],
     ["Currency", "currencyCode"],
+    ["Build Time", "buildDurationMs"],
     ["Timestamp", "timestamp"]
   ];
 
@@ -217,6 +241,8 @@ function renderRunLog(runs) {
       if (key === "programIds") cell.className = "mono-cell";
       if (key === "timestamp") {
         cell.textContent = formatRunTimestamp(run.timestamp);
+      } else if (key === "buildDurationMs") {
+        cell.textContent = formatBuildDuration(run.buildDurationMs);
       } else if (key === "dateRange") {
         const startDate = runLogValue(run, "startDate", "");
         const endDate = runLogValue(run, "endDate", "");
@@ -291,6 +317,10 @@ async function recordBatchRunManifestItem(batchId, row, payload) {
       status: row.status,
       duplicate: Boolean(row.duplicate),
       resultUrl: row.resultUrl || "",
+      bundleUrl: row.bundleUrl || "",
+      presenterNotesUrl: row.presenterNotesUrl || "",
+      publisherRecommendationsExcelUrl: row.publisherRecommendationsExcelUrl || "",
+      publisherPerformanceExcelUrl: row.publisherPerformanceExcelUrl || "",
       error: row.error || "",
       requestKey: buildBatchRequestKey(payload)
     })
@@ -321,7 +351,21 @@ function csvCell(value) {
 }
 
 function buildBatchResultsCsv(batch) {
-  const header = ["rowNumber", "clientUsername", "programIds", "startDate", "endDate", "status", "duplicate", "resultUrl", "error"];
+  const header = [
+    "rowNumber",
+    "clientUsername",
+    "programIds",
+    "startDate",
+    "endDate",
+    "status",
+    "duplicate",
+    "resultUrl",
+    "bundleUrl",
+    "presenterNotesUrl",
+    "publisherRecommendationsExcelUrl",
+    "publisherPerformanceExcelUrl",
+    "error"
+  ];
   const lines = [header.map(csvCell).join(",")];
   for (const row of getBatchRows(batch)) {
     lines.push([
@@ -333,6 +377,10 @@ function buildBatchResultsCsv(batch) {
       row.status,
       Boolean(row.duplicate),
       row.resultUrl,
+      row.bundleUrl,
+      row.presenterNotesUrl,
+      row.publisherRecommendationsExcelUrl,
+      row.publisherPerformanceExcelUrl,
       row.error
     ].map(csvCell).join(","));
   }
@@ -391,13 +439,23 @@ function renderBatchResults(batch) {
   for (const row of rows) {
     const tr = document.createElement("tr");
     const resultCell = document.createElement("td");
-    if (row.resultUrl) {
-      const link = document.createElement("a");
-      link.href = resolveResultUrl(row.resultUrl);
-      link.target = "_blank";
-      link.rel = "noreferrer";
-      link.textContent = "Open PPTX";
-      resultCell.append(link);
+    const resultLinks = [
+      ["Download ZIP", row.bundleUrl],
+      ["Open PPTX", row.resultUrl],
+      ["Presenter notes DOCX", row.presenterNotesUrl],
+      ["Recommendations XLSX", row.publisherRecommendationsExcelUrl],
+      ["Performance XLSX", row.publisherPerformanceExcelUrl]
+    ].filter(([, url]) => url);
+    if (resultLinks.length) {
+      resultLinks.forEach(([label, url], linkIndex) => {
+        if (linkIndex > 0) resultCell.append(document.createElement("br"));
+        const link = document.createElement("a");
+        link.href = resolveResultUrl(url);
+        link.target = "_blank";
+        link.rel = "noreferrer";
+        link.textContent = label;
+        resultCell.append(link);
+      });
     } else {
       resultCell.textContent = row.error || "-";
     }
@@ -471,6 +529,8 @@ function clearResultLink() {
 
 function appendResultLink(label, href) {
   if (!href) return;
+
+  if (resultLink.childNodes.length) resultLink.append(document.createTextNode(" "));
 
   const link = document.createElement("a");
   link.href = href;
@@ -560,6 +620,34 @@ function findFirstValue(data, keys) {
 
 function getResultUrl(data) {
   return findFirstValue(data, ["reportUrl", "resultUrl", "downloadUrl", "download_url", "pptx_url", "file_url", "url"]);
+}
+
+function getBundleUrl(data) {
+  return findFirstValue(data, ["bundleUrl", "bundle_url", "qbr_bundle_url"]);
+}
+
+function getPresenterNotesUrl(data) {
+  return findFirstValue(data, ["presenterNotesUrl", "presenter_notes_url"]);
+}
+
+function getPublisherRecommendationsExcelUrl(data) {
+  return findFirstValue(data, [
+    "publisherRecommendationsExcelUrl",
+    "publisher_recommendations_excel_url",
+    "gap_analysis_report_url",
+    "recommendations_excel_url"
+  ]);
+}
+
+function getPublisherPerformanceExcelUrl(data) {
+  return findFirstValue(data, [
+    "publisherPerformanceExcelUrl",
+    "publisher_performance_excel_url",
+    "publisher_program_performance_excel_url",
+    "publisher_performance_by_program_url",
+    "performance_excel_url",
+    "excel_url"
+  ]);
 }
 
 function normalizeProgramItems(data) {
@@ -757,6 +845,7 @@ function renderBatchPreview(rows, message = "") {
   const headers = [
     ["clientUsername", ["clientUsername", "username", "client email"]],
     ["programIds", ["programIds", "program IDs", "programId", "advertiserProgramIds"]],
+    ["programNames", ["programNames", "program names", "programName"]],
     ["startDate", ["startDate", "start date", "dateFrom", "fromDate"]],
     ["endDate", ["endDate", "end date", "dateTo", "toDate"]],
     ["currencyCode", ["currencyCode", "currency"]],
@@ -980,13 +1069,12 @@ async function loadPrograms() {
     }
 
     const response = await sendExtensionRequest({
-      type: "LIST_ADVERTISER_PROGRAMS",
-      limit: 100
+      type: "LIST_ADVERTISER_PROGRAMS"
     });
 
     const items = normalizeProgramItems(response);
     programs = items
-      .filter((item) => item?.active === true && item?.closedProgram !== true)
+      .filter((item) => item?.active === true)
       .map((item) => {
         const countryCode = item.countryCode ? String(item.countryCode).trim().toUpperCase() : "";
         return {
@@ -1048,6 +1136,244 @@ async function clearSessionFields() {
   }
 }
 
+function updateOrganizationBuilderActions() {
+  const resolvedRows = organizationResolvedItems.filter((item) => !item.error && (item.programs || []).length);
+  generateOrganizationBatchCsvButton.disabled = resolvedRows.length === 0;
+  if (!currentOrganizationBatchCsvUrl) {
+    downloadOrganizationBatchCsvLink.href = "#";
+    downloadOrganizationBatchCsvLink.classList.add("is-disabled");
+    downloadOrganizationBatchCsvLink.setAttribute("aria-disabled", "true");
+  }
+}
+
+async function handleOrganizationIdsFileChange() {
+  const file = organizationIdsFileInput.files?.[0];
+  if (!file) return;
+  try {
+    const text = await file.text();
+    organizationIdsTextInput.value = [organizationIdsTextInput.value.trim(), text.trim()].filter(Boolean).join("\n");
+    writeStatus("Organisation ID file loaded", {
+      fileName: file.name,
+      parsedOrganizationIds: batchBuilder.parseOrganizationIds(text).length
+    });
+  } catch (error) {
+    writeStatus("Organisation ID file failed", { error: error.message });
+  }
+}
+
+function getOrganizationIdsForResolve() {
+  return batchBuilder.parseOrganizationIds(organizationIdInput.value, organizationIdsTextInput.value);
+}
+
+function organizationProgramIdsForItem(item) {
+  const validIds = new Set((item.programs || []).map((program) => String(program.id)));
+  return (item.selectedProgramIds || []).map(String).filter((programId) => validIds.has(programId));
+}
+
+function setOrganizationProgramSelection(index, selectedProgramIds) {
+  const item = organizationResolvedItems[index];
+  if (!item || item.error) return;
+  item.selectedProgramIds = selectedProgramIds;
+  currentOrganizationBatchCsvUrl = "";
+  renderOrganizationBatchResults();
+  updateOrganizationBuilderActions();
+}
+
+function renderOrganizationBatchResults() {
+  organizationBatchResults.replaceChildren();
+  if (!organizationResolvedItems.length) {
+    organizationBatchResults.textContent = "Resolved organisations will appear here.";
+    updateOrganizationBuilderActions();
+    return;
+  }
+
+  for (const [index, item] of organizationResolvedItems.entries()) {
+    const container = document.createElement("div");
+    container.className = "organization-result";
+
+    const header = document.createElement("div");
+    header.className = "organization-result-header";
+    const titleWrap = document.createElement("div");
+    const title = document.createElement("div");
+    title.className = "organization-result-title";
+    title.textContent = item.error
+      ? `Organisation ${item.organizationId}`
+      : `Organisation ${item.organizationId} | ${item.clientUsername}`;
+    const meta = document.createElement("div");
+    meta.className = "organization-result-meta";
+    if (item.error) {
+      meta.textContent = "Resolve failed";
+    } else {
+      const roleLabel = Number(item.roleId) === 1 ? "owner" : "admin";
+      const selectedCount = organizationProgramIdsForItem(item).length;
+      meta.textContent = `${roleLabel} | ${selectedCount} of ${(item.programs || []).length} active programs selected`;
+    }
+    titleWrap.append(title, meta);
+    header.append(titleWrap);
+
+    if (!item.error) {
+      const toolbar = document.createElement("div");
+      toolbar.className = "organization-program-toolbar";
+      const selectAll = document.createElement("button");
+      selectAll.className = "mini-button";
+      selectAll.type = "button";
+      selectAll.dataset.orgAction = "select-all";
+      selectAll.dataset.orgIndex = String(index);
+      selectAll.textContent = "Select all";
+      const clear = document.createElement("button");
+      clear.className = "mini-button";
+      clear.type = "button";
+      clear.dataset.orgAction = "clear";
+      clear.dataset.orgIndex = String(index);
+      clear.textContent = "Clear";
+      toolbar.append(selectAll, clear);
+      header.append(toolbar);
+    }
+
+    container.append(header);
+
+    if (item.error) {
+      const error = document.createElement("div");
+      error.className = "organization-result-error";
+      error.textContent = item.error;
+      container.append(error);
+    } else if (!(item.programs || []).length) {
+      const empty = document.createElement("p");
+      empty.textContent = "No active programs returned for this organisation.";
+      container.append(empty);
+    } else {
+      const programListEl = document.createElement("div");
+      programListEl.className = "organization-programs";
+      const selectedIds = new Set(organizationProgramIdsForItem(item));
+      for (const program of item.programs) {
+        const label = document.createElement("label");
+        label.className = "program-option";
+        const checkbox = document.createElement("input");
+        checkbox.type = "checkbox";
+        checkbox.dataset.orgIndex = String(index);
+        checkbox.value = program.id;
+        checkbox.checked = selectedIds.has(String(program.id));
+        const text = document.createElement("span");
+        text.textContent = `${program.name} (${program.id})`;
+        label.append(checkbox, text);
+        programListEl.append(label);
+      }
+      container.append(programListEl);
+    }
+
+    organizationBatchResults.append(container);
+  }
+
+  updateOrganizationBuilderActions();
+}
+
+async function resolveOrganizationBatch() {
+  const organizationIds = getOrganizationIdsForResolve();
+  if (!organizationIds.length) {
+    writeStatus("Organisation resolve blocked", { error: "Enter at least one organisation ID." });
+    return;
+  }
+
+  resolveOrganizationsButton.disabled = true;
+  generateOrganizationBatchCsvButton.disabled = true;
+  organizationBatchStatus.textContent = `Resolving ${organizationIds.length} organisation${organizationIds.length === 1 ? "" : "s"}...`;
+  organizationBatchResults.textContent = "Resolving organisations...";
+  clearResultLink();
+
+  try {
+    await saveConnectionConfig();
+    const response = await sendExtensionRequest({
+      type: "RESOLVE_ORGANIZATION_BATCH",
+      organizationIds,
+      bearerToken: accessTokenInput.value.trim()
+    });
+    organizationResolvedItems = (response.items || []).map((item) => ({
+      ...item,
+      selectedProgramIds: Array.isArray(item.selectedProgramIds)
+        ? item.selectedProgramIds.map(String)
+        : (item.programs || []).map((program) => String(program.id))
+    }));
+    currentOrganizationBatchCsvUrl = "";
+    organizationBatchStatus.textContent = `${response.resolvedCount || 0} resolved | ${response.errorCount || 0} failed`;
+    renderOrganizationBatchResults();
+    writeStatus("Organisation batch resolved", {
+      resolvedCount: response.resolvedCount || 0,
+      errorCount: response.errorCount || 0,
+      items: organizationResolvedItems.map((item) => ({
+        organizationId: item.organizationId,
+        clientUsername: item.clientUsername,
+        roleId: item.roleId,
+        programCount: (item.programs || []).length,
+        selectedProgramCount: organizationProgramIdsForItem(item).length,
+        error: item.error || ""
+      }))
+    });
+  } catch (error) {
+    organizationResolvedItems = [];
+    currentOrganizationBatchCsvUrl = "";
+    const message = /^Unknown message type: RESOLVE_ORGANIZATION_BATCH/i.test(error.message || "")
+      ? `${error.message} Reload the unpacked extension in chrome://extensions, then reopen this Advertiser Agent page so Chrome starts the updated service worker.`
+      : error.message;
+    organizationBatchStatus.textContent = "Resolve failed.";
+    organizationBatchResults.textContent = message;
+    writeStatus("Organisation batch resolve failed", { error: message });
+  } finally {
+    resolveOrganizationsButton.disabled = false;
+    updateOrganizationBuilderActions();
+  }
+}
+
+function getOrganizationBatchDefaults() {
+  return {
+    startDate: dateFromInput.value,
+    endDate: dateToInput.value,
+    currencyCode: form.currencyCode?.value || "EUR",
+    languageCode: form.languageCode?.value || "EN"
+  };
+}
+
+function createOrganizationBatchCsvUrl(rows) {
+  if (currentOrganizationBatchCsvUrl) URL.revokeObjectURL(currentOrganizationBatchCsvUrl);
+  const csv = batchBuilder.batchRowsToCsv(rows);
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+  currentOrganizationBatchCsvUrl = URL.createObjectURL(blob);
+  return currentOrganizationBatchCsvUrl;
+}
+
+function generateOrganizationBatchCsv() {
+  const defaults = getOrganizationBatchDefaults();
+  if (!defaults.startDate || !defaults.endDate) {
+    writeStatus("Organisation CSV blocked", { error: "Select a reporting period before generating the CSV." });
+    return;
+  }
+  if (defaults.startDate > defaults.endDate) {
+    writeStatus("Organisation CSV blocked", { error: "Start date must be before end date." });
+    return;
+  }
+
+  const rows = batchBuilder.buildTemplateRows(organizationResolvedItems, defaults);
+  if (!rows.length) {
+    writeStatus("Organisation CSV blocked", { error: "Resolve at least one organisation with selected programs." });
+    return;
+  }
+
+  batchRows = rows;
+  runBatchButton.disabled = false;
+  renderBatchPreview(batchRows);
+  const csvUrl = createOrganizationBatchCsvUrl(rows);
+  downloadOrganizationBatchCsvLink.href = csvUrl;
+  downloadOrganizationBatchCsvLink.download = `advertiser-batch-${new Date().toISOString().slice(0, 10)}.csv`;
+  downloadOrganizationBatchCsvLink.classList.remove("is-disabled");
+  downloadOrganizationBatchCsvLink.setAttribute("aria-disabled", "false");
+  organizationBatchStatus.textContent = `${rows.length} CSV row${rows.length === 1 ? "" : "s"} generated and loaded into batch preview.`;
+  clearResultLink();
+  appendResultLink("Download generated batch CSV", csvUrl);
+  writeStatus("Organisation batch CSV generated", {
+    rowCount: rows.length,
+    columns: batchBuilder.BATCH_TEMPLATE_COLUMNS,
+    loadedIntoBatchPreview: true
+  });
+}
 async function handleBatchFileChange() {
   const file = batchFileInput.files?.[0];
   batchRows = [];
@@ -1142,6 +1468,10 @@ async function runBatch(event) {
         status: "running",
         duplicate: false,
         resultUrl: "",
+        bundleUrl: "",
+        presenterNotesUrl: "",
+        publisherRecommendationsExcelUrl: "",
+        publisherPerformanceExcelUrl: "",
         error: ""
       };
       batch.rows = [...getBatchRows(batch), row];
@@ -1156,7 +1486,11 @@ async function runBatch(event) {
         });
         row.status = "success";
         row.result = response.data || response;
-        row.resultUrl = getResultUrl(response.data || response);
+        row.resultUrl = getResultUrl(row.result);
+        row.bundleUrl = getBundleUrl(row.result);
+        row.presenterNotesUrl = getPresenterNotesUrl(row.result);
+        row.publisherRecommendationsExcelUrl = getPublisherRecommendationsExcelUrl(row.result);
+        row.publisherPerformanceExcelUrl = getPublisherPerformanceExcelUrl(row.result);
       } catch (error) {
         row.duplicate = /^Duplicate QBR request blocked/i.test(error.message || "");
         row.status = row.duplicate ? "duplicate" : "error";
@@ -1220,9 +1554,17 @@ async function submitRequest() {
     });
     writeStatus("Advertiser request response", response);
 
-    const resultUrl = getResultUrl(response.data || response);
-    if (resultUrl) {
-      showResultLink("Open result", resolveResultUrl(resultUrl));
+    const result = response.data || response;
+    const resultLinks = [
+      ["Download ZIP", getBundleUrl(result)],
+      ["Open PPTX", getResultUrl(result)],
+      ["Presenter notes DOCX", getPresenterNotesUrl(result)],
+      ["Recommendations XLSX", getPublisherRecommendationsExcelUrl(result)],
+      ["Performance XLSX", getPublisherPerformanceExcelUrl(result)]
+    ].filter(([, url]) => url);
+    if (resultLinks.length) {
+      clearResultLink();
+      resultLinks.forEach(([label, url]) => appendResultLink(label, resolveResultUrl(url)));
     }
     await refreshRunLog();
   } catch (error) {
@@ -1271,6 +1613,31 @@ clearProgramsButton.addEventListener("click", () => {
   renderPrograms();
   updateProgramStatus();
   updateSummary();
+});
+organizationIdsFileInput.addEventListener("change", handleOrganizationIdsFileChange);
+resolveOrganizationsButton.addEventListener("click", resolveOrganizationBatch);
+generateOrganizationBatchCsvButton.addEventListener("click", generateOrganizationBatchCsv);
+downloadOrganizationBatchCsvLink.addEventListener("click", (event) => {
+  if (downloadOrganizationBatchCsvLink.classList.contains("is-disabled")) event.preventDefault();
+});
+organizationBatchResults.addEventListener("change", (event) => {
+  if (!event.target.matches("input[type='checkbox'][data-org-index]")) return;
+  const index = Number(event.target.dataset.orgIndex);
+  const selectedProgramIds = Array.from(organizationBatchResults.querySelectorAll(`input[type='checkbox'][data-org-index='${index}']:checked`))
+    .map((input) => input.value);
+  setOrganizationProgramSelection(index, selectedProgramIds);
+});
+organizationBatchResults.addEventListener("click", (event) => {
+  const button = event.target.closest("button[data-org-action][data-org-index]");
+  if (!button) return;
+  const index = Number(button.dataset.orgIndex);
+  const item = organizationResolvedItems[index];
+  if (!item || item.error) return;
+  if (button.dataset.orgAction === "select-all") {
+    setOrganizationProgramSelection(index, (item.programs || []).map((program) => String(program.id)));
+  } else if (button.dataset.orgAction === "clear") {
+    setOrganizationProgramSelection(index, []);
+  }
 });
 batchFileInput.addEventListener("change", handleBatchFileChange);
 runBatchButton.addEventListener("click", runBatch);
